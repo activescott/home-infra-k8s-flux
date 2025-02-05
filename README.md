@@ -40,11 +40,9 @@ Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
 #### Decrypting
 
-The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we just have to have a `sops-age` secret in the cluster and in teh `flux-system` namespace.
+The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we just have to have a `sops-age` secret in the `flux-system` namespace in the cluster.
 
 See `/infrastructure/configs/create-sops-age-decryption-secret.sh`
-
-set the decryption secret in the Flux Kustomization to sops-age.
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
