@@ -1,0 +1,9 @@
+# unencrypted secrets
+.env.secret*
+.env*
+
+# these are encrypted .env secrets encrypted with SOPS+age
+!.env.enc*
+
+# age key files cannot be committed:
+*.agekey
