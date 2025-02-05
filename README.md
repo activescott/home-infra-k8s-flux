@@ -6,6 +6,18 @@ NOTE: IN PROGRESS. Still converting my old repo containing kubernetes resources 
 
 ## Usage
 
+###
+
+Quick handy CLI Commands
+
+```sh
+flux get kustomizations --watch
+
+flux resume kustomization apps
+
+flux reconcile kustomization apps
+```
+
 ### Cluster Layout
 
 ```

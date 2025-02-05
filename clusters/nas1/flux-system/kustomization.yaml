@@ -6,6 +6,7 @@ resources:
 
 patches:
   # patch flux controllers with prometheus scrape annotations per https://fluxcd.io/flux/monitoring/metrics/
+  # more metrics at https://book.kubebuilder.io/reference/metrics-reference
   - patch: |
       apiVersion: apps/v1
       kind: Deployment
