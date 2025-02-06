@@ -14,8 +14,9 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+
   # unlike kustomize resource paths, these paths are relative to the repo
-  path: ./infrastructure/configs
+  #path: ./infrastructure/configs
   prune: true
   # no patches as of yet
   # patches:
