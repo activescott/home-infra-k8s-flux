@@ -12,3 +12,7 @@ resources:
 
   - rabbitmq-deployment.yaml
   - rabbitmq-service.yaml
+
+  # image scanning: these may not be necessary in the base?
+  - image-scanning/image-repository.yaml
+  - image-scanning/image-policy.yaml
