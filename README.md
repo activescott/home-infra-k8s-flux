@@ -27,7 +27,11 @@ flux reconcile kustomization apps
 │   └── staging
 ├── infrastructure
 │   ├── base
+        ├── configs
+        ├── controllers
 │   ├── production
+        ├── configs
+        ├── controllers
 │   └── staging
 └── clusters
     ├── production
@@ -36,6 +40,19 @@ flux reconcile kustomization apps
 
 per https://fluxcd.io/flux/guides/repository-structure/
 example at https://github.com/fluxcd/flux2-kustomize-helm-example
+
+#### Key Points:
+
+**Apps:**
+
+- Put the common parts of new apps in `apps/base/<app-name>`
+- Put the environment-specific (e.g. production vs staging) overlays in `apps/<environment>/<app-name>`. Overlays reference the base with a kustomization.yaml file and add any overlay-specific things like maybe changing namespaces or storage resources, ingress domains/certs or other tenant-specific resources.
+- Then in each cluster such as `clusters/nas1`, reference the apps environment(s) you want to deploy with a flux Kustomization resource (Flux has it's own Kustomization resource to build & deploy kustomize-yaml).
+
+**Infra:**
+
+- `infrastructure/base/config` contains customized infrastructure configuration resources
+- infrastructure/<environment>/config will reference the base and use it as-is or make any environment-specific changes.
 
 ### Secrets
 
@@ -74,10 +91,10 @@ I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packagi
 
 ## TODO:
 
-- [ ] Setup transmission with secrets
-- [ ] Setup image updates: https://fluxcd.io/flux/guides/image-update/
-- [ ] Setup transmission with image updates and
-- [ ] Expose webhook receiver for tayle main: https://fluxcd.io/flux/guides/webhook-receivers/
+- [x] Setup transmission app with secrets
+- [x] Setup tayle app with secrets
+- [ ] Setup image updates for tayle and transmission: https://fluxcd.io/flux/guides/image-update/
+- [ ] Expose webhook receiver for tayle main: https://fluxcd.io/flux/guides/webhook-receivers/ ?
 
 ## Posterity / Done
 
