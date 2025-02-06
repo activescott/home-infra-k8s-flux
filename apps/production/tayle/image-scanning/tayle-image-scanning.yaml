@@ -7,6 +7,9 @@ metadata:
 spec:
   image: ghcr.io/activescott/tayle/app
   interval: 5h
+  secretRef:
+    name: ghcr-auth
+
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository

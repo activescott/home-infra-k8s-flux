@@ -25,6 +25,12 @@ flux get kustomizations --watch
 flux resume kustomization apps
 
 flux reconcile kustomization apps
+
+# check the image repository (per https://fluxcd.io/flux/guides/image-update/)
+flux get image repository -n tayle-prod repo-tayle-app
+
+# list images flux is tracking:
+flux get images all --all-namespaces
 ```
 
 ### Cluster Layout
