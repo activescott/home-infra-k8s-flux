@@ -1,9 +1,9 @@
 resources:
   - namespace.yaml
-  - ../../base/tayle/
-  - app-ingress-certificate.yaml
   - rabbitmq-pv.yaml
   - db-pv.yaml
+  - ../../base/tayle/
+  - app-ingress-certificate.yaml
 
 patches:
   - path: patch-app-ingress.yaml
@@ -25,8 +25,9 @@ patches:
 
 namespace: tayle-prod
 
-# PV's are not in a namespace and since they come from a common base, we have to prefix or suffix their name: https://github.com/kubernetes-sigs/kustomize/issues/4832#issuecomment-1344574518
-nameSuffix: tayle-prod
+# TODO: DO WE REALLY NEED THIS? Kustomize does not appear to. Does flux?
+## PV's are not in a namespace and since they come from a common base, we have to prefix or suffix their name: https://github.com/kubernetes-sigs/kustomize/issues/4832#issuecomment-1344574518
+##nameSuffix: -tayle-prod
 
 secretGenerator:
   # db
