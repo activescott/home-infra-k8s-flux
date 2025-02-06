@@ -1,7 +1,7 @@
 resources:
   - namespace.yaml
-  - app-ingress-certificate.yaml
   - ../../base/tayle/
+  - app-ingress-certificate.yaml
 
 patches:
   - path: patch-app-ingress.yaml

@@ -6,7 +6,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: app-tayle-co
-  namespace: home-assistant
+  namespace: tayle-prod
 spec:
   # the secret is put here:
   secretName: app-tayle-co-tls
@@ -15,4 +15,4 @@ spec:
     kind: ClusterIssuer
   commonName: app.tayle.co
   dnsNames:
-  - app.tayle.co
+    - app.tayle.co
