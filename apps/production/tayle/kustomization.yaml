@@ -4,6 +4,7 @@ resources:
   - db-pv.yaml
   - ../../base/tayle/
   - app-ingress-certificate.yaml
+  - image-scanning/tayle-image-scanning.yaml
 
 patches:
   - path: patch-app-ingress.yaml
@@ -55,11 +56,11 @@ secretGenerator:
 # https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 images:
   - name: tayle-image-app
-    newName: ghcr.io/activescott/tayle/app
-    newTag: main-85548a2 # replace this tag to update app
+    newName: ghcr.io/activescott/tayle/app # {"$imagepolicy": "tayle-prod:app:name"}
+    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:app:tag"}
   - name: tayle-image-worker
-    newName: ghcr.io/activescott/tayle/worker
-    newTag: main-85548a2 # replace this tag to update worker
+    newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:worker:name"}
+    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:worker:tag"}
   - name: tayle-image-db
     newName: postgres
     newTag: "17"

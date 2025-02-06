@@ -14,7 +14,7 @@ Quick handy CLI Commands
 # force reconciliation to source:
 flux reconcile kustomization flux-system --with-source
 
-# Show all Flux objects that are not ready
+# Show all Flux objects that are not ready !
 flux get all -A --status-selector ready=false
 
 # Show flux warning events
@@ -85,6 +85,7 @@ I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packagi
 
 - [ ] Setup transmission with secrets
 - [x] Setup image updates: https://fluxcd.io/flux/guides/image-update/ ABORT: I tried this and reverted. The ImagePolicy examples were all in the wrong namespace and setting these up is harder than writing a github action script to just change the version as needed
+  - maybe this works better? https://fluxcd.io/flux/components/image/imageupdateautomations/
 - [ ] Setup transmission with image updates and
 - [ ] Expose webhook receiver for tayle main: https://fluxcd.io/flux/guides/webhook-receivers/
 
