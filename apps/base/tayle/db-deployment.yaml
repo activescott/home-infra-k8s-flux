@@ -37,27 +37,28 @@ spec:
                 secretKeyRef:
                   name: db-creds
                   key: POSTGRES_DB
-          
+
           # note session.user.id=0 is used to create this config that the apps uses in RLS policies with set_config/current_setting
           args: ["-c", "session.user.id=0"]
-          
+
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
           # TODO: add resource limits
-  
+
   # set the .spec.volumeClaimTemplates field to create a PersistentVolumeClaim
   #   https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#volume-claim-templates
   #   https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/stateful-set-v1/#StatefulSetSpec
   volumeClaimTemplates:
-  - metadata:
-      name: postgres-data
-    spec:
-      storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
-      accessModes: ["ReadWriteOnce"]
-     # volumeName is the binding reference to the PersistentVolume backing this claim.
-      volumeName: tayle-db-pv-data
-      resources:
-        requests:
-          # the minimum amount that must be available:
-          storage: 5Gi
+    - metadata:
+        name: postgres-data
+      spec:
+        storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
+        accessModes: ["ReadWriteOnce"]
+        # volumeName is the binding reference to the PersistentVolume backing this claim.
+        # create a PersistentVolume in the overlay and patch in it's name here:
+        volumeName: PATCH_WITH_CUSTOMIZE
+        resources:
+          requests:
+            # the minimum amount that must be available:
+            storage: 5Gi

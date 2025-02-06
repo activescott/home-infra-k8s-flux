@@ -8,9 +8,7 @@ resources:
   - worker-deployment.yaml
 
   - db-deployment.yaml
-  - db-pv.yaml
   - db-service.yaml
 
   - rabbitmq-deployment.yaml
-  - rabbitmq-pv.yaml
   - rabbitmq-service.yaml

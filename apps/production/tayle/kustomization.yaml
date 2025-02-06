@@ -4,11 +4,27 @@ resources:
   - ../../base/tayle/
 
 patches:
-  - path: patch-db-pv-volume.yaml
-  - path: patch-rabbitmq-pv-volume.yaml
   - path: patch-app-ingress.yaml
+  # patch the volume name of the PV's the PVC's used in the StatefulSets
+  - patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/volumeName
+        value: tayle-prod-rabbitmq-pv-data
+    target:
+      kind: StatefulSet
+      name: rabbitmq
+  - patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/volumeName
+        value: tayle-prod-db-pv-data
+    target:
+      kind: StatefulSet
+      name: db
 
 namespace: tayle-prod
+
+# PV's are not in a namespace and since they come from a common base, we have to prefix or suffix their name: https://github.com/kubernetes-sigs/kustomize/issues/4832#issuecomment-1344574518
+nameSuffix: tayle-prod
 
 secretGenerator:
   # db
