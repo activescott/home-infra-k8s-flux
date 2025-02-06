@@ -3,12 +3,14 @@ kind: Service
 metadata:
   name: receiver
 spec:
-  type: LoadBalancer
+  # Exposes the Service on a cluster-internal IP. Choosing this value makes the Service only reachable from within the cluster
+  # We expose it externally via an Ingress so that we can match requested domain/url to map here.
+  type: ClusterIP
   selector:
     app: notification-controller
   ports:
     - name: http
-      port: 80
+      port: 9292
       protocol: TCP
       targetPort: 9292
 ---
@@ -31,8 +33,9 @@ spec:
             backend:
               service:
                 name: webhook-receiver
+                # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
                 port:
-                  number: 80
+                  number: 9292
 ---
 # policy that permits the traffic from only namespaces with a matching cert-manager label into the challenge pod per https://fluxcd.io/flux/guides/webhook-receivers/
 kind: NetworkPolicy
