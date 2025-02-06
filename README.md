@@ -73,7 +73,7 @@ See `/infrastructure/configs/create-sops-age-decryption-secret.sh`
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
-#### Image Pull Secrets
+### Image Pull Secrets
 
 Image Pull Secrets (to [Pull an Image from a Private Registry](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/)) using `.dockerconfigjson` secrets are kinda just like json secrets. Run:
 
@@ -82,6 +82,33 @@ Image Pull Secrets (to [Pull an Image from a Private Registry](https://kubernete
 ```
 
 Per https://fluxcd.io/flux/components/kustomize/kustomizations/#kustomize-secretgenerator
+
+### Image Updates & Image Scanning
+
+Image scanning for one app setup at `apps/production/tayle/image-scanning` per https://fluxcd.io/flux/guides/image-update/
+
+#### Image Updates from Github Web Hooks for Continuous Deployment
+
+A flux webhook receive is set up in `/infrastructure/base/configs/image-scanning-webhook-receiver`. It has configured which ImageRepositories to refresh. More can be added.
+
+Add a webhook to github like:
+
+Get the ReceiverURL by running `kubectl -n flux-system get receiver` it will print it out as its status.
+
+> On GitHub, navigate to your repository and click on the “Add webhook” button under “Settings/Webhooks”. Fill the form with:
+> Payload URL: compose the address using the receiver LB and the generated URL http://<LoadBalancerAddress>/<ReceiverURL>
+> Secret: use the token string
+>
+> With the above settings, when you push a commit to the repository, the following happens:
+>
+> GitHub sends the Git push event to the receiver address
+> Notification controller validates the authenticity of the payload using HMAC
+> Source controller is notified about the changes
+> Source controller pulls the changes into the cluster and updates the GitRepository revision
+> Kustomize controller is notified about the revision change
+> Kustomize controller reconciles all the Kustomizations that reference the GitRepository object
+
+per https://fluxcd.io/flux/guides/webhook-receivers/
 
 ### YAML+Kustomize
 
@@ -99,11 +126,17 @@ I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packagi
 - [x] Bootstrap
 
 ```
+
 flux bootstrap github \
-  --token-auth \
-  --owner=activescott \
-  --repository=home-infra-k8s-flux \
-  --branch=main \
-  --path=clusters/nas1 \
-  --personal
+ --token-auth \
+ --owner=activescott \
+ --repository=home-infra-k8s-flux \
+ --branch=main \
+ --path=clusters/nas1 \
+ --personal
+
+```
+
+```
+
 ```

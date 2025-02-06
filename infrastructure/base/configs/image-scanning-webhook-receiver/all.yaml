@@ -61,7 +61,7 @@ spec:
   type: github
   events:
     - "ping"
-    - "push"
+    - "package"
   secretRef:
     name: webhook-token
   resources:
