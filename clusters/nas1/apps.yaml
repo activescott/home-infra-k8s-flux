@@ -5,6 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m0s
+  # for now we don't have anything in infra-configs that we need:
   #dependsOn:
   #  - name: infra-configs
   sourceRef:

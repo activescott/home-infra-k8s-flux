@@ -11,6 +11,15 @@ NOTE: IN PROGRESS. Still converting my old repo containing kubernetes resources 
 Quick handy CLI Commands
 
 ```sh
+# force reconciliation to source:
+flux reconcile kustomization flux-system --with-source
+
+# Show all Flux objects that are not ready
+flux get all -A --status-selector ready=false
+
+# Show flux warning events
+kubectl get events -n flux-system --field-selector type=Warning
+
 flux get kustomizations --watch
 
 flux resume kustomization apps
