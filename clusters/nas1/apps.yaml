@@ -5,9 +5,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m0s
-  # for now we don't have anything in infra-configs that we need:
-  #dependsOn:
-  #  - name: infra-configs
+  # infra-configs can contain some infra changes we assume in apps:
+  dependsOn:
+    - name: infra-configs
   sourceRef:
     kind: GitRepository
     name: flux-system
