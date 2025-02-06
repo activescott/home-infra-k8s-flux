@@ -5,14 +5,13 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: app-tayle-co
-  namespace: tayle-prod
+  name: flux-webhook-activescott-com
 spec:
   # the secret is put here and matches a value in the ingress
-  secretName: app-tayle-co-tls
+  secretName: flux-webhook-activescott-com-tls
   issuerRef:
     name: letsencrypt-production
     kind: ClusterIssuer
-  commonName: app.tayle.co
+  commonName: flux-webhook.activescott.com
   dnsNames:
-    - app.tayle.co
+    - flux-webhook.activescott.com

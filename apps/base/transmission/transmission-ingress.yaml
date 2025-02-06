@@ -7,19 +7,20 @@ metadata:
   name: transmission-ingress
 spec:
   tls:
-  - hosts:
-      - transmission.activescott.com
-    secretName: transmission-activescott-com-tls
+    - hosts:
+        - transmission.activescott.com
+      # There must a a Certificate resource created that saves to this secret name
+      secretName: transmission-activescott-com-tls
 
   rules:
-  - host: transmission.activescott.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: transmission-service-web-ui
-            # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
-            port:
-              name: web-ui
+    - host: transmission.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: transmission-service-web-ui
+                # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
+                port:
+                  name: web-ui

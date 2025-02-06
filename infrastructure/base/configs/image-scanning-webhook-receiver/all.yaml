@@ -22,6 +22,7 @@ spec:
   tls:
     - hosts:
         - flux-webhook.activescott.com
+      # There must a a Certificate resource created that saves to this secret name
       secretName: flux-webhook-activescott-com-tls
 
   rules:

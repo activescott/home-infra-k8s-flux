@@ -10,17 +10,18 @@ spec:
   #tls:
   #- hosts:
   #    - app.tayle.co
+  # There must a a Certificate resource created that saves to this secret name
   #  secretName: app-tayle-co-tls
 
   rules:
-  - host: app.tayle.co
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: app
-            # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
-            port:
-              name: web-ui
+    - host: app.tayle.co
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
+                port:
+                  name: web-ui

@@ -7,11 +7,11 @@ kind: Certificate
 metadata:
   name: transmission-activescott-com
 spec:
-  # the secret is put here:
+  # the secret is put here and matches a value in the ingress
   secretName: transmission-activescott-com-tls
   issuerRef:
     name: letsencrypt-production
     kind: ClusterIssuer
   commonName: transmission.activescott.com
   dnsNames:
-  - transmission.activescott.com
+    - transmission.activescott.com

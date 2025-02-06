@@ -7,6 +7,7 @@ metadata:
   name: tayle-app-ingress
 spec:
   tls:
-  - hosts:
-      - app.tayle.co
-    secretName: app-tayle-co-tls
+    - hosts:
+        - app.tayle.co
+      # There must a a Certificate resource created that saves to this secret name
+      secretName: app-tayle-co-tls
