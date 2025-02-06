@@ -47,7 +47,8 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      acme.cert-manager.io/http01-solver: "true"
+      app.activescott.com/name: cert-manager
+      #acme.cert-manager.io/http01-solver: "true"
   ingress:
     - from:
         - namespaceSelector:
