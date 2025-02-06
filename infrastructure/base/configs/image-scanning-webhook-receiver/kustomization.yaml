@@ -6,3 +6,5 @@ secretGenerator:
   - name: webhook-token
     envs:
       - .env.secret.webhook-token.encrypted
+
+namespace: flux-system
