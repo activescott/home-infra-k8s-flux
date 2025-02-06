@@ -75,7 +75,7 @@ I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packagi
 ## TODO:
 
 - [ ] Setup transmission with secrets
-- [ ] Setup image updates: https://fluxcd.io/flux/guides/image-update/
+- [x] Setup image updates: https://fluxcd.io/flux/guides/image-update/ ABORT: I tried this and reverted. The ImagePolicy examples were all in the wrong namespace and setting these up is harder than writing a github action script to just change the version as needed
 - [ ] Setup transmission with image updates and
 - [ ] Expose webhook receiver for tayle main: https://fluxcd.io/flux/guides/webhook-receivers/
 
