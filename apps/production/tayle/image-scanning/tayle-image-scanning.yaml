@@ -3,7 +3,6 @@ apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: repo-tayle-app
-  namespace: PATCH_WITH_KUSTOMIZE
 spec:
   image: ghcr.io/activescott/tayle/app
   interval: 5h
@@ -15,7 +14,6 @@ apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageRepository
 metadata:
   name: repo-tayle-worker
-  namespace: PATCH_WITH_KUSTOMIZE
 spec:
   image: ghcr.io/activescott/tayle/app
   interval: 5h
@@ -24,7 +22,6 @@ apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
   name: policy-tayle-app
-  namespace: PATCH_WITH_KUSTOMIZE
 spec:
   imageRepositoryRef:
     name: repo-tayle-app
@@ -36,7 +33,6 @@ apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImagePolicy
 metadata:
   name: policy-tayle-worker
-  namespace: PATCH_WITH_KUSTOMIZE
 spec:
   imageRepositoryRef:
     name: repo-tayle-worker
@@ -48,7 +44,6 @@ apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageUpdateAutomation
 metadata:
   name: update-tayle-app
-  namespace: PATCH_WITH_KUSTOMIZE
 spec:
   interval: 30m
   sourceRef:
