@@ -2,6 +2,8 @@ resources:
   - namespace.yaml
   - ../../base/tayle/
   - app-ingress-certificate.yaml
+  - rabbitmq-pv.yaml
+  - db-pv.yaml
 
 patches:
   - path: patch-app-ingress.yaml
