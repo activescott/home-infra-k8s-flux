@@ -58,6 +58,16 @@ See `/infrastructure/configs/create-sops-age-decryption-secret.sh`
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
+#### Image Pull Secrets
+
+Image Pull Secrets (to [Pull an Image from a Private Registry](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/)) using `.dockerconfigjson` secrets are kinda just like json secrets. Run:
+
+```sh
+./scripts/create-image-pull-secret-ghcr.sh
+```
+
+Per https://fluxcd.io/flux/components/kustomize/kustomizations/#kustomize-secretgenerator
+
 ### YAML+Kustomize
 
 I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packaging up an app into an opaque package and provide it to others, but IMHO not for managing a cluster directly. When consuming apps, I prefer consuming yaml if provided, but don't mind consuming Helm.

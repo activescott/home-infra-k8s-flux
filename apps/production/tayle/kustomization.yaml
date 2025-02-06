@@ -1,0 +1,49 @@
+resources:
+  - namespace.yaml
+  - app-ingress-certificate.yaml
+  - ../../base/tayle/
+
+patches:
+  - path: patch-db-pv-volume.yaml
+  - path: patch-rabbitmq-pv-volume.yaml
+  - path: patch-app-ingress.yaml
+
+namespace: tayle-prod
+
+secretGenerator:
+  # db
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
+  # rabbit
+  - name: rabbitmq-creds
+    envs:
+      - .env.secret.rabbitmq.encrypted
+  # app
+  - name: app-creds
+    envs:
+      - .env.secret.app.encrypted
+  # worker:
+  - name: worker-creds
+    envs:
+      - .env.secret.worker.encrypted
+  # image pull secret:
+  - name: ghcr-auth
+    type: kubernetes.io/dockerconfigjson
+    files:
+      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
+
+# https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+images:
+  - name: tayle-image-app
+    newName: ghcr.io/activescott/tayle/app
+    newTag: main-85548a2 # replace this tag to update app
+  - name: tayle-image-worker
+    newName: ghcr.io/activescott/tayle/worker
+    newTag: main-85548a2 # replace this tag to update worker
+  - name: tayle-image-db
+    newName: postgres
+    newTag: "17"
+  - name: tayle-image-rabbitmq
+    newName: rabbitmq
+    newTag: 3-management

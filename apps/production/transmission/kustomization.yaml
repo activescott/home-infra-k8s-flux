@@ -15,4 +15,4 @@ namespace: transmission
 secretGenerator:
   - name: transmission-creds
     envs:
-      - .env.enc.transmission
+      - .env.secret.transmission.encrypted
