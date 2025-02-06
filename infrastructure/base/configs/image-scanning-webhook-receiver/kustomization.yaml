@@ -1,0 +1,8 @@
+resources:
+  - all.yaml
+
+secretGenerator:
+  # db
+  - name: webhook-token
+    envs:
+      - .env.secret.webhook-token.encrypted

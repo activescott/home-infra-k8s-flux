@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: receiver
+  namespace: flux-system
+spec:
+  type: LoadBalancer
+  selector:
+    app: notification-controller
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 9292
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webhook-receiver
+  namespace: flux-system
+spec:
+  tls:
+    - hosts:
+        - flux-webhook.activescott.com
+      secretName: flux-webhook-activescott-com-tls
+
+  rules:
+    - host: flux-webhook.activescott.com
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: webhook-receiver
+                port:
+                  number: 80
+---
+# policy that permits the traffic from only namespaces with a matching cert-manager label into the challenge pod per https://fluxcd.io/flux/guides/webhook-receivers/
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: allow-cert-manager-resolver
+  namespace: "flux-system"
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/instance: cert-manager
+---
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  name: webhook-receiver-image
+  namespace: flux-system
+spec:
+  type: github
+  events:
+    - "ping"
+    - "push"
+  secretRef:
+    name: webhook-token
+  resources:
+    - kind: ImageRepository
+      name: repo-tayle-app
+    - kind: ImageRepository
+      name: repo-tayle-worker

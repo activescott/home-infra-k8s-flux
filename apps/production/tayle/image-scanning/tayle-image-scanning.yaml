@@ -27,6 +27,7 @@ spec:
   imageRepositoryRef:
     name: repo-tayle-app
   policy:
+    # https://fluxcd.io/flux/components/image/imagepolicies/
     semver:
       range: 1.x
 ---
@@ -37,6 +38,7 @@ metadata:
 spec:
   imageRepositoryRef:
     name: repo-tayle-worker
+  # https://fluxcd.io/flux/components/image/imagepolicies/
   policy:
     semver:
       range: 1.x
