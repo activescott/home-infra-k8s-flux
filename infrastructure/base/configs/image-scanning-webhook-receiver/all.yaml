@@ -45,12 +45,15 @@ metadata:
   name: allow-cert-manager-resolver
   namespace: "flux-system"
 spec:
+  ingress:
+    # This empty rule allows all sources
+    - from:
+        - namespaceSelector: {}
   podSelector:
     matchLabels:
       acme.cert-manager.io/http01-solver: "true"
-    ingress:
-      - from:
-        namespaceSelector: {} # This empty rule allows all sources
+  policyTypes:
+    - Ingress
 ---
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
