@@ -5,10 +5,8 @@ resources:
   - ../../base/tayle/
   - app-ingress-certificate.yaml
   - image-scanning/tayle-image-scanning.yaml
-
 configurations:
   - image-scanning/secret-name-reference.yaml
-
 patches:
   - path: patch-app-ingress.yaml
   # patch the volume name of the PV's the PVC's used in the StatefulSets
@@ -26,13 +24,10 @@ patches:
     target:
       kind: StatefulSet
       name: db
-
 namespace: tayle-prod
-
 # TODO: DO WE REALLY NEED THIS? Kustomize does not appear to. Does flux?
 ## PV's are not in a namespace and since they come from a common base, we have to prefix or suffix their name: https://github.com/kubernetes-sigs/kustomize/issues/4832#issuecomment-1344574518
 ##nameSuffix: -tayle-prod
-
 secretGenerator:
   # db
   - name: db-creds
@@ -55,13 +50,12 @@ secretGenerator:
     type: kubernetes.io/dockerconfigjson
     files:
       - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
-
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 # the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:
   - name: tayle-image-app
     newName: ghcr.io/activescott/tayle/app # {"$imagepolicy": "tayle-prod:policy-tayle-app:name"}
-    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
+    newTag: 1.0.1 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
   - name: tayle-image-worker
     newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
     newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
