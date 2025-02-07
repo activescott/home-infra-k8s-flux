@@ -60,7 +60,7 @@ It can be copied into the correct app folder and referenced in a Kustomize secre
 
 kind: Kustomization
 secretGenerator:
-  - name: ghcr-auth
+  - name: github-container-registry-secret
     type: kubernetes.io/dockerconfigjson
     files:
       - .dockerconfigjson=$(basename "$config_file_encrypted")

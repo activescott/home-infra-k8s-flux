@@ -46,7 +46,7 @@ secretGenerator:
     envs:
       - .env.secret.worker.encrypted
   # image pull secret:
-  - name: ghcr-auth
+  - name: github-container-registry-secret
     type: kubernetes.io/dockerconfigjson
     files:
       - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
