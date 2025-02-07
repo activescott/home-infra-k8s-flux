@@ -55,7 +55,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               # verified this one in the cluster:
-              kubernetes.io/metadata.name: "cert-manager"
+              app.activescott.com/name: cert-manager
               # this app.kubernetes.io/instance label doesn't exist in the namespace on the cluster.
               #app.kubernetes.io/instance: cert-manager
 ---
