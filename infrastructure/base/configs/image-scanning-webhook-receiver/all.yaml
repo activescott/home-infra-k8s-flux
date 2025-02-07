@@ -38,7 +38,7 @@ spec:
                 port:
                   number: 80
 ---
-# policy that permits the traffic from only namespaces with a matching cert-manager label into the challenge pod per https://fluxcd.io/flux/guides/webhook-receivers/
+# policy that permits the traffic from into the challenge pod per https://fluxcd.io/flux/guides/webhook-receivers/
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
