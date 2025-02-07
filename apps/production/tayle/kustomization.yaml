@@ -56,14 +56,15 @@ secretGenerator:
     files:
       - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
 
-# https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+# the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+# the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:
   - name: tayle-image-app
-    newName: ghcr.io/activescott/tayle/app # {"$imagepolicy": "tayle-prod:app:name"}
-    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:app:tag"}
+    newName: ghcr.io/activescott/tayle/app # {"$imagepolicy": "tayle-prod:policy-tayle-app:name"}
+    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
   - name: tayle-image-worker
-    newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:worker:name"}
-    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:worker:tag"}
+    newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
+    newTag: main-85548a2 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
   - name: tayle-image-db
     newName: postgres
     newTag: "17"

@@ -31,6 +31,9 @@ flux get image repository -n tayle-prod repo-tayle-app
 
 # list images flux is tracking:
 flux get images all --all-namespaces
+
+# list the image policies:
+flux get images -A policy
 ```
 
 ### Cluster Layout
