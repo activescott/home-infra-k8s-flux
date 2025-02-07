@@ -69,5 +69,7 @@ spec:
   resources:
     - kind: ImageRepository
       name: repo-tayle-app
+      namespace: tayle-prod
     - kind: ImageRepository
       name: repo-tayle-worker
+      namespace: tayle-prod
