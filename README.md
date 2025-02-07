@@ -124,19 +124,14 @@ I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packagi
 ## Posterity / Done
 
 - [x] Bootstrap
+      See script for this in scripts dir. it was updated.
 
 ```
-
 flux bootstrap github \
- --token-auth \
- --owner=activescott \
- --repository=home-infra-k8s-flux \
- --branch=main \
- --path=clusters/nas1 \
- --personal
-
-```
-
-```
-
+--token-auth \
+--owner=activescott \
+--repository=home-infra-k8s-flux \
+--branch=main \
+--path=clusters/nas1 \
+--personal
 ```
