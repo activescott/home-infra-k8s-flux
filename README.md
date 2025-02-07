@@ -17,6 +17,10 @@ flux reconcile kustomization flux-system --with-source
 # Show all Flux objects that are not ready !
 flux get all -A --status-selector ready=false
 
+# watch flux events:
+flux events -w
+
+
 # Show flux warning events
 kubectl get events -n flux-system --field-selector type=Warning
 
@@ -34,6 +38,13 @@ flux get images all --all-namespaces
 
 # list the image policies:
 flux get images -A policy
+
+
+# list all image repositories:
+kubectl get -A imagerepository
+
+# list the tags found in an image repository:
+kubectl get -n tayle-prod -o=yaml imagerepository/repo-tayle-worker
 ```
 
 ### Cluster Layout

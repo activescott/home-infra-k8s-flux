@@ -15,7 +15,7 @@ kind: ImageRepository
 metadata:
   name: repo-tayle-worker
 spec:
-  image: ghcr.io/activescott/tayle/app
+  image: ghcr.io/activescott/tayle/worker
   interval: 5h
   secretRef:
     name: ghcr-auth
