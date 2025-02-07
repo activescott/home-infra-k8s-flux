@@ -47,17 +47,12 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      # i confirmed both of these labels are present on the solver.
-      #app.activescott.com/name: cert-manager
       acme.cert-manager.io/http01-solver: "true"
   ingress:
     - from:
         - namespaceSelector:
             matchLabels:
-              # verified this one in the cluster:
               app.activescott.com/name: cert-manager
-              # this app.kubernetes.io/instance label doesn't exist in the namespace on the cluster.
-              #app.kubernetes.io/instance: cert-manager
 ---
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
