@@ -11,12 +11,13 @@ spec:
     metadata:
       labels:
         app: worker
+        app.activescott.com/component: worker
     spec:
       imagePullSecrets:
-      - name: github-container-registry-secret    
+        - name: github-container-registry-secret
       containers:
         - name: worker
-          
+
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: tayle-image-worker
           # TODO: add resource limits
@@ -27,13 +28,13 @@ spec:
                 secretKeyRef:
                   name: worker-creds
                   key: API_BASE_URL
-            
+
             - name: TRUSTED_SERVICE_AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: worker-creds
                   key: TRUSTED_SERVICE_AUTH_TOKEN
-            
+
             - name: RABBITMQ_URL
               valueFrom:
                 secretKeyRef:
@@ -54,5 +55,3 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
-
-

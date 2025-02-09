@@ -2,7 +2,7 @@
 
 Used to monitor the state of installed objects within Kubernetes, rather than the Kubernetes cluster itself (like metrics-server).
 
-The available metrics documented at: https://github.com/kubernetes/kube-state-metrics/tree/main/docs
+The **available metrics** are documented at: https://github.com/kubernetes/kube-state-metrics/tree/main/docs
 
 ## Installation / Deployment
 

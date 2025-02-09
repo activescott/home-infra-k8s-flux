@@ -4,6 +4,12 @@ This is my Kubernetes [Flux](https://fluxcd.io/) repository. It contains everyth
 
 NOTE: IN PROGRESS. Still converting my old repo containing kubernetes resources – https://github.com/activescott/home-infra – to this one. It's great that this can be gradual and isn't an all-in moment on Flux. So far so good though!
 
+## Apps:
+
+- Monitoring: See [apps/base/monitoring/kube-state-metrics/README.md](apps/base/monitoring/kube-state-metrics/README.md) (there is more monitoring in https://github.com/activescott/home-infra that isn't yet moved over)
+
+- Transmission: Runs a transmission torrent seeder
+
 ## Usage
 
 ### Handy CLI Commands working with Flux
