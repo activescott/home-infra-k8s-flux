@@ -1,14 +1,12 @@
 # home-infra-k8s-flux
 
-This is my kubernetes flux repository. It contains everything installed in my kubernetes cluster and keeps the cluster up to date with this repo.
+This is my Kubernetes [Flux](https://fluxcd.io/) repository. It contains everything installed in my kubernetes cluster and keeps the cluster up to date with this repo.
 
-NOTE: IN PROGRESS. Still converting my old repo containing kubernetes resources – https://github.com/activescott/home-infra – to this one.
+NOTE: IN PROGRESS. Still converting my old repo containing kubernetes resources – https://github.com/activescott/home-infra – to this one. It's great that this can be gradual and isn't an all-in moment on Flux. So far so good though!
 
 ## Usage
 
-###
-
-Quick handy CLI Commands
+### Handy CLI Commands working with Flux
 
 ```sh
 # force reconciliation to source:

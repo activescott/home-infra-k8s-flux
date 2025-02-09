@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - ./transmission
   - ./tayle
+  - ./monitoring/kube-state-metrics
