@@ -28,6 +28,11 @@ flux resume kustomization apps
 
 flux reconcile kustomization apps
 
+# I find it helpful to get logs directly from the kusotmization controller:
+kubectl -n flux-system logs -f deployment/kustomize-controller
+
+
+# Automated Image Updates:
 # check the image repository (per https://fluxcd.io/flux/guides/image-update/)
 flux get image repository -n tayle-prod repo-tayle-app
 
@@ -36,7 +41,6 @@ flux get images all --all-namespaces
 
 # list the image policies:
 flux get images -A policy
-
 
 # list all image repositories:
 kubectl get -A imagerepository
