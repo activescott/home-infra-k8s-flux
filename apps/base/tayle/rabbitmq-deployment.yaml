@@ -20,6 +20,15 @@ spec:
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: tayle-image-rabbitmq
 
+          # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: "1"
+              memory: "500Mi"
+            requests:
+              cpu: 500m
+              memory: "100Mi"
+
           # https://www.rabbitmq.com/blog/2020/08/10/deploying-rabbitmq-to-kubernetes-whats-involved#readiness-probe
           readinessProbe: # probe to know when RMQ is ready to accept traffic
             exec:

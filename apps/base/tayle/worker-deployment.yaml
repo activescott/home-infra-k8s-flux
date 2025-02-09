@@ -22,6 +22,15 @@ spec:
           image: tayle-image-worker
           # TODO: add resource limits
 
+          # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: "4"
+              memory: "500Mi"
+            requests:
+              cpu: "1"
+              memory: "100Mi"
+
           env:
             - name: API_BASE_URL
               valueFrom:

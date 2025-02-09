@@ -20,6 +20,15 @@ spec:
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: tayle-image-app
 
+          # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: "4"
+              memory: "500Mi"
+            requests:
+              cpu: "1"
+              memory: "100Mi"
+
           ports:
             - containerPort: 3100
           # TODO: add resource limits

@@ -19,6 +19,15 @@ spec:
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: tayle-image-db
 
+          # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: "1"
+              memory: "200Mi"
+            requests:
+              cpu: 500m
+              memory: "30Mi"
+
           ports:
             - containerPort: 5432
 
