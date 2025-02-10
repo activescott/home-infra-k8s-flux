@@ -6,7 +6,6 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: hass-activescott-com
-  namespace: home-assistant
 spec:
   # the secret is put here:
   secretName: hass-activescott-com-tls
@@ -15,4 +14,4 @@ spec:
     kind: ClusterIssuer
   commonName: hass.activescott.com
   dnsNames:
-  - hass.activescott.com
+    - hass.activescott.com

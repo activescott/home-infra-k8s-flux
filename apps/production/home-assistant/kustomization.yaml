@@ -4,7 +4,15 @@ resources:
 
 #buildMetadata: [originAnnotations, transformerAnnotations]
 
-commonLabels:
-  # NOTE: metrics-server seems to label all of their resources with `k8s-app: metrics-server`
-  # use `app.activescott.com/name` to avoid conflicts with other people's resources using "app" label.
-  app.activescott.com/name: home-assistant
+namespace: home-assistant
+
+labels:
+  - pairs:
+      # NOTE: metrics-server seems to label all of their resources with `k8s-app: metrics-server`
+      # use `app.activescott.com/name` to avoid conflicts with other people's resources using "app" label.
+      app.activescott.com/name: home-assistant
+
+secretGenerator:
+  - name: hass-creds
+    envs:
+      - .env.secret.hass.encrypted

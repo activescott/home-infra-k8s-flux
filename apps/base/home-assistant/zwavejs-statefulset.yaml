@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: zwavejs
-  namespace: home-assistant
   labels:
     app: home-assistant
     role: zwavejs
@@ -23,23 +22,27 @@ spec:
         # docs at https://zwave-js.github.io/zwave-js-ui/#/
         # repo at https://github.com/zwave-js/zwave-js-ui
         - name: zwavejs
-        # container at https://hub.docker.com/r/zwavejs/zwave-js-ui/tags
+          # container at https://hub.docker.com/r/zwavejs/zwave-js-ui/tags
           image: zwavejs/zwave-js-ui:9.18.1
 
           securityContext:
             # needed for /dev/zwave device access
             privileged: true
-          
+
           resources:
             limits:
               memory: "256Mi"
             requests:
               memory: "112Mi"
-          
+
           env:
             # env docs https://zwave-js.github.io/zwave-js-ui/#/guide/env-vars?id=environment-variables
             - name: SESSION_SECRET
-              value: "ASWsessionSECRET"
+              valueFrom:
+                secretKeyRef:
+                  name: hass-creds
+                  key: ZWAVE_JS_SESSION_SECRET
+
             # log times and dates to match your timezone instead of UTC
             - name: TZ
               value: "US/Pacific"
