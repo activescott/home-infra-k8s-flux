@@ -49,7 +49,7 @@ kind: ImageUpdateAutomation
 metadata:
   name: update-tayle-app
 spec:
-  interval: 30m
+  interval: 4h
   sourceRef:
     kind: GitRepository
     name: flux-system
