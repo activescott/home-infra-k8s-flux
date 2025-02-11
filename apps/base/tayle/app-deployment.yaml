@@ -93,6 +93,12 @@ spec:
                   name: app-creds
                   key: EMAIL_FROM
 
+            - name: GH_RELEASE_NOTES_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: GH_RELEASE_NOTES_TOKEN
+
           readinessProbe:
             httpGet:
               path: /
