@@ -55,7 +55,7 @@ secretGenerator:
 images:
   - name: tayle-image-app
     newName: ghcr.io/activescott/tayle/app # {"$imagepolicy": "tayle-prod:policy-tayle-app:name"}
-    newTag: 1.10.0 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
+    newTag: 1.11.0 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
   - name: tayle-image-worker
     newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
     newTag: 1.11.0 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
