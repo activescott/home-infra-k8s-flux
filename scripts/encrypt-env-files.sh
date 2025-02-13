@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-this_dir=$(cd $(dirname "$0"); pwd) # this script's directory
-parent_dir=$(cd "$this_dir/.."; pwd) # parent directory
-repo_dir=$(cd "$parent_dir"; pwd) # repository directory
+this_dir=$(cd $(dirname "$0"); pwd)
+parent_dir=$(cd "$this_dir/.."; pwd)
+repo_dir=$(cd "$parent_dir"; pwd)
 
 set -euo pipefail
 
