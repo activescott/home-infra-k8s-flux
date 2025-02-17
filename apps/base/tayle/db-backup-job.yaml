@@ -9,6 +9,7 @@ spec:
     spec:
       template:
         spec:
+          restartPol icy: OnFailure
           containers:
             - name: backup
               image: tayle-image-db
@@ -74,6 +75,6 @@ spec:
   # create a PersistentVolume in the overlay and patch in it's name here:
   volumeName: PATCH_WITH_CUSTOMIZE
   resources:
-  requests:
-    # the minimum amount that must be available:
-    storage: 5Gi
+    requests:
+      # the minimum amount that must be available:
+      storage: 5Gi
