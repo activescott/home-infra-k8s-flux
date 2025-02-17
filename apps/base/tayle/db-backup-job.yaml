@@ -19,6 +19,10 @@ spec:
                 - |
                   echo "Starting database backup..."
                   pg_dump -v -h db -U $POSTGRES_USER -d $POSTGRES_DB -Fc > /backup/db-$(date +%Y%m%d-%H%M%S).dump
+                  if [ $? -ne 0 ]; then
+                    echo "Backup failed"
+                    exit 1
+                  fi
                   echo "Backup completed. Starting cleanup process..."
 
                   cd /backup
