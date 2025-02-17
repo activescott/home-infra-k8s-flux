@@ -20,7 +20,6 @@ spec:
 
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: tayle-image-worker
-          # TODO: add resource limits
 
           # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
           resources:

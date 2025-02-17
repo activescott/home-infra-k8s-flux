@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-backup
+spec:
+  schedule: "0 0 * * *" # Run at midnight every day
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: tayle-image-db
+              restartPolicy: OnFailure
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "Starting database backup..."
+                  pg_dump -v -h db -U $POSTGRES_USER -d $POSTGRES_DB -Fc > /backup/db-$(date +%Y%m%d-%H%M%S).dump
+                  echo "Backup completed. Starting cleanup process..."
+
+                  cd /backup
+                  echo "Current backup files:"
+                  ls -lh *.dump
+
+                  total_backups=$(ls -1 *.dump 2>/dev/null | wc -l)
+                  echo "Total backup file count: $total_backups"
+
+                  if [ "$total_backups" -gt 10 ]; then
+                    echo "Finding backup files older than 30 days (excluding 10 most recent)..."
+                    find . -name "*.dump" -type f -mtime +30 -ls | sort -r | tail -n +11 | while read -r line; do
+                      echo "Deleting: $line"
+                      rm -v "$(echo "$line" | awk '{print $NF}')"
+                    done
+                  else
+                    echo "Skip cleanup: Only $total_backups backup files exist (keeping minimum of 10)"
+                  fi
+                  echo "Cleanup process completed"
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-creds
+                      key: POSTGRES_USER
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-creds
+                      key: POSTGRES_PASSWORD
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-creds
+                      key: POSTGRES_DB
+
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: db-backup-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-backup-pvc
+spec:
+  storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
+  accessModes: ["ReadWriteOnce"]
+  # volumeName is the binding reference to the PersistentVolume backing this claim.
+  # create a PersistentVolume in the overlay and patch in it's name here:
+  volumeName: PATCH_WITH_CUSTOMIZE
+  resources:
+  requests:
+    # the minimum amount that must be available:
+    storage: 5Gi

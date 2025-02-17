@@ -10,5 +10,7 @@ resources:
   - db-deployment.yaml
   - db-service.yaml
 
+  - db-backup-job.yaml
+
   - rabbitmq-deployment.yaml
   - rabbitmq-service.yaml

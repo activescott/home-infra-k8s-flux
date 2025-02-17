@@ -54,7 +54,6 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
-          # TODO: add resource limits
 
   # set the .spec.volumeClaimTemplates field to create a PersistentVolumeClaim
   #   https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#volume-claim-templates
@@ -67,6 +66,7 @@ spec:
         accessModes: ["ReadWriteOnce"]
         # volumeName is the binding reference to the PersistentVolume backing this claim.
         # create a PersistentVolume in the overlay and patch in it's name here:
+        # NOTE: It is useful to patch this because PVs are non-namespaced resources, so we may want to have different ones for each overlay
         volumeName: PATCH_WITH_CUSTOMIZE
         resources:
           requests:
