@@ -34,7 +34,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/volumeName
-        value: tayle-prod-db-pv-data
+        value: tayle-prod-db-backup-pv-data
 
 namespace: tayle-prod
 
