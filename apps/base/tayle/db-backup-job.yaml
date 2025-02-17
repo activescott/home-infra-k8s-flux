@@ -55,6 +55,15 @@ spec:
                       name: db-creds
                       key: POSTGRES_DB
 
+              # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: "1Gi"
+                requests:
+                  cpu: 500m
+                  memory: "200Mi"
+
               volumeMounts:
                 - name: backup-storage
                   mountPath: /backup
