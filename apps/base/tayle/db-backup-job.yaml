@@ -9,7 +9,7 @@ spec:
     spec:
       template:
         spec:
-          restartPol icy: OnFailure
+          restartPolicy: OnFailure
           containers:
             - name: backup
               image: tayle-image-db
