@@ -12,7 +12,6 @@ spec:
           containers:
             - name: backup
               image: tayle-image-db
-              restartPolicy: OnFailure
               command:
                 - /bin/sh
                 - -c
