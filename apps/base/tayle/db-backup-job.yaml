@@ -18,7 +18,14 @@ spec:
                 - -c
                 - |
                   echo "Starting database backup..."
-                  export PGPASSWORD=$POSTGRES_PASSWORD && pg_dump -v -h db -U $POSTGRES_USER -d $POSTGRES_DB -Fc > /backup/db-$(date +%Y%m%d-%H%M%S).dump
+                  # https://www.postgresql.org/docs/current/app-pgdump.html
+                  export PGPASSWORD=$POSTGRES_PASSWORD && pg_dump \
+                    --verbose \
+                    --host db \
+                    --username=$POSTGRES_USER \
+                    --dbname=$POSTGRES_DB \
+                    --format=plain \
+                    --file=/backup/db-$(date +%Y%m%d-%H%M%S).dump
 
                   if [ $? -ne 0 ]; then
                     echo "Backup failed"
