@@ -6,10 +6,8 @@ resources:
   - ../../base/tayle/
   - app-ingress-certificate.yaml
   - image-scanning/tayle-image-scanning.yaml
-
 configurations:
   - image-scanning/secret-name-reference.yaml
-
 patches:
   - path: patch-app-ingress.yaml
   # patch the volume name in the PVC's used in the StatefulSets:
@@ -35,9 +33,7 @@ patches:
       - op: replace
         path: /spec/volumeName
         value: tayle-prod-db-backup-pv
-
 namespace: tayle-prod
-
 secretGenerator:
   # db
   - name: db-creds
@@ -60,7 +56,6 @@ secretGenerator:
     type: kubernetes.io/dockerconfigjson
     files:
       - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
-
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 # the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:
@@ -69,7 +64,7 @@ images:
     newTag: 1.11.2 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
   - name: tayle-image-worker
     newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
-    newTag: 1.11.2 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
+    newTag: 1.12.0 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
   - name: tayle-image-db
     newName: postgres
     newTag: "17"
