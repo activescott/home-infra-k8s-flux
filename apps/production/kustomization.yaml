@@ -5,3 +5,4 @@ resources:
   - ./tayle
   - ./monitoring/kube-state-metrics
   - ./home-assistant
+  - ./photoprism
