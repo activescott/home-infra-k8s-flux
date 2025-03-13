@@ -30,7 +30,15 @@ kubectl get events -n flux-system --field-selector type=Warning
 
 flux get kustomizations --watch
 
+###############
+#
+# To fix something manually while flux won't constantly replace them do this:
+flux suspend kustomization apps
+# then make changes
+# then resume:
 flux resume kustomization apps
+#
+###############
 
 flux reconcile kustomization apps
 
