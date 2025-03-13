@@ -6,3 +6,4 @@ resources:
   - ./monitoring/kube-state-metrics
   - ./home-assistant
   - ./photoprism
+  - ./monitoring/prometheus

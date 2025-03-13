@@ -12,5 +12,6 @@ patches:
 
 namePrefix: scott-
 
-commonLabels:
-  app.activescott.com/tenant: scott
+labels:
+  - pairs:
+      app.activescott.com/tenant: scott

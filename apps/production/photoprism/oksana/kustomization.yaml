@@ -9,5 +9,6 @@ patches:
 
 namePrefix: oksana-
 
-commonLabels:
-  app.activescott.com/tenant: oksana
+labels:
+  - pairs:
+      app.activescott.com/tenant: oksana

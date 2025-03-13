@@ -83,11 +83,16 @@ Using [sops](https://github.com/getsops/sops) + [age](https://github.com/FiloSot
 
 #### Encrypting
 
-```sh
-SOPS_AGE_KEY_FILE=/Users/scott/src/activescott/home-infra/k8s/home-infra-private.agekey sops encrypt --age age1nur86m07v4f94xpc8ugg0cmum9fpyp3hcha2cya6x09uphu4zg5szrtzgt --input-type dotenv --output-type dotenv .env.secret.transmission > .env.enc.transmission
+TLDR: put .env files in a dirctory and then run `/scripts/encrypt-env-files.sh <dir>` on the dir containing the .env file and it will save `.env*.encrypted` files that you can reference in kustomization files like:
+
+```yaml
+secretGenerator:
+  # db
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
 ```
 
-Use a file like `.env.enc.<app-name>`
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
 #### Decrypting
