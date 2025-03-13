@@ -3,7 +3,7 @@ resources:
   - ./kube-state-metrics
   - ./prometheus
   - ./prometheus-alertmanager
-  #- ./prometheus-blackbox-exporter
+  - ./prometheus-blackbox-exporter
   #- ./grafana
 
 namespace: monitoring

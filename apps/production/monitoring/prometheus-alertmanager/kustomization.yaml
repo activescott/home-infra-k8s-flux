@@ -13,6 +13,7 @@ secretGenerator:
     envs:
       - .env.secret.alertmanager.encrypted
 
-commonLabels:
-  # use `app.activescott.com/name` to avoid conflicts with other people's resources using "app" label.
-  app.activescott.com/name: alertmanager
+labels:
+  - pairs:
+      # use `app.activescott.com/name` to avoid conflicts with other people's resources using "app" label.
+      app.activescott.com/name: alertmanager
