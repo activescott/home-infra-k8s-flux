@@ -2,7 +2,7 @@ resources:
   - ./namespace.yaml
   - ./kube-state-metrics
   - ./prometheus
-  #- ./prometheus-alertmanager
+  - ./prometheus-alertmanager
   #- ./prometheus-blackbox-exporter
   #- ./grafana
 
