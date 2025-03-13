@@ -21,6 +21,7 @@ configMapGenerator:
       - config/scrape-configs.coinpoet.yaml
       - config/scrape-configs.prometheus.yaml
       - config/alerting-rules.coinpoet.yaml
+      - config/alerting-rules.tayle.yaml
 
 labels:
   - pairs:
