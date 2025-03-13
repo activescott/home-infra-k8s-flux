@@ -9,7 +9,7 @@ scrape_configs:
     # password and password_file are mutually exclusive.
     basic_auth:
       # these files are packed into the container via a secret volume in the statefulset
-      username_file: /etc/prometheus/prom_scrape_username
-      password_file: /etc/prometheus/prom_scrape_password
+      username_file: /etc/prometheus/secrets/prom_scrape_username
+      password_file: /etc/prometheus/secrets/prom_scrape_password
     static_configs:
       - targets: ["localhost:9090"]

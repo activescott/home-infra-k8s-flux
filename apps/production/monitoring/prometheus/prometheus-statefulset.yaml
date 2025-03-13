@@ -51,7 +51,7 @@ spec:
               mountPath: /etc/prometheus
 
             - name: prometheus-secret-volume
-              mountPath: /etc/prometheus
+              mountPath: /etc/prometheus/secrets
 
             - name: prometheus-storage-volume
               mountPath: /prometheus
