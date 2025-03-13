@@ -4,7 +4,7 @@ resources:
   - ./prometheus
   - ./prometheus-alertmanager
   - ./prometheus-blackbox-exporter
-  #- ./grafana
+  - ./grafana
 
 namespace: monitoring
 
