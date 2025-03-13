@@ -5,6 +5,12 @@ resources:
   - ./certificate.yaml
   - ./prometheus-ingress.yaml
 
+secretGenerator:
+  - name: prometheus-secrets
+    envs:
+      # secrets for the prometheus scrape config:
+      - .env.secret.prometheus-self-scrape.encrypted
+
 # kustomize help on configMapGenerator: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_configmapgenerator_
 configMapGenerator:
   - name: prometheus-config
@@ -13,11 +19,8 @@ configMapGenerator:
       - config/web.yaml
       # scrape configs:
       - config/scrape-configs.coinpoet.yaml
-      #- config/scrape-configs.prometheus.yaml
+      - config/scrape-configs.prometheus.yaml
       - config/alerting-rules.coinpoet.yaml
-      # secrets for the prometheus scrape config:
-      - config/prom-scrape-username.secret
-      - config/prom-scrape-password.secret
 
 labels:
   - pairs:
