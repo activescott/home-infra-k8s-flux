@@ -14,3 +14,4 @@ resources:
 
   - rabbitmq-deployment.yaml
   - rabbitmq-service.yaml
+  - app-hpa.yaml
