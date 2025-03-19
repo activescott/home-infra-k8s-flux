@@ -1,9 +1,6 @@
 resources:
-  - ./namespace.yaml
   - ./scott
   - ./oksana
-
-namespace: photoprism
 
 # NOTE: adding `managedByLabel` here causes a label like `app.kubernetes.io/managed-by: kustomize-(devel)` to be added and `kustomize-(devel)` gets rejected by k8s server side.
 buildMetadata: [originAnnotations, transformerAnnotations]
