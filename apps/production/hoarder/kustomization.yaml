@@ -9,9 +9,9 @@ secretGenerator:
     name: hoarder-secrets
 
 configMapGenerator:
-  - envs:
-      - .env.secret.hoarder-config.encrypted
-    name: hoarder-configuration
+  - name: hoarder-configuration
+    literals:
+      - NEXTAUTH_URL=https://hoard.activescott.com
 
 resources:
   - base/namespace.yaml
@@ -23,8 +23,8 @@ resources:
   - base/meilisearch-service.yaml
   - base/meilisearch-pvc.yaml
   - base/data-pvc.yaml
-  - app-ingress.yaml
-  - app-ingress-certificate.yaml
+  - web-ingress.yaml
+  - web-ingress-certificate.yaml
   - data-pv.yaml
   - meilisearch-pv.yaml
 
@@ -64,20 +64,7 @@ patches:
       spec:
         type: ClusterIP
 
-replacements:
-  - source:
-      fieldPath: data.HOARDER_VERSION
-      kind: ConfigMap
-      name: hoarder-configuration
-      version: v1
-    targets:
-      - fieldPaths:
-          - spec.template.spec.containers.0.image
-        options:
-          delimiter: ":"
-          index: 1
-        select:
-          group: apps
-          kind: Deployment
-          name: web
-          version: v1
+images:
+  - name: ghcr.io/hoarder-app/hoarder
+    newName: ghcr.io/hoarder-app/hoarder
+    newTag: 0.23.0
