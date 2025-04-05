@@ -23,7 +23,7 @@ resources:
   - base/meilisearch-service.yaml
   - base/meilisearch-pvc.yaml
   - base/data-pvc.yaml
-  - ingress.yaml
+  - app-ingress.yaml
   - data-pv.yaml
   - meilisearch-pv.yaml
 
