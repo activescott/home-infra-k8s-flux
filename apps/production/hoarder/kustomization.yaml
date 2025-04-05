@@ -12,6 +12,7 @@ configMapGenerator:
   - name: hoarder-configuration
     literals:
       - NEXTAUTH_URL=https://hoard.activescott.com
+      - DISABLE_SIGNUPS=true
 
 resources:
   - base/namespace.yaml
