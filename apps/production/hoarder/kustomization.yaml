@@ -1,0 +1,69 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hoarder
+
+secretGenerator:
+  - envs:
+      - .env.secret.hoarder-secrets.encrypted
+    name: hoarder-secrets
+
+configMapGenerator:
+  - envs:
+      - .env.secret.hoarder-config.encrypted
+    name: hoarder-configuration
+
+resources:
+  - base/namespace.yaml
+  - base/web-deployment.yaml
+  - base/web-service.yaml
+  - base/chrome-deployment.yaml
+  - base/chrome-service.yaml
+  - base/meilisearch-deployment.yaml
+  - base/meilisearch-service.yaml
+  - base/meilisearch-pvc.yaml
+  - base/data-pvc.yaml
+  - data-pv.yaml
+  - meilisearch-pv.yaml
+
+patches:
+  - target:
+      kind: PersistentVolumeClaim
+      name: data-pvc
+    patch: |-
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data-pvc
+      spec:
+        volumeName: hoarder-data-pv
+        storageClassName: ""
+  - target:
+      kind: PersistentVolumeClaim
+      name: meilisearch-pvc
+    patch: |-
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: meilisearch-pvc
+      spec:
+        volumeName: hoarder-meilisearch-pv
+        storageClassName: ""
+
+replacements:
+  - source:
+      fieldPath: data.HOARDER_VERSION
+      kind: ConfigMap
+      name: hoarder-configuration
+      version: v1
+    targets:
+      - fieldPaths:
+          - spec.template.spec.containers.0.image
+        options:
+          delimiter: ":"
+          index: 1
+        select:
+          group: apps
+          kind: Deployment
+          name: web
+          version: v1
