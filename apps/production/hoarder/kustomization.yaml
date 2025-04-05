@@ -23,6 +23,7 @@ resources:
   - base/meilisearch-service.yaml
   - base/meilisearch-pvc.yaml
   - base/data-pvc.yaml
+  - ingress.yaml
   - data-pv.yaml
   - meilisearch-pv.yaml
 
@@ -49,6 +50,18 @@ patches:
       spec:
         volumeName: hoarder-meilisearch-pv
         storageClassName: ""
+
+  # change the web service from LoadBalancer -> ClusterIP:
+  - target:
+      kind: Service
+      name: web
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: web
+      spec:
+        type: ClusterIP
 
 replacements:
   - source:

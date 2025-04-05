@@ -24,7 +24,6 @@ flux get all -A --status-selector ready=false
 # watch flux events:
 flux events -w
 
-
 # Show flux warning events
 kubectl get events -n flux-system --field-selector type=Warning
 
