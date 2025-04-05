@@ -24,6 +24,7 @@ resources:
   - base/meilisearch-pvc.yaml
   - base/data-pvc.yaml
   - app-ingress.yaml
+  - app-ingress-certificate.yaml
   - data-pv.yaml
   - meilisearch-pv.yaml
 
