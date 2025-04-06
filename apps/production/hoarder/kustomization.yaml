@@ -65,6 +65,75 @@ patches:
       spec:
         type: ClusterIP
 
+  # Add resource limits to chrome deployment:
+  - target:
+      kind: Deployment
+      name: chrome
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: chrome
+      spec:
+        template:
+          spec:
+            containers:
+            - name: chrome
+              # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+              resources:
+                limits:
+                  cpu: "5"
+                  memory: "0.5Gi"
+                requests:
+                  cpu: "0.5"
+                  memory: "0.3Gi"
+
+  # Add resource limits to meilisearch deployment:
+  - target:
+      kind: Deployment
+      name: meilisearch
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: meilisearch
+      spec:
+        template:
+          spec:
+            containers:
+            - name: meilisearch
+              # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+              resources:
+                limits:
+                  cpu: "25"
+                  memory: "1Gi"
+                requests:
+                  cpu: "0.5"
+                  memory: "0.3Gi"
+
+  # Add resource limits to web deployment:
+  - target:
+      kind: Deployment
+      name: web
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        template:
+          spec:
+            containers:
+            - name: web
+              # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+              resources:
+                limits:
+                  cpu: "25"
+                  memory: "2Gi"
+                requests:
+                  cpu: "0.5"
+                  memory: "0.3Gi"
+
 images:
   - name: ghcr.io/hoarder-app/hoarder
     newName: ghcr.io/hoarder-app/hoarder
