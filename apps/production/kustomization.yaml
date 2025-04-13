@@ -7,3 +7,4 @@ resources:
   - ./photoprism
   - ./monitoring
   - ./hoarder
+  - ./plex
