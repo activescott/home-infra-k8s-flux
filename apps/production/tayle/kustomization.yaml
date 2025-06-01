@@ -63,7 +63,7 @@ images:
     newName: ghcr.io/tayle-co/tayle/app # {"$imagepolicy": "tayle-prod:policy-tayle-app:name"}
     newTag: 1.29.0 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
   - name: tayle-image-worker
-    newName: ghcr.io/tayle-co/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
+    newName: ghcr.io/activescott/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
     newTag: 1.29.0 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
   - name: tayle-image-db
     newName: postgres
