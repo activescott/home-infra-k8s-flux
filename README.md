@@ -126,7 +126,7 @@ Image scanning for one app setup at `apps/production/tayle/image-scanning` per h
 
 #### Image Updates from Github Web Hooks for Continuous Deployment
 
-A flux webhook receive is set up in `/infrastructure/base/configs/image-scanning-webhook-receiver`. It has configured which ImageRepositories to refresh. More can be added.
+A flux webhook receiver is set up in `/infrastructure/base/configs/image-scanning-webhook-receiver`. It has configured which ImageRepositories to refresh. More can be added.
 
 Add a webhook to github like:
 

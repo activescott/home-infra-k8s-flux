@@ -5,7 +5,7 @@ kind: ImageRepository
 metadata:
   name: repo-tayle-app
 spec:
-  image: ghcr.io/activescott/tayle/app
+  image: ghcr.io/tayle-co/tayle/app
   interval: 5h
   secretRef:
     name: github-container-registry-secret
@@ -15,7 +15,7 @@ kind: ImageRepository
 metadata:
   name: repo-tayle-worker
 spec:
-  image: ghcr.io/activescott/tayle/worker
+  image: ghcr.io/tayle-co/tayle/worker
   interval: 5h
   secretRef:
     name: github-container-registry-secret
