@@ -44,9 +44,11 @@ http:
   use_x_forwarded_for: true
   trusted_proxies:
     # NOTE: these are kubernetes cluster networks
-    - 172.16.1.0/24
-    - 172.16.2.0/24
-    - 172.16.3.0/24
+    - 172.16.1.0/24 # observed from pod logs
+    - 172.16.2.0/24 # observed from pod logs
+    - 172.16.3.0/24 # observed from pod logs
+    # first 16 bits fixed: 172.16.0.0 - 172.16.255.255:
+    - 172.16.0.0/16
 
 # Notify Groups:
 ## See https://www.home-assistant.io/integrations/notify.group/
