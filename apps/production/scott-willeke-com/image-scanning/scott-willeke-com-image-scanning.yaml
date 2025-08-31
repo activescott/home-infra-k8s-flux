@@ -1,0 +1,46 @@
+# per https://fluxcd.io/flux/guides/image-update/
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: repo-scott-willeke-com
+spec:
+  image: ghcr.io/activescott/www
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: policy-scott-willeke-com
+spec:
+  imageRepositoryRef:
+    name: repo-scott-willeke-com
+  policy:
+    # https://fluxcd.io/flux/components/image/imagepolicies/
+    # Use latest tag for now, but this could be changed to semver if tags are used
+    alphabetical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: update-scott-willeke-com
+spec:
+  interval: 4h
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  git:
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      # messageTemplate from https://fluxcd.io/flux/guides/image-update/#configure-image-updates
+      messageTemplate: "automated image update(s): {{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}"
+    push:
+      branch: main
+  update:
+    path: ./

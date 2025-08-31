@@ -1,0 +1,23 @@
+resources:
+  - namespace.yaml
+  - ../../base/scott-willeke-com/
+  - certificate.yaml
+  - test-certificate.yaml
+  - image-scanning/scott-willeke-com-image-scanning.yaml
+configurations:
+  - image-scanning/secret-name-reference.yaml
+patches:
+  - path: patch-ingress.yaml
+namespace: scott-willeke-com-prod
+secretGenerator:
+  # image pull secret:
+  - name: github-container-registry-secret
+    type: kubernetes.io/dockerconfigjson
+    files:
+      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
+# the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+# the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
+images:
+  - name: scott-willeke-com-image
+    newName: ghcr.io/activescott/www # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:name"}
+    newTag: latest # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:tag"}

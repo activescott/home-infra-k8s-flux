@@ -1,0 +1,17 @@
+# NOTE: We use ingress here rather than a simple service so we can route traffic
+#   based on hostname and not only IP. Ingress also has the advantage of being
+#   able to serve TLS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: scott-willeke-com-ingress
+spec:
+  tls:
+    - hosts:
+        - scott.willeke.com
+      # There must a a Certificate resource created that saves to this secret name
+      secretName: scott-willeke-com-tls
+    - hosts:
+        - www-test.activescott.com
+      # There must a a Certificate resource created that saves to this secret name
+      secretName: www-test-activescott-com-tls
