@@ -29,4 +29,4 @@ secretGenerator:
 images:
   - name: scott-willeke-com-image
     newName: ghcr.io/activescott/www # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:name"}
-    newTag: "v202509011803" # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:tag"}
+    newTag: "v202509011906" # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:tag"}
