@@ -7,11 +7,34 @@ metadata:
   name: scott-willeke-com-ingress
 spec:
   tls:
-    - hosts:
-        - scott.willeke.com
-      # There must a a Certificate resource created that saves to this secret name
-      secretName: scott-willeke-com-tls
+    # TODO: Re-enable scott.willeke.com after DNS is pointed to cluster
+    # - hosts:
+    #     - scott.willeke.com
+    #   # There must a a Certificate resource created that saves to this secret name
+    #   secretName: scott-willeke-com-tls
     - hosts:
         - www-test.activescott.com
       # There must a a Certificate resource created that saves to this secret name
       secretName: www-test-activescott-com-tls
+  rules:
+    # TODO: Re-enable scott.willeke.com after DNS is pointed to cluster
+    # - host: scott.willeke.com
+    #   http:
+    #     paths:
+    #       - path: /
+    #         pathType: Prefix
+    #         backend:
+    #           service:
+    #             name: scott-willeke-com
+    #             port:
+    #               name: web
+    - host: www-test.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: scott-willeke-com
+                port:
+                  name: web
