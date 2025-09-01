@@ -8,3 +8,4 @@ resources:
   - ./monitoring
   - ./hoarder
   - ./plex
+  - ./scott-willeke-com
