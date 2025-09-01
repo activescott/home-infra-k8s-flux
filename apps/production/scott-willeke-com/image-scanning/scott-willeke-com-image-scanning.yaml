@@ -19,9 +19,9 @@ spec:
     name: repo-scott-willeke-com
   policy:
     # https://fluxcd.io/flux/components/image/imagepolicies/
-    # Use latest tag for now, but this could be changed to semver if tags are used
+    # Use timestamp-based tags (YYYYMMDDHHMM format) - newest timestamp is alphabetically largest
     alphabetical:
-      order: asc
+      order: desc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageUpdateAutomation
