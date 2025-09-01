@@ -73,3 +73,6 @@ spec:
     - kind: ImageRepository
       name: repo-tayle-worker
       namespace: tayle-prod
+    - kind: ImageRepository
+      name: repo-scott-willeke-com
+      namespace: scott-willeke-com-prod
