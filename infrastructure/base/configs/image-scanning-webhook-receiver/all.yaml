@@ -61,9 +61,10 @@ metadata:
   name: webhook-receiver-image
 spec:
   type: github
-  events:
-    - "ping"
-    - "package"
+  # NOTE: events field empty because: "If left empty, no filtering is applied and any (valid) payload is handled." – https://fluxcd.io/flux/components/notification/receivers/#events
+  #events:
+  #  - "ping"
+  #  - "package"
   secretRef:
     name: webhook-token
   resources:
