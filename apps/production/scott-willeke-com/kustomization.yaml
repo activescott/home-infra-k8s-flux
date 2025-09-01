@@ -1,5 +1,6 @@
 resources:
   - namespace.yaml
+  - logs-pv.yaml
   - ../../base/scott-willeke-com/
   - certificate.yaml
   - test-certificate.yaml
@@ -8,6 +9,14 @@ configurations:
   - image-scanning/secret-name-reference.yaml
 patches:
   - path: patch-ingress.yaml
+  # patch the volume name in the PVC used for logs:
+  - target:
+      kind: PersistentVolumeClaim
+      name: logs-pvc
+    patch: |-
+      - op: replace
+        path: /spec/volumeName
+        value: scott-willeke-com-logs-pv
 namespace: scott-willeke-com-prod
 secretGenerator:
   # image pull secret:
