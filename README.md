@@ -15,8 +15,15 @@ NOTE: IN PROGRESS. Still converting my old repo containing kubernetes resources 
 ### Handy CLI Commands working with Flux
 
 ```sh
+# usually most informative:
+flux get kustomizations --watch
+
 # force reconciliation to source:
 flux reconcile kustomization flux-system --with-source
+
+# force reconciliation of (docker) image repository:
+
+flux -n scott-willeke-com-prod reconcile image repository repo-scott-willeke-com
 
 # Show all Flux objects that are not ready !
 flux get all -A --status-selector ready=false
