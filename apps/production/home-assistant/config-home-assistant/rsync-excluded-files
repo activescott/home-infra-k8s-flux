@@ -5,6 +5,7 @@ rsync-excluded-files
 diff-hass-and-git.sh
 copy-config-from-git-to-hass.sh
 copy-config-from-hass-to-git.sh
+FLUME_TOKEN_FILE-scott@willeke.com
 home-assistant_v2.db
 home-assistant_v2.db-*
 home-assistant.log

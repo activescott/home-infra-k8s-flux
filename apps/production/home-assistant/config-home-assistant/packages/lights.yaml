@@ -25,9 +25,10 @@ light:
   - platform: switch
     name: Deck Outdoor Light West
     entity_id: switch.deck_outdoor_light_west
-  - platform: switch
-    name: Front Outdoor Light East
-    entity_id: switch.front_outdoor_light_east
+  # This was moved to a ZEN30 and it has both a light and a switch entity. The top button is already a light.  
+  #- platform: switch
+  #  name: Front Outdoor Light East
+  #  entity_id: switch.front_outdoor_light_east
   # this one isn't a zooz but same deal: z-wave presents it as a switch and I want to treat it like a light too:
   - platform: switch
     name: "Momma's Desk Lamp Light"
@@ -53,6 +54,9 @@ light:
     name: Outdoor Lights
     unique_id: outdoor_lights_group
     entities:
+      # NOTE: front_outdoor_light_east used to be a ZEN76 that I blew up messing
+      #   with the light wiring on 2025-09-06. Replaced it with a ZEN30 the next
+      #   day.
       - light.front_outdoor_light_east
       - light.deck_outdoor_light_west
       - light.adu_front_door_outside
