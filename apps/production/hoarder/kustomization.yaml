@@ -137,4 +137,4 @@ patches:
 images:
   - name: ghcr.io/hoarder-app/hoarder
     newName: ghcr.io/hoarder-app/hoarder
-    newTag: 0.23.0
+    newTag: 0.27.1
