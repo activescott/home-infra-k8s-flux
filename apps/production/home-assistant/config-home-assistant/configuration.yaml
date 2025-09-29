@@ -5,12 +5,12 @@ default_config:
 tts:
   - platform: google_translate
 
-group: !include groups.yaml
+#group: !include groups.yaml
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
 cover garage: !include cover-garage.yaml
-lovelace: !include ui-lovelace-config.yaml
+#lovelace: !include ui-lovelace-config.yaml
 
 # for certificate expiry per https://github.com/home-assistant/core/issues/105070#issuecomment-2015364310
 # https://www.home-assistant.io/integrations/command_line/#examples-binary-sensor-platform
@@ -33,10 +33,10 @@ homeassistant:
 
   customize: !include customize.yaml
 
-  packages:
+  #packages:
     # packages: https://www.home-assistant.io/docs/configuration/packages/
-    security_package: !include packages/security.yaml
-    lights_package: !include packages/lights.yaml
+    #security_package: !include packages/security.yaml
+    #lights_package: !include packages/lights.yaml
 
 # Setup certificates via the HTTP integration/component
 # https://www.home-assistant.io/integrations/http:

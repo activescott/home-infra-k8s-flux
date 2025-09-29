@@ -64,55 +64,45 @@
 - id: '1708811850315'
   name: Office Bright
   entities:
-    switch.dimmer_dry_contact_relay:
-      friendly_name: Office Light
-      state: 'on'
-    light.dimmer_dry_contact_relay:
+    light.office_light:
       supported_color_modes:
       - brightness
-      friendly_name: Office Light
-      supported_features: 32
       color_mode: brightness
       brightness: 255
+      friendly_name: 'Office Light '
+      supported_features: 32
       state: 'on'
-    switch.dimmer_dry_contact_relay_2:
-      friendly_name: Office Light
-      state: 'off'
   icon: mdi:chair-rolling
-  metadata: {}
+  metadata:
+    light.office_light:
+      entity_only: true
 - id: '1708838603012'
   name: Office Reading
   entities:
-    switch.dimmer_dry_contact_relay:
-      friendly_name: Office Light
-      state: 'on'
-    light.dimmer_dry_contact_relay:
+    light.office_light:
       supported_color_modes:
       - brightness
       color_mode: brightness
-      brightness: 64
-      friendly_name: Office Light
+      brightness: 39
+      friendly_name: 'Office Light '
       supported_features: 32
       state: 'on'
-    switch.dimmer_dry_contact_relay_2:
-      friendly_name: Office Light
-      state: 'off'
   icon: mdi:book-open-variant
-  metadata: {}
+  metadata:
+    light.office_light:
+      entity_only: true
 - id: '1712549652685'
   name: Office Sleep
   entities:
-    switch.dimmer_dry_contact_relay:
-      friendly_name: Office Light
-      state: 'on'
-    light.dimmer_dry_contact_relay:
+    light.office_light:
       supported_color_modes:
       - brightness
-      friendly_name: Office Light
+      color_mode:
+      brightness:
+      friendly_name: 'Office Light '
       supported_features: 32
       state: 'off'
-    switch.dimmer_dry_contact_relay_2:
-      friendly_name: Office Light
-      state: 'off'
   icon: mdi:briefcase
-  metadata: {}
+  metadata:
+    light.office_light:
+      entity_only: true

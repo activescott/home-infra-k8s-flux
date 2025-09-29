@@ -145,24 +145,24 @@
 - id: '1625077719822'
   alias: Dimmable lights turn on brightly during daytime
   description: ''
-  trigger:
-  - platform: state
-    entity_id:
-    - light.great_room_track_lighting
-    - light.dimmer_dry_contact_relay
+  triggers:
+  - entity_id:
+    - light.living_room_track_lighting
+    - light.office_light
     to: 'on'
-  condition:
+    trigger: state
+  conditions:
   - condition: state
     entity_id: sun.sun
     state: above_horizon
-  action:
-  - service: light.turn_on
-    target:
+  actions:
+  - target:
       entity_id:
       - '{{ trigger.entity_id }}'
     data:
       brightness: 254
     enabled: true
+    action: light.turn_on
 - id: '1625643088055'
   alias: Vacation Light Toggler
   description: Toggles lights at night when people are on vacation (away)
@@ -332,16 +332,67 @@
 - id: '1703990781217'
   alias: Office Switch Relay -> Office Read Scene
   description: ''
-  trigger:
-  - platform: state
-    entity_id:
-    - switch.dimmer_dry_contact_relay_2
-  condition: []
-  action:
-  - action: scene.turn_on
-    metadata: {}
-    target:
-      entity_id: scene.office_reading
+  triggers:
+  - entity_id:
+    - switch.office_light_relay
+    trigger: state
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: light.office_light
+        state: 'on'
+      - condition: numeric_state
+        entity_id: light.office_light
+        attribute: brightness
+        above: 127
+      sequence:
+      - action: scene.turn_on
+        metadata: {}
+        data: {}
+        target:
+          entity_id: scene.office_reading
+    - conditions:
+      - condition: state
+        entity_id: light.office_light
+        state: 'on'
+      - condition: numeric_state
+        entity_id: light.office_light
+        attribute: brightness
+        below: 127
+      sequence:
+      - action: scene.turn_on
+        metadata: {}
+        data: {}
+        target:
+          entity_id: scene.office_bright
+    - conditions:
+      - condition: state
+        entity_id: light.office_light
+        state: 'off'
+      - condition: state
+        entity_id: sun.sun
+        state: above_horizon
+      sequence:
+      - action: scene.turn_on
+        metadata: {}
+        data: {}
+        target:
+          entity_id: scene.office_bright
+    - conditions:
+      - condition: state
+        entity_id: light.office_light
+        state: 'off'
+      - condition: state
+        entity_id: sun.sun
+        state: below_horizon
+      sequence:
+      - action: scene.turn_on
+        metadata: {}
+        data: {}
+        target:
+          entity_id: scene.office_reading
   mode: single
 - id: '1737415136569'
   alias: Plants Switch On
