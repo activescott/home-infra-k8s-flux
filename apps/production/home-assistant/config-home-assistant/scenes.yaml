@@ -6,7 +6,7 @@
       - brightness
       - onoff
       entity_id:
-      - light.dining_table_light_switch_light
+      - light.dining_table_light
       - light.great_room_track_lighting
       - light.hall_light_switch_light
       - light.kitchen_light_switch_light

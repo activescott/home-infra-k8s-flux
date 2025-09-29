@@ -29,6 +29,10 @@ light:
   #- platform: switch
   #  name: Front Outdoor Light East
   #  entity_id: switch.front_outdoor_light_east
+  # Office's ZEN30 secondary "relay" switch exposed as a light
+  - platform: switch
+    name: Office Relay
+    entity_id: switch.office_light_relay
   # this one isn't a zooz but same deal: z-wave presents it as a switch and I want to treat it like a light too:
   - platform: switch
     name: "Momma's Desk Lamp Light"
@@ -43,7 +47,7 @@ light:
     name: Common Area Lights
     unique_id: common_area_lights_group
     entities:
-      - light.dining_table_light_switch_light
+      - light.dining_table_light
       - light.great_room_track_lighting
       - light.hall_light_switch_light
       - light.kitchen_light_switch_light
@@ -59,7 +63,8 @@ light:
       #   day.
       - light.front_outdoor_light_east
       - light.deck_outdoor_light_west
-      - light.adu_front_door_outside
+      # ADU light needs reset and added to new zwave-hub
+      #- light.adu_front_door_outside
       - light.adu_garage_outside_light
 
   - platform: group
@@ -69,4 +74,4 @@ light:
       - light.momma_s_desk_lamp_light
       - light.micah_s_desk_lamp_light
       # this is the ZEN30 office light+relay combo switch. It exposes a light (light.dimmer_dry_contact_relay) as well as a switch for the dimmer button. It also exposes a switch for the bottom relay button.
-      - light.dimmer_dry_contact_relay
+      - light.office_light_relay
