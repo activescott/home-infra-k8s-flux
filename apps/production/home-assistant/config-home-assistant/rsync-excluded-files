@@ -21,3 +21,4 @@ zigbee.db-wal
 deps/
 tts/
 backups/
+blueprints/
