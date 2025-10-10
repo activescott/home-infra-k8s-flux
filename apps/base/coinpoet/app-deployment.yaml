@@ -48,6 +48,7 @@ spec:
             - name: NEXT_PUBLIC_DOMAIN
               valueFrom:
                 secretKeyRef:
+                  name: app-creds
                   key: NEXT_PUBLIC_DOMAIN
 
             - name: NEXT_PUBLIC_POSTHOG_HOST

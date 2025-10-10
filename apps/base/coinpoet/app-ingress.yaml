@@ -25,6 +25,7 @@ spec:
                 name: nonexistent-service
                 port:
                   number: 80
+
           # Allow all other traffic to the app
           - path: /
             pathType: Prefix
