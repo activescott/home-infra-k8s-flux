@@ -8,6 +8,9 @@ configurations:
   - image-scanning/secret-name-reference.yaml
 patches:
   - path: patch-app-ingress.yaml
+    target:
+      kind: Ingress
+      name: coinpoet-app-ingress
   # patch the volume name in the PVC's used in the StatefulSet:
   - patch: |-
       - op: replace
