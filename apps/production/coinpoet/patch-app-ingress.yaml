@@ -1,0 +1,6 @@
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - beta.coinpoet.com
+      secretName: beta-coinpoet-com-tls

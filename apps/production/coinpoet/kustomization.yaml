@@ -1,0 +1,41 @@
+resources:
+  - namespace.yaml
+  - db-pv.yaml
+  - ../../base/coinpoet/
+  - app-ingress-certificate.yaml
+  - image-scanning/coinpoet-image-scanning.yaml
+configurations:
+  - image-scanning/secret-name-reference.yaml
+patches:
+  - path: patch-app-ingress.yaml
+  # patch the volume name in the PVC's used in the StatefulSet:
+  - patch: |-
+      - op: replace
+        path: /spec/volumeClaimTemplates/0/spec/volumeName
+        value: coinpoet-prod-db-pv-data
+    target:
+      kind: StatefulSet
+      name: db
+namespace: coinpoet-prod
+secretGenerator:
+  # db
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
+  # app
+  - name: app-creds
+    envs:
+      - .env.secret.app.encrypted
+  # image pull secret:
+  - name: github-container-registry-secret
+    type: kubernetes.io/dockerconfigjson
+    files:
+      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
+# the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+images:
+  - name: coinpoet-image-app
+    newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "coinpoet-prod:policy-coinpoet-app:name"}
+    newTag: v202501010000 # {"$imagepolicy": "coinpoet-prod:policy-coinpoet-app:tag"}
+  - name: coinpoet-image-db
+    newName: postgres
+    newTag: "17"
