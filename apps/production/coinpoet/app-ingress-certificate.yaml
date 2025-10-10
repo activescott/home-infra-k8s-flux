@@ -6,7 +6,7 @@ metadata:
 spec:
   secretName: beta-coinpoet-com-tls
   issuerRef:
-    name: letsencrypt-prod
+    name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
     - beta.coinpoet.com
@@ -20,7 +20,7 @@ metadata:
 spec:
   secretName: coinpoet-com-tls
   issuerRef:
-    name: letsencrypt-prod
+    name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
     - coinpoet.com
