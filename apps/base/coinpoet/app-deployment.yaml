@@ -48,7 +48,6 @@ spec:
             - name: NEXT_PUBLIC_DOMAIN
               valueFrom:
                 secretKeyRef:
-                  name: app-creds
                   key: NEXT_PUBLIC_DOMAIN
 
             - name: NEXT_PUBLIC_POSTHOG_HOST
@@ -56,6 +55,36 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: NEXT_PUBLIC_POSTHOG_HOST
+
+            - name: NEXT_PUBLIC_POSTHOG_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: NEXT_PUBLIC_POSTHOG_KEY
+
+            - name: EBAY_ENVIRONMENT
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EBAY_ENVIRONMENT
+
+            - name: EBAY_AFFILIATE_CAMPAIGN_ID
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EBAY_AFFILIATE_CAMPAIGN_ID
+
+            - name: EBAY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EBAY_CLIENT_ID
+
+            - name: EBAY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EBAY_CLIENT_SECRET
 
           readinessProbe:
             httpGet:
