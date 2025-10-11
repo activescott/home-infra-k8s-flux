@@ -77,3 +77,6 @@ spec:
     - kind: ImageRepository
       name: repo-scott-willeke-com
       namespace: scott-willeke-com-prod
+    - kind: ImageRepository
+      name: repo-coinpoet-app
+      namespace: coinpoet-prod
