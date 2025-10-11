@@ -12,8 +12,8 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: cache-revalidation
-              # Use same image as the main app since we're calling its endpoint
-              image: coinpoet-image-app
+              # Use lightweight curl image for simple HTTP requests
+              image: curlimages/curl:latest
               command:
                 - /bin/sh
                 - -c

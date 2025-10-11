@@ -45,23 +45,23 @@ spec:
                   name: app-creds
                   key: POSTGRES_URL_NON_POOLING
 
-            - name: NEXT_PUBLIC_DOMAIN
+            - name: PUBLIC_DOMAIN
               valueFrom:
                 secretKeyRef:
                   name: app-creds
-                  key: NEXT_PUBLIC_DOMAIN
+                  key: PUBLIC_DOMAIN
 
-            - name: NEXT_PUBLIC_POSTHOG_HOST
+            - name: PUBLIC_POSTHOG_HOST
               valueFrom:
                 secretKeyRef:
                   name: app-creds
-                  key: NEXT_PUBLIC_POSTHOG_HOST
+                  key: PUBLIC_POSTHOG_HOST
 
-            - name: NEXT_PUBLIC_POSTHOG_KEY
+            - name: PUBLIC_POSTHOG_KEY
               valueFrom:
                 secretKeyRef:
                   name: app-creds
-                  key: NEXT_PUBLIC_POSTHOG_KEY
+                  key: PUBLIC_POSTHOG_KEY
 
             - name: EBAY_ENVIRONMENT
               valueFrom:
