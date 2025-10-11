@@ -24,3 +24,4 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - coinpoet.com
+    - www.coinpoet.com
