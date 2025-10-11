@@ -1,0 +1,17 @@
+{
+  "name": "update-flux-image-scanning-webhooks",
+  "version": "1.0.0",
+  "description": "Script to update GitHub webhooks for Flux image scanning",
+  "main": "manage-webhooks.ts",
+  "scripts": {
+    "start": "npx tsx manage-webhooks.ts"
+  },
+  "dependencies": {
+    "@octokit/rest": "^20.0.2",
+    "tsx": "^4.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "typescript": "^5.3.3"
+  }
+}

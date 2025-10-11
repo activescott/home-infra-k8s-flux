@@ -22,7 +22,6 @@ flux get kustomizations --watch
 flux reconcile kustomization flux-system --with-source
 
 # force reconciliation of (docker) image repository:
-
 flux -n scott-willeke-com-prod reconcile image repository repo-scott-willeke-com
 
 # Show all Flux objects that are not ready !
@@ -48,7 +47,7 @@ flux resume kustomization apps
 
 flux reconcile kustomization apps
 
-# I find it helpful to get logs directly from the kusotmization controller:
+# I find it helpful to get logs directly from the kustomization controller:
 kubectl -n flux-system logs -f deployment/kustomize-controller
 
 
