@@ -1,0 +1,11 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: www-redirect
+  namespace: coinpoet-prod
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/redirectregex/
+  redirectRegex:
+    regex: "^https?://www\\.coinpoet\\.com/(.*)"
+    replacement: "https://coinpoet.com/$1"
+    permanent: true

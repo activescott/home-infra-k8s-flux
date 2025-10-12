@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coinpoet-www-redirect
+  namespace: coinpoet-prod
+  annotations:
+    # to reference the middleware use:  <middleware-namespace>-<middleware-name>@kubernetescrd
+    #   per https://doc.traefik.io/traefik/v2.2/middlewares/overview/#provider-namespace
+    traefik.ingress.kubernetes.io/router.middlewares: coinpoet-prod-www-redirect@kubernetescrd
+    # issue a cert with cert-manager for www.coinpoet.com
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+spec:
+  rules:
+    - host: "www.coinpoet.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  name: web-ui
+  tls: # TLS configuration using cert-manager
+    - hosts:
+        - "www.coinpoet.com"
+      secretName: coinpoet-com-tls # Reuse existing certificate that covers both domains

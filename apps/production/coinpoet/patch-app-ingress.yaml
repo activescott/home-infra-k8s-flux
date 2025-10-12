@@ -2,9 +2,6 @@
   path: /spec/tls
   value:
     - hosts:
-        - beta.coinpoet.com
-      secretName: beta-coinpoet-com-tls
-    - hosts:
         - coinpoet.com
         - www.coinpoet.com
       secretName: coinpoet-com-tls
