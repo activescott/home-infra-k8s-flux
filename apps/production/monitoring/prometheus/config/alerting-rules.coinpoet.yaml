@@ -30,3 +30,14 @@ groups:
           severity: critical
         annotations:
           summary: Missing metrics. Check https://coinpoet.com/ops/metrics
+
+      - alert: CacheRevalidationJobFailure
+        # Alert when the cache revalidation job fails (coinpoet_last_job_success = 0)
+        expr: coinpoet_last_job_success{instance="coinpoet.com"} == 0
+        # Fire immediately since the cronjob runs every 30m and we want to know about failures quickly
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cache revalidation job failed"
+          description: "The coinpoet cache revalidation cronjob has failed. Check the app logs and https://coinpoet.com/ops/metrics for details."
