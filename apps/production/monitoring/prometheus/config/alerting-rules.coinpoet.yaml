@@ -34,7 +34,7 @@ groups:
       - alert: CacheRevalidationJobFailure
         # Alert when the cache revalidation job fails (coinpoet_last_job_success = 0)
         expr: coinpoet_last_job_success{instance="coinpoet.com"} == 0
-        # Fire immediately since the cronjob runs every 30m and we want to know about failures quickly
+        # Wait 5 minutes to avoid false positives during brief metrics collection issues
         for: 5m
         labels:
           severity: critical
