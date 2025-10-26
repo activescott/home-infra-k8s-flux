@@ -1,4 +1,5 @@
 resources:
   - ../../base/configs/secret-name-reference
   - ../../base/configs/image-scanning-webhook-receiver
+  - ../controllers/cert-manager
   - ../controllers/traefik
