@@ -6,10 +6,12 @@ set -euo pipefail
 this_dir=$(cd $(dirname "$0"); pwd)
 repo_dir=$(git rev-parse --show-toplevel)
 
+kubectl_context=nas
+
 # the goal here is just to make sure at minimum kubectl kustomize processes all the yaml
 check_kustomize() {
   local dir=$1
-  local line_count=$(kubectl kustomize "$dir" --enable-helm | wc -l)
+  local line_count=$(kubectl --context $kubectl_context kustomize "$dir" --enable-helm | wc -l)
 
   if [ $? -ne 0 ]; then
     echo "Error: kubectl kustomize failed for $dir"
