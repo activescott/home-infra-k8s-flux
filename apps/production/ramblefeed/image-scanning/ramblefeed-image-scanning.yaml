@@ -1,0 +1,50 @@
+# per https://fluxcd.io/flux/guides/image-update/
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: repo-ramblefeed-app
+spec:
+  image: ghcr.io/activescott/ramblefeed/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: policy-ramblefeed-app
+spec:
+  imageRepositoryRef:
+    name: repo-ramblefeed-app
+  filterTags:
+    # Only consider tags that match our timestamp pattern (v + 12 digits)
+    pattern: '^v[0-9]{12}$'
+  policy:
+    # https://fluxcd.io/flux/components/image/imagepolicies/
+    # Use timestamp-based tags prefixed with a v (vYYYYMMDDHHMM format) - newest timestamp is largest
+    alphabetical:
+      # select the last tag when all the tags are sorted alphabetically in ascending order
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: update-ramblefeed-app
+spec:
+  interval: 4h
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  git:
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      # messageTemplate from https://fluxcd.io/flux/guides/image-update/#configure-image-updates
+      messageTemplate: "automated image update(s): {{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}"
+    push:
+      branch: main
+  update:
+    path: ./

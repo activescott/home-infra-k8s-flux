@@ -1,0 +1,42 @@
+resources:
+  - namespace.yaml
+  - db-pv.yaml
+  - ../../base/ramblefeed/
+  - app-ingress-certificate.yaml
+  - image-scanning/ramblefeed-image-scanning.yaml
+patches:
+  - path: patch-app-deployment.yaml
+    target:
+      kind: Deployment
+      name: app
+  - path: patch-app-ingress.yaml
+    target:
+      kind: Ingress
+      name: app-ingress
+  - path: patch-db-statefulset.yaml
+    target:
+      kind: StatefulSet
+      name: db
+namespace: ramblefeed-prod
+secretGenerator:
+  # db
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
+  # app
+  - name: app-creds
+    envs:
+      - .env.secret.app.encrypted
+  # image pull secret:
+  - name: github-container-registry-secret
+    type: kubernetes.io/dockerconfigjson
+    files:
+      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
+# the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+images:
+  - name: ramblefeed-image-app
+    newName: ghcr.io/activescott/ramblefeed/app # {"$imagepolicy": "ramblefeed-prod:policy-ramblefeed-app:name"}
+    newTag: v202510260000 # {"$imagepolicy": "ramblefeed-prod:policy-ramblefeed-app:tag"}
+  - name: ramblefeed-image-db
+    newName: postgres
+    newTag: "17"

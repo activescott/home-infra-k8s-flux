@@ -1,0 +1,9 @@
+- op: replace
+  path: /spec/rules/0/host
+  value: ramblefeed.com
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - ramblefeed.com
+      secretName: ramblefeed-com-tls

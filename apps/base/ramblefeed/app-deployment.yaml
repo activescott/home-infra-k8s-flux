@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        app.activescott.com/component: app
+    spec:
+      containers:
+        - name: app
+          image: ramblefeed-image-app
+          ports:
+            - containerPort: 3200
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: DATABASE_URL
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: NODE_ENV
+            - name: PORT
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: PORT
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: JWT_SECRET
+            - name: JWT_MAGIC_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: JWT_MAGIC_LINK_SECRET
+            - name: UPLOADS_DIR
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: UPLOADS_DIR
+            - name: MAX_FILE_SIZE_MB
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: MAX_FILE_SIZE_MB
+            - name: EMAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EMAIL_FROM
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_HOST
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PORT
+            - name: SMTP_SECURE
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_SECURE
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_USER
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PASS
+            - name: APP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: APP_URL
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+            requests:
+              cpu: "0.1"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3200
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3200
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3

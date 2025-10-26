@@ -1,0 +1,13 @@
+# Certificate for ramblefeed.com
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ramblefeed-com-tls
+  namespace: ramblefeed-prod
+spec:
+  secretName: ramblefeed-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - ramblefeed.com
