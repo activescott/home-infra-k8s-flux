@@ -19,6 +19,7 @@ flux reconcile kustomization flux-system --with-source
 
 # force reconciliation of (docker) image repository:
 flux -n scott-willeke-com-prod reconcile image repository repo-scott-willeke-com
+flux -n ramblefeed-prod reconcile image repository repo-ramblefeed-app
 
 # Show all Flux objects that are not ready !
 flux get all -A --status-selector ready=false

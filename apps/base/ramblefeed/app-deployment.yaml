@@ -29,11 +29,6 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: NODE_ENV
-            - name: PORT
-              valueFrom:
-                secretKeyRef:
-                  name: app-creds
-                  key: PORT
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
