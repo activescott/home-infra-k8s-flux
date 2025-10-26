@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: traefik
+  namespace: traefik
+spec:
+  # https://fluxcd.io/flux/components/source/helmrepositories/#interval
+  # 168h = 7d
+  interval: 168h
+  url: https://traefik.github.io/charts

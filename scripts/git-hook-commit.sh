@@ -13,6 +13,11 @@ check_kustomize() {
   local dir=$1
   local line_count=$(kubectl --context $kubectl_context kustomize "$dir" --enable-helm | wc -l)
 
+  if [ $line_count -eq 0 ]; then
+    echo "Error: kubectl kustomize produced no output for $dir"
+    exit 1
+  fi
+
   if [ $? -ne 0 ]; then
     echo "Error: kubectl kustomize failed for $dir"
     exit 1
