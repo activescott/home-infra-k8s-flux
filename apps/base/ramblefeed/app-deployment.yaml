@@ -39,16 +39,11 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: JWT_MAGIC_LINK_SECRET
-            - name: UPLOADS_DIR
+            - name: SNAPSHOT_STORAGE_DIR
               valueFrom:
                 secretKeyRef:
                   name: app-creds
-                  key: UPLOADS_DIR
-            - name: MAX_FILE_SIZE_MB
-              valueFrom:
-                secretKeyRef:
-                  name: app-creds
-                  key: MAX_FILE_SIZE_MB
+                  key: SNAPSHOT_STORAGE_DIR
             - name: EMAIL_FROM
               valueFrom:
                 secretKeyRef:
