@@ -9,12 +9,12 @@ repo_dir=$(git rev-parse --show-toplevel)
 # the goal here is just to make sure at minimum kubectl kustomize processes all the yaml
 check_kustomize() {
   local dir=$1
-  local line_count=$(kubectl kustomize "$dir" | wc -l)
+  local line_count=$(kubectl kustomize "$dir" --enable-helm | wc -l)
 
   if [ $? -ne 0 ]; then
     echo "Error: kubectl kustomize failed for $dir"
     exit 1
-  else 
+  else
     echo "kustomize succeeded for $dir! Final line count: $line_count"
   fi
 }
