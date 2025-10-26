@@ -8,9 +8,17 @@ cluster_name="nas1"
 
 echo "**** Starting Flux Upgrade ****"
 echo "The current version of flux is $(flux --version)"
-flux install --export > "./clusters/$cluster_name/flux-system/gotk-components.yaml"
+flux install \
+  --components-extra image-reflector-controller,image-automation-controller \
+  --export > "./clusters/$cluster_name/flux-system/gotk-components.yaml"
 
 git add "./clusters/$cluster_name/flux-system"
-git commit -m "Update $(flux -v) on $cluster_name cluster"
 
+#git commit -m "Update $(flux -v) on $cluster_name cluster"
+
+echo
+echo "Remember to commit and push the changes to the Git repository with:"
+echo 
+echo "  git commit -m \"Update $(flux -v) on $cluster_name cluster\""
+echo 
 echo "**** Flux Upgrade Completed ****"
