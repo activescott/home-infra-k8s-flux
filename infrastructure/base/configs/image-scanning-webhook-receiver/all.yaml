@@ -55,6 +55,14 @@ spec:
   policyTypes:
     - Ingress
 ---
+# ⚠️  IMPORTANT: When adding new ImageRepository resources, they must be added here too!
+# This Receiver tells Flux which ImageRepositories to reconcile when GitHub webhooks arrive.
+#
+# To verify all ImageRepositories are registered, run: scripts/validate-webhook-receiver.sh
+# The git commit hook also checks this automatically.
+#
+# See also: scripts/update-flux-image-scanning-webhooks/manage-webhooks.ts for managing
+# GitHub webhook configuration.
 apiVersion: notification.toolkit.fluxcd.io/v1
 kind: Receiver
 metadata:
@@ -80,3 +88,6 @@ spec:
     - kind: ImageRepository
       name: repo-coinpoet-app
       namespace: coinpoet-prod
+    - kind: ImageRepository
+      name: repo-ramblefeed-app
+      namespace: ramblefeed-prod

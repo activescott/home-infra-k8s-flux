@@ -9,6 +9,10 @@ This script updates GitHub webhooks for Flux ImageRepositories in the cluster.
 3. **Verifies** existing webhooks in GitHub repositories
 4. **Creates** or **updates** webhooks as needed
 
+## Related Scripts
+
+- `../validate-webhook-receiver.sh` - Validates that all ImageRepositories are registered in the Flux webhook Receiver (runs automatically on git commit)
+
 ## Prerequisites
 
 - `kubectl` configured with access to the cluster

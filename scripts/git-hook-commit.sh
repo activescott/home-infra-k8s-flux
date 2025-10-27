@@ -30,4 +30,8 @@ check_kustomize() {
 check_kustomize "${repo_dir}/apps/production"
 check_kustomize "${repo_dir}/infrastructure/prod/configs"
 
+# Validate webhook receiver configuration (non-blocking, just warns)
+echo ""
+"${repo_dir}/scripts/validate-webhook-receiver.sh" || true
+
 exit 0
