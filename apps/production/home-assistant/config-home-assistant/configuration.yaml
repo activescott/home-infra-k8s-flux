@@ -44,7 +44,7 @@ http:
   use_x_forwarded_for: true
   trusted_proxies:
     # NOTE: these are kubernetes cluster networks
-    # first 16 bits fixed: 172.16.0.0 - 172.16.255.255:
+    # first 16 bits fixed: 10.42.0.0 - 10.42.255.255:
     - 10.42.0.0/16
 
 # Notify Groups:
