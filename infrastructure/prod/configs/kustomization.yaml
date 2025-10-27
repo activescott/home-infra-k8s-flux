@@ -2,4 +2,5 @@ resources:
   - ../../base/configs/secret-name-reference
   - ../../base/configs/image-scanning-webhook-receiver
   - ../controllers/cert-manager
-  - ../controllers/traefik
+  # I reinstalled k3s and used it's bundled traefik
+  # - ../controllers/traefik

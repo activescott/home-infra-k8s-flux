@@ -10,6 +10,8 @@ See [apps/production](apps/production).
 
 ### Handy CLI Commands working with Flux
 
+See [Flux Troubleshooting Cheatsheet](https://fluxcd.io/flux/cheatsheets/troubleshooting/).
+
 ```sh
 # usually most informative:
 flux get kustomizations --watch
