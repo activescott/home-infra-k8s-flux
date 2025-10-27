@@ -1,0 +1,9 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: repo-tayle-worker
+spec:
+  image: ghcr.io/tayle-co/tayle/worker
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret

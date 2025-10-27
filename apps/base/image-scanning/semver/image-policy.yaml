@@ -1,0 +1,11 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: policy-placeholder
+spec:
+  imageRepositoryRef:
+    name: repo-placeholder
+  policy:
+    # https://fluxcd.io/flux/components/image/imagepolicies/
+    semver:
+      range: 1.x

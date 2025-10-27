@@ -3,7 +3,7 @@ resources:
   - db-pv.yaml
   - ../../base/ramblefeed/
   - app-ingress-certificate.yaml
-  - image-scanning/ramblefeed-image-scanning.yaml
+  - image-scanning/
 patches:
   - path: patch-app-deployment.yaml
     target:

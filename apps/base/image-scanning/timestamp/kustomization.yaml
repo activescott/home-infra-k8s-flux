@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base image-scanning resources for timestamp-based tagging strategy
+# Apps using vYYYYMMDDHHMM timestamp tags should use this variant
+
+resources:
+  - image-repository.yaml
+  - image-policy.yaml
+  - image-update-automation.yaml

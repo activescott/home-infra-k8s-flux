@@ -1,0 +1,10 @@
+# per https://fluxcd.io/flux/guides/image-update/
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: repo-placeholder
+spec:
+  image: ghcr.io/placeholder/image
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret

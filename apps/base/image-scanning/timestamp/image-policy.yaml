@@ -1,0 +1,16 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: policy-placeholder
+spec:
+  imageRepositoryRef:
+    name: repo-placeholder
+  filterTags:
+    # Only consider tags that match our timestamp pattern (v + 12 digits)
+    pattern: '^v[0-9]{12}$'
+  policy:
+    # https://fluxcd.io/flux/components/image/imagepolicies/
+    # Use timestamp-based tags prefixed with a v (vYYYYMMDDHHMM format) - newest timestamp is largest
+    alphabetical:
+      # select the last tag when all the tags are sorted alphabetically in ascending order
+      order: asc

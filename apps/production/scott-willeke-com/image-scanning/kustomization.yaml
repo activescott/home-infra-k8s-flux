@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/image-scanning/timestamp
+
+configurations:
+  - secret-name-reference.yaml
+
+patches:
+  # Customize ImageRepository
+  - target:
+      kind: ImageRepository
+      name: repo-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: repo-scott-willeke-com
+      - op: replace
+        path: /spec/image
+        value: ghcr.io/activescott/www
+
+  # Customize ImagePolicy
+  - target:
+      kind: ImagePolicy
+      name: policy-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: policy-scott-willeke-com
+      - op: replace
+        path: /spec/imageRepositoryRef/name
+        value: repo-scott-willeke-com
+
+  # Customize ImageUpdateAutomation
+  - target:
+      kind: ImageUpdateAutomation
+      name: update-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: update-scott-willeke-com

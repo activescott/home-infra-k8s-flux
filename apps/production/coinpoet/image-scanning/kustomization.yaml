@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/image-scanning/timestamp
+
+configurations:
+  - secret-name-reference.yaml
+
+patches:
+  # Customize ImageRepository
+  - target:
+      kind: ImageRepository
+      name: repo-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: repo-coinpoet-app
+      - op: replace
+        path: /spec/image
+        value: ghcr.io/activescott/gpu-agent/app
+
+  # Customize ImagePolicy
+  - target:
+      kind: ImagePolicy
+      name: policy-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: policy-coinpoet-app
+      - op: replace
+        path: /spec/imageRepositoryRef/name
+        value: repo-coinpoet-app
+
+  # Customize ImageUpdateAutomation
+  - target:
+      kind: ImageUpdateAutomation
+      name: update-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: update-coinpoet-app

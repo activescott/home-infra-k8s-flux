@@ -5,9 +5,7 @@ resources:
   - db-backup-pv.yaml
   - ../../base/tayle/
   - app-ingress-certificate.yaml
-  - image-scanning/tayle-image-scanning.yaml
-configurations:
-  - image-scanning/secret-name-reference.yaml
+  - image-scanning/
 patches:
   - path: patch-app-ingress.yaml
   # patch the volume name in the PVC's used in the StatefulSets:

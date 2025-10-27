@@ -1,0 +1,11 @@
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: policy-tayle-worker
+spec:
+  imageRepositoryRef:
+    name: repo-tayle-worker
+  policy:
+    # https://fluxcd.io/flux/components/image/imagepolicies/
+    semver:
+      range: 1.x
