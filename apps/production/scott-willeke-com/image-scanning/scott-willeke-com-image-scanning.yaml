@@ -43,7 +43,7 @@ spec:
         email: fluxcdbot@users.noreply.github.com
         name: fluxcdbot
       # messageTemplate from https://fluxcd.io/flux/guides/image-update/#configure-image-updates
-      messageTemplate: "automated image update(s): {{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}"
+      messageTemplate: automated image update(s) by {{ .AutomationObject }}: {{range .Changed.Changes}}{{print .OldValue}} -> {{println .NewValue}}{{end}}
     push:
       branch: main
   update:
