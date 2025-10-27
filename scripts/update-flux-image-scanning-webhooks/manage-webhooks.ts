@@ -148,7 +148,7 @@ class UpdateFluxImageScanningWebhooks {
       ) || null;
     } catch (error: any) {
       if (error.status === 404) {
-        console.log(`⚠️  Repository ${owner}/${repo} not found or no access`);
+        console.log(`⚠️  Repository ${owner}/${repo} not found or no access:`, (error as any).message || error);
         return null;
       }
       throw error;
