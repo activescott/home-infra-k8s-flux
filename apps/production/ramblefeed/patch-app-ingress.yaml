@@ -1,3 +1,10 @@
+# The base uses ingressClassName: nginx (minikube's default ingress controller).
+# By removing it here, Traefik (k3s default) will handle the ingress instead.
+- op: remove
+  path: /spec/ingressClassName
+# Remove nginx-specific annotation since we're using Traefik
+- op: remove
+  path: /metadata/annotations/nginx.ingress.kubernetes.io~1rewrite-target
 - op: replace
   path: /spec/rules/0/host
   value: ramblefeed.com
