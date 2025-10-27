@@ -4,6 +4,13 @@ resources:
   # cert-manager-issued photos.scott.willeke.com
   - certificate-photos-scott-willeke-com.yaml
 
+secretGenerator:
+  # this secret configures much of mariadb
+  - name: mariadb-creds
+    envs:
+      # this file is in 1Password
+      - .env.secret.mariadb-creds.encrypted
+
 patches:
   - path: patch-mariadb-volume.yaml
   - path: patch-photoprism-statefulset.yaml

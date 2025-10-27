@@ -1,3 +1,0 @@
-resources:
-  - mariadb-service.yaml
-  - mariadb-statefulset.yaml

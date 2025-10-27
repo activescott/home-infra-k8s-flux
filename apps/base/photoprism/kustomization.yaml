@@ -1,17 +1,15 @@
 resources:
   # mariadb:
-  - ../../lib/mariadb/base
+  - mariadb-service.yaml
+  - mariadb-statefulset.yaml
   # photoprism app/container:
   - photoprism-statefulset.yaml
   - photoprism-service.yaml
   - photoprism-ingress.yaml
 
-secretGenerator:
-  # this secret configures much of mariadb
-  - name: mariadb-creds
-    envs:
-      # this file is in 1Password
-      - .env.secret.mariadb-creds.encrypted
+# NOTE: secretGenerator moved to individual overlays (scott/oksana)
+# Each overlay generates its own mariadb-creds secret from its local encrypted file
+
 #configurations:
 # I couldn't get the nameTransformer to work :(
 #- photoprism-references-mariadb-nameReference.yaml
