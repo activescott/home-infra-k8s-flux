@@ -19,6 +19,9 @@ spec:
     ## @param wordpressSkipInstall Skip wizard installation
     ## NOTE: Set to true if the database already contains data from a previous WordPress installation
     wordpressSkipInstall: true
+    ## @param overrideDatabaseSettings Override database settings from wp-config.php
+    ## Force WordPress to use environment variables for database connection
+    overrideDatabaseSettings: true
     ## @param wordpressUsername WordPress username
     wordpressUsername: oksana
     ## @param existingSecret Name of existing secret containing WordPress credentials
