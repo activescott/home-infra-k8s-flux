@@ -20,6 +20,10 @@ secretGenerator:
   - name: wordpress-user-creds
     envs:
     - .env.secret.wordpress-user-creds.encrypted
+    options:
+      disableNameSuffixHash: true
   - name: wordpress-mariadb-creds
     envs:
     - .env.secret.wordpress-mariadb-creds.encrypted
+    options:
+      disableNameSuffixHash: true
