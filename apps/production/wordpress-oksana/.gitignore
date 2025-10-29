@@ -1,0 +1,3 @@
+charts/
+.env.secret.*
+!.env.secret.*.encrypted
