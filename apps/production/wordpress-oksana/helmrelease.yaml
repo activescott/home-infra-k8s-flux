@@ -93,7 +93,11 @@ spec:
         database: bitnami_wordpress
         username: wp
         existingSecret: wordpress-mariadb-creds
-        forcePassword: true
+        # Dummy passwords to satisfy chart validation - actual passwords come from existingSecret
+        # see https://github.com/bitnami/charts/tree/main/bitnami/mariadb
+        rootPassword: "dummy"
+        password: "dummy"
+        replicationPassword: "dummy"
 
       ## MariaDB Primary configuration
       ##
