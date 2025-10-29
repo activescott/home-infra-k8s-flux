@@ -2,16 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ./namespace.yaml
+  - ./helmrepository.yaml
+  - ./helmrelease.yaml
   - mariadb-pv-pvc.yaml
   - wordpress-pv-pvc.yaml
-
-# https://github.com/bitnami/charts/tree/main/bitnami/wordpress
-helmCharts:
-- name: wordpress
-  # NOTE: repo url found at https://docs.bitnami.com/kubernetes/get-started-gke/#step-5-install-an-application-using-a-helm-chart
-  repo: https://charts.bitnami.com/bitnami
-  version: 18.0.6
-  valuesFile: ./chart-values.yaml
 
 namespace: oksana-wordpress
 

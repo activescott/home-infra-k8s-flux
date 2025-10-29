@@ -1,0 +1,10 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: oksana-wordpress
+spec:
+  # https://fluxcd.io/flux/components/source/helmrepositories/#interval
+  # 168h = 7d
+  interval: 168h
+  url: https://charts.bitnami.com/bitnami
