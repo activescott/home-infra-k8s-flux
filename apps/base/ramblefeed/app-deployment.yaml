@@ -39,6 +39,11 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: JWT_MAGIC_LINK_SECRET
+            - name: E2E_MAGIC_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: E2E_MAGIC_LINK_SECRET
             - name: SNAPSHOT_STORAGE_DIR
               valueFrom:
                 secretKeyRef:
@@ -79,6 +84,16 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: APP_URL
+            - name: POSTHOG_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: POSTHOG_KEY
+            - name: POSTHOG_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: POSTHOG_HOST
           resources:
             limits:
               cpu: "2"
