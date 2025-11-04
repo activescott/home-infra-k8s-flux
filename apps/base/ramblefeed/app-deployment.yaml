@@ -89,11 +89,6 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: POSTHOG_KEY
-            - name: POSTHOG_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: app-creds
-                  key: POSTHOG_HOST
           resources:
             limits:
               cpu: "2"
