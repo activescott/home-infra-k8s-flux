@@ -89,6 +89,11 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: POSTHOG_KEY
+            - name: GITHUB_RELEASE_NOTES_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: GITHUB_RELEASE_NOTES_TOKEN
           resources:
             limits:
               cpu: "2"
