@@ -36,7 +36,7 @@ secretGenerator:
 images:
   - name: ramblefeed-image-app
     newName: ghcr.io/activescott/ramblefeed/app # {"$imagepolicy": "ramblefeed-prod:policy-ramblefeed-app:name"}
-    newTag: v0.1.3 # {"$imagepolicy": "ramblefeed-prod:policy-ramblefeed-app:tag"}
+    newTag: v0.1.4 # {"$imagepolicy": "ramblefeed-prod:policy-ramblefeed-app:tag"}
   - name: ramblefeed-image-db
     newName: postgres
     newTag: "17"
