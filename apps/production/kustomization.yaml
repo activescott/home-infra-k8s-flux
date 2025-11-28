@@ -10,6 +10,7 @@ resources:
   - ./plex
   - ./scott-willeke-com
   - ./coinpoet
+  - ./coinpoet-redirect
   - ./activescott-redirect
   - ./ramblefeed
   - ./wordpress-oksana

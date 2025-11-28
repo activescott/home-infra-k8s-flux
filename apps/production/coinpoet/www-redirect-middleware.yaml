@@ -6,6 +6,6 @@ metadata:
 spec:
   # see https://doc.traefik.io/traefik/middlewares/http/redirectregex/
   redirectRegex:
-    regex: "^https?://www\\.coinpoet\\.com/(.*)"
-    replacement: "https://coinpoet.com/$1"
+    regex: "^https?://www\\.gpupoet\\.com/(.*)"
+    replacement: "https://gpupoet.com/$1"
     permanent: true

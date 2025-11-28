@@ -1,14 +1,14 @@
-# Certificate for gpupoet.com and www.gpupoet.com
+# Certificate for coinpoet.com and www.coinpoet.com (for redirect service)
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: gpupoet-com-tls
+  name: coinpoet-com-tls
   namespace: coinpoet-prod
 spec:
-  secretName: gpupoet-com-tls
+  secretName: coinpoet-com-tls
   issuerRef:
     name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
-    - gpupoet.com
-    - www.gpupoet.com
+    - coinpoet.com
+    - www.coinpoet.com

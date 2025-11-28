@@ -9,12 +9,12 @@ spec:
   # patched in kustomize
   #tls:
   #- hosts:
-  #    - beta.coinpoet.com
+  #    - beta.gpupoet.com
   # There must a a Certificate resource created that saves to this secret name
   #  secretName: beta-coinpoet-com-tls
 
   rules:
-    - host: coinpoet.com
+    - host: gpupoet.com
       http:
         paths:
           # Block external access to the cache revalidation endpoint
@@ -35,4 +35,3 @@ spec:
                 # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
                 port:
                   name: web-ui
-

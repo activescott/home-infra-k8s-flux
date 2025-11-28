@@ -1,0 +1,36 @@
+# Ingress for coinpoet.com redirect to gpupoet.com
+# This handles both coinpoet.com and www.coinpoet.com traffic
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: coinpoet-redirect-ingress
+  namespace: coinpoet-prod
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+spec:
+  rules:
+    - host: "coinpoet.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: coinpoet-redirect
+                port:
+                  name: http
+    - host: "www.coinpoet.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: coinpoet-redirect
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - "coinpoet.com"
+        - "www.coinpoet.com"
+      secretName: coinpoet-com-tls

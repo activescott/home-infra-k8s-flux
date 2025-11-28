@@ -1,11 +1,11 @@
 # https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
 groups:
-  - name: coinpoet
+  - name: gpupoet
     #labels:
     #  team: scott
     rules:
       - alert: ProbeFailure
-        expr: up{instance="coinpoet.com"} < 1.0
+        expr: up{instance="gpupoet.com"} < 1.0
         # Alerting rules without the for clause will become active on the first evaluation.
         # for 60m makes it so two consecutive scrapes have to fail
         for: 60m
@@ -15,11 +15,11 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: Probe failure. Check https://coinpoet.com/ops/metrics
+          summary: Probe failure. Check https://gpupoet.com/ops/metrics
 
       - alert: MissingMetricsFailure
         # we're getting back 7 metrics (samples) in each scrape. sometimes vercel timeouts cause prometheus to assume a HTTP 200 response, but no metrics are received?
-        expr: scrape_samples_scraped{instance="coinpoet.com"} < 7.0
+        expr: scrape_samples_scraped{instance="gpupoet.com"} < 7.0
         # Alerting rules without the for clause will become active on the first evaluation.
         # for 60m makes it so two consecutive scrapes have to fail
         for: 60m
@@ -29,15 +29,15 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: Missing metrics. Check https://coinpoet.com/ops/metrics
+          summary: Missing metrics. Check https://gpupoet.com/ops/metrics
 
       - alert: CacheRevalidationJobFailure
         # Alert when the cache revalidation job fails (coinpoet_last_job_success = 0)
-        expr: coinpoet_last_job_success{instance="coinpoet.com"} == 0
+        expr: coinpoet_last_job_success{instance="gpupoet.com"} == 0
         # Wait 5 minutes to avoid false positives during brief metrics collection issues
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "Cache revalidation job failed"
-          description: "The coinpoet cache revalidation cronjob has failed. Check the app logs and https://coinpoet.com/ops/metrics for details."
+          description: "The gpupoet cache revalidation cronjob has failed. Check the app logs and https://gpupoet.com/ops/metrics for details."
