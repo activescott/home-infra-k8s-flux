@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/db-backup
+
+images:
+  - name: db-backup-image-placeholder
+    newName: postgres
+    newTag: "17"
+
+patches:
+  - target:
+      kind: PersistentVolumeClaim
+      name: db-backup-pvc
+    patch: |-
+      - op: replace
+        path: /spec/volumeName
+        value: tayle-prod-db-backup-pv

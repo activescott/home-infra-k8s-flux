@@ -1,6 +1,8 @@
 resources:
   - namespace.yaml
   - db-pv.yaml
+  - db-backup-pv.yaml
+  - db-backup/
   - ../../base/coinpoet/
   - app-ingress-certificate.yaml
   - www-redirect-middleware.yaml

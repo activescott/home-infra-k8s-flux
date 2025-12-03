@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-backup-pvc
+spec:
+  storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
+  accessModes: ["ReadWriteOnce"]
+  # volumeName is the binding reference to the PersistentVolume backing this claim.
+  # Overlay should patch this to reference the app's backup PV:
+  volumeName: PATCH_WITH_KUSTOMIZE
+  resources:
+    requests:
+      # the minimum amount that must be available:
+      storage: 5Gi

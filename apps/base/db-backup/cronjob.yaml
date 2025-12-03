@@ -12,7 +12,8 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: tayle-image-db
+              # Placeholder image - overlay should replace with postgres:17 or similar
+              image: db-backup-image-placeholder
               command:
                 - /bin/sh
                 - -c
@@ -84,19 +85,3 @@ spec:
             - name: backup-storage
               persistentVolumeClaim:
                 claimName: db-backup-pvc
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: db-backup-pvc
-spec:
-  storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
-  accessModes: ["ReadWriteOnce"]
-  # volumeName is the binding reference to the PersistentVolume backing this claim.
-  # create a PersistentVolume in the overlay and patch in it's name here:
-  volumeName: PATCH_WITH_CUSTOMIZE
-  resources:
-    requests:
-      # the minimum amount that must be available:
-      storage: 5Gi

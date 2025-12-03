@@ -3,6 +3,7 @@ resources:
   - rabbitmq-pv.yaml
   - db-pv.yaml
   - db-backup-pv.yaml
+  - db-backup/
   - ../../base/tayle/
   - app-ingress-certificate.yaml
   - image-scanning/
@@ -23,14 +24,6 @@ patches:
     target:
       kind: StatefulSet
       name: db
-  # patch the volume name in the PVC used for the db-backup CronJob:
-  - target:
-      kind: PersistentVolumeClaim
-      name: db-backup-pvc
-    patch: |-
-      - op: replace
-        path: /spec/volumeName
-        value: tayle-prod-db-backup-pv
 namespace: tayle-prod
 secretGenerator:
   # db
