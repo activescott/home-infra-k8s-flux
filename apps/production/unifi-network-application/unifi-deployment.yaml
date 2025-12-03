@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unifi-app
+  namespace: unifi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: unifi-app
+
+  template:
+    metadata:
+      labels:
+        app: unifi-app
+
+    spec:
+      containers:
+        - name: unifi-network-application
+          # tags: https://quay.io/repository/linuxserver.io/unifi-network-application?tab=tags
+          image: lscr.io/linuxserver/unifi-network-application:9.0.114
+
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: "Etc/UTC"
+            - name: MONGO_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: unifi-username
+            - name: MONGO_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: unifi-password
+            - name: MONGO_HOST
+              value: "mongodb"
+            - name: MONGO_PORT
+              value: "27017"
+            - name: MONGO_DBNAME
+              value: "unifi"
+            - name: MONGO_AUTHSOURCE
+              value: "admin"
+            - name: MEM_LIMIT
+              value: "1024"
+            - name: MEM_STARTUP
+              value: "1024"
+
+          ports:
+            - containerPort: 8443
+              name: https-admin
+            - containerPort: 8080
+              name: device-comm
+            - containerPort: 3478
+              protocol: UDP
+              name: stun
+            - containerPort: 10001
+              protocol: UDP
+              name: ap-discovery
+            - containerPort: 1900
+              protocol: UDP
+              name: l2-discovery
+            - containerPort: 8843
+              name: guest-https
+            - containerPort: 8880
+              name: guest-http
+            - containerPort: 6789
+              name: mobile-test
+            - containerPort: 5514
+              protocol: UDP
+              name: syslog
+
+          volumeMounts:
+            - name: unifi-data
+              mountPath: /config
+
+      volumes:
+        - name: unifi-data
+          persistentVolumeClaim:
+            claimName: unifi-data

@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: unifi-app
+  namespace: unifi
+
+spec:
+  selector:
+    app: unifi-app
+
+  ports:
+    - name: https-admin
+      port: 8443
+      targetPort: 8443
+    - name: device-comm
+      port: 8080
+      targetPort: 8080
+    - name: stun
+      port: 3478
+      protocol: UDP
+      targetPort: 3478
+    - name: ap-discovery
+      port: 10001
+      protocol: UDP
+      targetPort: 10001
+    - name: l2-discovery
+      port: 1900
+      protocol: UDP
+      targetPort: 1900
+    - name: guest-https
+      port: 8843
+      targetPort: 8843
+    - name: guest-http
+      port: 8880
+      targetPort: 8880
+    - name: mobile-test
+      port: 6789
+      targetPort: 6789
+    - name: syslog
+      port: 5514
+      protocol: UDP
+      targetPort: 5514
+
+  type: ClusterIP
