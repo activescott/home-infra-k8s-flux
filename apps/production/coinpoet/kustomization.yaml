@@ -40,7 +40,7 @@ secretGenerator:
 images:
   - name: coinpoet-image-app
     newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "coinpoet-prod:policy-coinpoet-app:name"}
-    newTag: v202512040150 # {"$imagepolicy": "coinpoet-prod:policy-coinpoet-app:tag"}
+    newTag: v202512050748 # {"$imagepolicy": "coinpoet-prod:policy-coinpoet-app:tag"}
   - name: coinpoet-image-db
     newName: postgres
     newTag: "17"
