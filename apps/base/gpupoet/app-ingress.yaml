@@ -4,15 +4,9 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: coinpoet-app-ingress
+  name: gpupoet-app-ingress
 spec:
-  # patched in kustomize
-  #tls:
-  #- hosts:
-  #    - beta.gpupoet.com
-  # There must a a Certificate resource created that saves to this secret name
-  #  secretName: beta-coinpoet-com-tls
-
+  # patched in kustomize for TLS in production
   rules:
     - host: gpupoet.com
       http:

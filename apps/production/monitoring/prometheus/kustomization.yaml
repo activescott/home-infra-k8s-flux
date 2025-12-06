@@ -18,9 +18,9 @@ configMapGenerator:
       - config/prometheus.yaml
       - config/web.yaml
       # scrape configs:
-      - config/scrape-configs.coinpoet.yaml
+      - config/scrape-configs.gpupoet.yaml
       - config/scrape-configs.prometheus.yaml
-      - config/alerting-rules.coinpoet.yaml
+      - config/alerting-rules.gpupoet.yaml
       - config/alerting-rules.tayle.yaml
 
 labels:

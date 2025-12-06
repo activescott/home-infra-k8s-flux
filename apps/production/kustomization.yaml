@@ -9,7 +9,7 @@ resources:
   - ./hoarder
   - ./plex
   - ./scott-willeke-com
-  - ./coinpoet
+  - ./gpupoet
   - ./coinpoet-redirect
   - ./activescott-redirect
   - ./ramblefeed

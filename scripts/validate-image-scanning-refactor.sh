@@ -9,7 +9,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="$REPO_ROOT/.validation-outputs"
 
 APPS=(
-  "coinpoet"
+  "gpupoet"
   "scott-willeke-com"
   "ramblefeed"
   "tayle"

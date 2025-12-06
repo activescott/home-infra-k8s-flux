@@ -86,8 +86,8 @@ spec:
       name: repo-scott-willeke-com
       namespace: scott-willeke-com-prod
     - kind: ImageRepository
-      name: repo-coinpoet-app
-      namespace: coinpoet-prod
+      name: repo-gpupoet-app
+      namespace: gpupoet-prod
     - kind: ImageRepository
       name: repo-ramblefeed-app
       namespace: ramblefeed-prod

@@ -32,7 +32,8 @@ groups:
           summary: Missing metrics. Check https://gpupoet.com/ops/metrics
 
       - alert: CacheRevalidationJobFailure
-        # Alert when the cache revalidation job fails (coinpoet_last_job_success = 0)
+        # Alert when the cache revalidation job fails
+        # NOTE: metric name still uses coinpoet prefix - will be renamed in app code separately
         expr: coinpoet_last_job_success{instance="gpupoet.com"} == 0
         # Wait 5 minutes to avoid false positives during brief metrics collection issues
         for: 5m

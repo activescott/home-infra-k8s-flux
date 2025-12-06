@@ -4,4 +4,4 @@ resources:
   - ../../base/coinpoet-redirect/
   - certificate.yaml
   - ingress.yaml
-namespace: coinpoet-prod
+namespace: gpupoet-prod

@@ -13,12 +13,10 @@ spec:
         app: app
         app.activescott.com/component: app
     spec:
-      imagePullSecrets:
-        - name: github-container-registry-secret
       containers:
         - name: app
           # NOTE: this image is replaced with an images transformer in the overlay
-          image: coinpoet-image-app
+          image: gpupoet-image-app
 
           # https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
           resources:
@@ -89,14 +87,14 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 5
 
           livenessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10

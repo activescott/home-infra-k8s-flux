@@ -4,7 +4,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: coinpoet-redirect-ingress
-  namespace: coinpoet-prod
+  namespace: gpupoet-prod
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-production"
 spec:

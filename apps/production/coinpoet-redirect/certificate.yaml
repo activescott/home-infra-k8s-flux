@@ -3,7 +3,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: coinpoet-com-tls
-  namespace: coinpoet-prod
+  namespace: gpupoet-prod
 spec:
   secretName: coinpoet-com-tls
   issuerRef:

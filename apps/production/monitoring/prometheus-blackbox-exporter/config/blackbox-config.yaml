@@ -1,6 +1,6 @@
 # see https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md
 modules:
-  coinpoet_cache_updater:
+  gpupoet_cache_updater:
     prober: http
 
     # how long blackbox-exporter waits (there is another timeout in prometheus for it's probe too)

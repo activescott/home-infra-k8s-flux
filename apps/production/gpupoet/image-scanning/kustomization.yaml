@@ -15,7 +15,7 @@ patches:
     patch: |-
       - op: replace
         path: /metadata/name
-        value: repo-coinpoet-app
+        value: repo-gpupoet-app
       - op: replace
         path: /spec/image
         value: ghcr.io/activescott/gpu-agent/app
@@ -27,10 +27,10 @@ patches:
     patch: |-
       - op: replace
         path: /metadata/name
-        value: policy-coinpoet-app
+        value: policy-gpupoet-app
       - op: replace
         path: /spec/imageRepositoryRef/name
-        value: repo-coinpoet-app
+        value: repo-gpupoet-app
 
   # Customize ImageUpdateAutomation
   - target:
@@ -39,4 +39,4 @@ patches:
     patch: |-
       - op: replace
         path: /metadata/name
-        value: update-coinpoet-app
+        value: update-gpupoet-app
