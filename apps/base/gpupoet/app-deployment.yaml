@@ -22,7 +22,7 @@ spec:
           resources:
             limits:
               cpu: "1"
-              memory: "1Gi"
+              memory: "2Gi"
             requests:
               cpu: "0.6"
               memory: "0.6Gi"
@@ -87,14 +87,15 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/readiness
               port: 3000
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            # next is a pig
+            initialDelaySeconds: 30
+            periodSeconds: 10
 
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /api/health/liveness
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
