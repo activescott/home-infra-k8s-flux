@@ -49,7 +49,7 @@ secretGenerator:
 images:
   - name: gpupoet-image-app
     newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:name"}
-    newTag: v202512170749 # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:tag"}
+    newTag: v202512181948 # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:tag"}
   - name: gpupoet-image-db
     newName: postgres
     newTag: "17"
