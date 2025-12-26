@@ -8,6 +8,7 @@ resources:
   - www-redirect-middleware.yaml
   - www-redirect-ingress.yaml
   - image-scanning/
+  - indexnow-pv.yaml
 patches:
   - path: patch-app-ingress.yaml
     target:
@@ -30,6 +31,26 @@ patches:
     target:
       kind: Deployment
       name: app
+  # IndexNow: Patch PVC to use production PV
+  - patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: local-path
+      - op: replace
+        path: /spec/volumeName
+        value: coinpoet-prod-indexnow-pv
+    target:
+      kind: PersistentVolumeClaim
+      name: indexnow-pvc
+  # IndexNow: Add imagePullSecrets to CronJob
+  - patch: |-
+      - op: add
+        path: /spec/jobTemplate/spec/template/spec/imagePullSecrets
+        value:
+          - name: github-container-registry-secret
+    target:
+      kind: CronJob
+      name: indexnow-notifier
 namespace: gpupoet-prod
 secretGenerator:
   # db
@@ -40,6 +61,7 @@ secretGenerator:
   - name: app-creds
     envs:
       - .env.secret.app.encrypted
+      - .env.secret.indexnow
   # image pull secret:
   - name: github-container-registry-secret
     type: kubernetes.io/dockerconfigjson
@@ -53,3 +75,6 @@ images:
   - name: gpupoet-image-db
     newName: postgres
     newTag: "17"
+  - name: indexnow-notifier-image-placeholder
+    newName: ghcr.io/activescott/gpu-agent/indexnow-notifier
+    newTag: latest
