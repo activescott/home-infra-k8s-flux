@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        app.activescott.com/component: app
+    spec:
+      containers:
+        - name: searxng
+          image: searxng/searxng:2026.1.10-44405bd03
+          ports:
+            - containerPort: 8080
+              name: web-ui
+          env:
+            - name: SEARXNG_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SEARXNG_SECRET
+            - name: OXYLABS_PROXY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: OXYLABS_PROXY_URL
+            - name: SEARXNG_BASE_URL
+              value: "https://searxng.local"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/searxng/settings.yml
+              subPath: settings.yml
+              readOnly: true
+            - name: cache
+              mountPath: /var/cache/searxng
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: searxng-config
+        - name: cache
+          emptyDir: {}

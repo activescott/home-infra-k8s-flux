@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    # Reference middleware: <namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: searxng-prod-basic-auth@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - sear.scott.willeke.com
+      secretName: sear-scott-willeke-com-tls
+  rules:
+    - host: sear.scott.willeke.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  name: web-ui

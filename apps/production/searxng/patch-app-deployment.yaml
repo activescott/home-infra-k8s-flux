@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  template:
+    spec:
+      containers:
+        - name: searxng
+          env:
+            - name: SEARXNG_BASE_URL
+              value: "https://sear.scott.willeke.com"
+      volumes:
+        - name: cache
+          hostPath:
+            path: /mnt/thedatapool/app-data/searxng/cache
