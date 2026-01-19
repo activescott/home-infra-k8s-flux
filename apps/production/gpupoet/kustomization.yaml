@@ -61,7 +61,6 @@ secretGenerator:
   - name: app-creds
     envs:
       - .env.secret.app.encrypted
-      - .env.secret.indexnow.encrypted
   # image pull secret:
   - name: github-container-registry-secret
     type: kubernetes.io/dockerconfigjson
