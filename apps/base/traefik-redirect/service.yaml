@@ -1,0 +1,15 @@
+# Traefik requires a discoverable service even when using middleware redirects.
+# This service points to the sleeper pod but traffic never reaches it -
+# the middleware redirects before the backend is contacted.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redirect-service
+spec:
+  type: ClusterIP
+  selector:
+    app: redirect-sleeper
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 999 # Intentionally wrong - traffic should never reach here

@@ -4,17 +4,17 @@ resources:
   - ../../base/traefik-redirect/
   - ./namespace.yaml
 
-namespace: activescott-redirect
-namePrefix: activescott-
+namespace: oksana-willeke-redirect
+namePrefix: oksana-willeke-
 
 configMapGenerator:
   - name: redirect-vars
     literals:
-      - HOST=activescott.com
-      - REGEX=^https?://activescott\.com/.*
-      - REPLACEMENT=https://scott.willeke.com/
-      - MIDDLEWARE_REF=activescott-redirect-activescott-redirect-middleware@kubernetescrd
-      - TLS_SECRET=activescott-com-tls
+      - HOST=www.oksana.willeke.com
+      - REGEX=^https?://www\.oksana\.willeke\.com/.*
+      - REPLACEMENT=https://oxanawillekecoaching.com/
+      - MIDDLEWARE_REF=oksana-willeke-redirect-oksana-willeke-redirect-middleware@kubernetescrd
+      - TLS_SECRET=www-oksana-willeke-com-tls
 
 # Replacements inject ConfigMap values into Middleware and Ingress
 replacements:
@@ -70,9 +70,7 @@ replacements:
         fieldPaths:
           - spec.tls.0.secretName
 
-# NOTE: adding `managedByLabel` here causes a label like `app.kubernetes.io/managed-by: kustomize-(devel)` to be added and `kustomize-(devel)` gets rejected by k8s server side.
 buildMetadata: [originAnnotations, transformerAnnotations]
 
 commonLabels:
-  # use `app.activescott.com/name` to avoid conflicts with other people's resources using "app" label.
-  app.activescott.com/name: activescott-redirect
+  app.activescott.com/name: oksana-willeke-redirect
