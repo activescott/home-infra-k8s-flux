@@ -6,7 +6,6 @@ resources:
   - ./home-assistant
   - ./photoprism
   - ./monitoring
-  - ./hoarder
   - ./plex
   - ./scott-willeke-com
   - ./gpupoet
