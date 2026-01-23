@@ -19,6 +19,9 @@ spec:
           image: tinkerbell-image-app
           ports:
             - containerPort: 3100
+          env:
+            - name: PORT
+              value: "3100"
           envFrom:
             - secretRef:
                 name: app-creds
