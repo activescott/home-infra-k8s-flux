@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: searxng-config
+data:
+  settings.yml: |
+    use_default_settings: true
+
+    general:
+      instance_name: "Tinkerbell SearXNG"
+      enable_metrics: false
+
+    search:
+      safe_search: 0
+      autocomplete: ""
+      formats:
+        - html
+        - json
+
+    server:
+      secret_key: "${SEARXNG_SECRET}"
+      limiter: false
+      public_instance: false
+      image_proxy: false
+      method: GET
+
+    outgoing:
+      proxies:
+        all://:
+          - http://${OXYLABS_USERNAME}-cc-US:${OXYLABS_PASSWORD}@pr.oxylabs.io:7777
+      extra_proxy_timeout: 10
+      request_timeout: 15.0
+      pool_maxsize: 20
+      enable_http2: true
+
+    engines:
+      # Enable the engines we want to use
+      - name: duckduckgo
+        disabled: false
+      - name: google
+        disabled: false
+      - name: bing
+        disabled: false
+      - name: brave
+        disabled: false
+      - name: qwant
+        disabled: false
+      - name: startpage
+        disabled: false
+      # Disable other engines
+      - name: wikipedia
+        disabled: true

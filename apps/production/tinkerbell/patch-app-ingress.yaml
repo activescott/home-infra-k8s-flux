@@ -1,0 +1,13 @@
+# The base uses ingressClassName: nginx (minikube's default ingress controller).
+# By removing it here, Traefik (k3s default) will handle the ingress instead.
+- op: remove
+  path: /spec/ingressClassName
+- op: replace
+  path: /spec/rules/0/host
+  value: tinkerbellbot.com
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - tinkerbellbot.com
+      secretName: tinkerbellbot-com-tls

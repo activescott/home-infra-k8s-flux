@@ -1,0 +1,6 @@
+- op: replace
+  path: /spec/volumeClaimTemplates/0/spec/storageClassName
+  value: local-path
+- op: add
+  path: /spec/volumeClaimTemplates/0/spec/volumeName
+  value: tinkerbell-prod-db-pv-data

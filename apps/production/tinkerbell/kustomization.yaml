@@ -1,0 +1,42 @@
+resources:
+  - namespace.yaml
+  - db-pv.yaml
+  - ../../base/tinkerbell/
+  - app-ingress-certificate.yaml
+  - image-scanning/
+patches:
+  - path: patch-app-deployment.yaml
+    target:
+      kind: Deployment
+      name: app
+  - path: patch-app-ingress.yaml
+    target:
+      kind: Ingress
+      name: app-ingress
+  - path: patch-db-statefulset.yaml
+    target:
+      kind: StatefulSet
+      name: db
+namespace: tinkerbell-prod
+secretGenerator:
+  # db
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
+  # app (includes SEARXNG_SECRET, OXYLABS_* for searxng)
+  - name: app-creds
+    envs:
+      - .env.secret.app.encrypted
+  # image pull secret:
+  - name: github-container-registry-secret
+    type: kubernetes.io/dockerconfigjson
+    files:
+      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
+# the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+images:
+  - name: tinkerbell-image-app
+    newName: ghcr.io/activescott/tinkerbell/app # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:name"}
+    newTag: v0.1.0 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
+  - name: tinkerbell-image-db
+    newName: postgres
+    newTag: "18"

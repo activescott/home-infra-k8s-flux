@@ -1,0 +1,13 @@
+# Certificate for tinkerbellbot.com
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tinkerbellbot-com-tls
+  namespace: tinkerbell-prod
+spec:
+  secretName: tinkerbellbot-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - tinkerbellbot.com
