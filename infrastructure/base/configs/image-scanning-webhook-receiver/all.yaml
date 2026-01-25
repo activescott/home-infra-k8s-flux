@@ -91,3 +91,6 @@ spec:
     - kind: ImageRepository
       name: repo-ramblefeed-app
       namespace: ramblefeed-prod
+    - kind: ImageRepository
+      name: repo-tinkerbell-app
+      namespace: tinkerbell-prod

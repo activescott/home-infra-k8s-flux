@@ -66,6 +66,9 @@ kubectl get -A imagerepository
 # list the tags found in an image repository:
 kubectl get -n tayle-prod -o=yaml imagerepository/repo-tayle-worker
 
+# reconcile an image repository:
+flux -n tinkerbell-prod reconcile image repository repo-tinkerbell-app
+
 # a handy way to do a drunrun on the kustomize (this prints a lot of warnings when it works but returns non-zero as long as there are no errors):
 kubectl kustomize apps/production | kubectl apply --dry-run='server' -f -
 ```

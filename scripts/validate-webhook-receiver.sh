@@ -18,45 +18,15 @@ kubectl_context=nas
 # Extract all ImageRepository resources from kustomized apps
 get_image_repositories_from_apps() {
   kubectl --context "$kubectl_context" kustomize "$REPO_ROOT/apps/production" 2>/dev/null | \
-    awk '
-      /^kind: ImageRepository$/ {
-        in_repo=1
-        name=""
-        ns=""
-        next
-      }
-      in_repo && /^  name:/ { name=$2; next }
-      in_repo && /^  namespace:/ { ns=$2; next }
-      in_repo && /^[^ ]/ {
-        if (name != "" && ns != "") {
-          print ns "/" name
-        }
-        in_repo=0
-        name=""
-        ns=""
-      }
-      END {
-        if (name != "" && ns != "") {
-          print ns "/" name
-        }
-      }
-    ' | sort | uniq
+    yq -r 'select(.kind == "ImageRepository") | .metadata.namespace + "/" + .metadata.name' | \
+    grep -v '^---$' | sort | uniq
 }
 
 # Extract ImageRepository references from the webhook Receiver
 get_image_repositories_from_receiver() {
   kubectl --context "$kubectl_context" kustomize "$REPO_ROOT/infrastructure/prod/configs" 2>/dev/null | \
-    awk '
-      /^kind: Receiver$/ { in_receiver=1; next }
-      in_receiver && /^  resources:/ { in_resources=1; next }
-      in_receiver && in_resources && /^  - kind: ImageRepository/ {
-        getline; name=$2
-        getline; ns=$2
-        print ns "/" name
-        next
-      }
-      in_receiver && /^[^ ]/ { exit }
-    ' | sort | uniq
+    yq -r 'select(.kind == "Receiver") | .spec.resources[] | select(.kind == "ImageRepository") | .namespace + "/" + .name' | \
+    grep -v '^---$' | sort | uniq
 }
 
 echo "Validating webhook receiver configuration..."
@@ -78,25 +48,27 @@ if [ -z "$MISSING" ] && [ -z "$EXTRA" ]; then
   exit 0
 fi
 
-# Print warnings (not errors - we don't want to fail the commit)
+exit_code=0
+
 if [ -n "$MISSING" ]; then
-  echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-  echo -e "${YELLOW}⚠️  WARNING: ImageRepositories missing from webhook receiver!${RESET}"
-  echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+  echo -e "${RED}ERROR: ImageRepositories missing from webhook receiver!${RESET}"
+  echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
   echo
-  echo -e "${YELLOW}The following ImageRepositories will NOT receive webhook updates:${RESET}"
+  echo -e "${RED}The following ImageRepositories will NOT receive webhook updates:${RESET}"
   echo
   while IFS= read -r repo; do
-    [ -n "$repo" ] && echo -e "  ${YELLOW}✗ $repo${RESET}"
+    [ -n "$repo" ] && echo -e "  ${RED}✗ $repo${RESET}"
   done <<< "$MISSING"
   echo
-  echo -e "${YELLOW}To fix: Add these to infrastructure/base/configs/image-scanning-webhook-receiver/all.yaml${RESET}"
-  echo -e "${YELLOW}under the Receiver resource's spec.resources list${RESET}"
+  echo -e "${RED}To fix: Add these to infrastructure/base/configs/image-scanning-webhook-receiver/all.yaml${RESET}"
+  echo -e "${RED}under the Receiver resource's spec.resources list${RESET}"
   echo
+  exit_code=1
 fi
 
 if [ -n "$EXTRA" ]; then
-  echo -e "${YELLOW}⚠️  WARNING: Extra ImageRepositories in webhook receiver${RESET}"
+  echo -e "${YELLOW}WARNING: Extra ImageRepositories in webhook receiver${RESET}"
   echo
   echo -e "${YELLOW}The following are registered but don't exist:${RESET}"
   echo
@@ -108,5 +80,4 @@ if [ -n "$EXTRA" ]; then
   echo
 fi
 
-# Exit 0 so we don't fail commits, just warn
-exit 0
+exit "$exit_code"
