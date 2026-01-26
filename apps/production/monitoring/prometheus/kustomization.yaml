@@ -12,14 +12,20 @@ patches:
 
 secretGenerator:
   - name: prometheus-secrets
+    options:
+      disableNameSuffixHash: true
     envs:
       - .env.secret.prometheus-self-scrape.encrypted
   - name: alertmanager-secrets
+    options:
+      disableNameSuffixHash: true
     envs:
       - .env.secret.alertmanager.encrypted
 
 configMapGenerator:
   - name: prometheus-web-config
+    options:
+      disableNameSuffixHash: true
     files:
       - web.yaml
 
