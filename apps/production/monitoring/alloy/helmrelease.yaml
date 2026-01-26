@@ -1,0 +1,94 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: monitoring
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: alloy
+      version: "1.5.2"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: monitoring
+      interval: 24h
+  values:
+    alloy:
+      # Alloy log collection pipeline:
+      #
+      # 1. discovery.kubernetes - Queries the K8s API to find all running pods.
+      #
+      # 2. discovery.relabel - Maps verbose internal K8s metadata labels to clean,
+      #    short names (e.g. __meta_kubernetes_namespace -> namespace). These become
+      #    the label dimensions searchable in Loki/Grafana, enabling queries like
+      #    {namespace="gpupoet-prod", app="gpupoet"}.
+      #
+      # 3. loki.source.kubernetes - Tails container logs from the discovered pods
+      #    (via the K8s API, similar to `kubectl logs -f`) and attaches the
+      #    relabeled metadata to each log line.
+      #
+      # 4. loki.write - Pushes labeled log lines to Loki's HTTP API.
+      configMap:
+        content: |
+          // Stage 1: Discover all pods via the Kubernetes API
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          // Stage 2: Relabel raw K8s metadata into clean Loki labels
+          discovery.relabel "pods" {
+            targets = discovery.kubernetes.pods.targets
+
+            rule {
+              source_labels = ["__meta_kubernetes_pod_node_name"]
+              target_label  = "__host__"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_label_app"]
+              target_label  = "app"
+            }
+          }
+
+          // Stage 3: Tail container logs from discovered pods
+          loki.source.kubernetes "pods" {
+            targets    = discovery.relabel.pods.output
+            forward_to = [loki.write.default.receiver]
+          }
+
+          // Stage 4: Push labeled log lines to Loki
+          loki.write "default" {
+            endpoint {
+              url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+            }
+          }
+
+    controller:
+      type: daemonset
+
+    serviceAccount:
+      create: true
+
+    rbac:
+      create: true
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"

@@ -21,7 +21,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: grafana-service
-            # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
+            # Service created by the grafana Helm chart
+            name: grafana
             port:
-              name: web-ui
+              number: 80

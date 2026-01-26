@@ -1,0 +1,34 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  values:
+    serverFiles:
+      alerting_rules_gpupoet.yml:
+        groups:
+          - name: gpupoet
+            rules:
+              - alert: ProbeFailure
+                expr: 'up{instance="gpupoet.com"} < 1.0'
+                for: 60m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Probe failure. Check https://gpupoet.com/ops/metrics
+              - alert: MissingMetricsFailure
+                expr: 'scrape_samples_scraped{instance="gpupoet.com"} < 7.0'
+                for: 60m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Missing metrics. Check https://gpupoet.com/ops/metrics
+              - alert: CacheRevalidationJobFailure
+                expr: 'coinpoet_last_job_success{instance="gpupoet.com"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Cache revalidation job failed
+                  description: The gpupoet cache revalidation cronjob has failed. Check the app logs and https://gpupoet.com/ops/metrics for details.

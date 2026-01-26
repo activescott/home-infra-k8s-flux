@@ -1,0 +1,33 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  values:
+    serverFiles:
+      alerting_rules_tayle.yml:
+        groups:
+          - name: tayle
+            rules:
+              - alert: PodNotReady
+                expr: 'kube_pod_status_ready{exported_namespace="tayle-prod",pod!~"^db-backup-.*",condition="false"} > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Tayle Pod not ready. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+              - alert: DeploymentNotAvailable
+                expr: 'kube_deployment_status_condition{exported_namespace="tayle-prod",condition="Available",status="false"} > 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Tayle Deployment not available. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+              - alert: StatefulSetNotReady
+                expr: 'kube_statefulset_status_replicas_ready{exported_namespace="tayle-prod"} == 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Tayle StatefulSet has no ready replicas. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status

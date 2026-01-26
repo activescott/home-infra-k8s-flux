@@ -1,0 +1,7 @@
+resources:
+  - ./grafana-helmrepository.yaml
+  - ./prometheus-community-helmrepository.yaml
+
+namespace: monitoring
+
+buildMetadata: [originAnnotations, transformerAnnotations]

@@ -67,7 +67,10 @@ kubectl get -A imagerepository
 kubectl get -n tayle-prod -o=yaml imagerepository/repo-tayle-worker
 
 # reconcile an image repository:
+flux -n gpupoet-prod reconcile image repository repo-gpupoet-app
 flux -n tinkerbell-prod reconcile image repository repo-tinkerbell-app
+flux -n tayle-prod reconcile image repository repo-tayle-app
+flux -n tayle-prod reconcile image repository repo-tayle-worker
 
 # a handy way to do a drunrun on the kustomize (this prints a lot of warnings when it works but returns non-zero as long as there are no errors):
 kubectl kustomize apps/production | kubectl apply --dry-run='server' -f -

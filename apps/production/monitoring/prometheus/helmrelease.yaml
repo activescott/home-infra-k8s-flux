@@ -1,0 +1,139 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: prometheus
+      version: "28.6.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: monitoring
+      interval: 24h
+  values:
+    # --- Prometheus Server ---
+    server:
+      enabled: true
+      retention: "30d"
+      retentionSize: "100GB"
+
+      persistentVolume:
+        enabled: true
+        existingClaim: prometheus-storage-pvc
+
+      securityContext:
+        runAsUser: 4030
+        runAsGroup: 4030
+        fsGroup: 4030
+
+      extraArgs:
+        web.config.file: /etc/prometheus-web/web.yaml
+        web.enable-lifecycle: ""
+
+      extraConfigmapMounts:
+        - name: prometheus-web-config
+          mountPath: /etc/prometheus-web
+          configMap: prometheus-web-config
+          readOnly: true
+
+      extraSecretMounts:
+        - name: prometheus-scrape-secrets
+          mountPath: /etc/prometheus/secrets
+          secretName: prometheus-secrets
+          readOnly: true
+
+      resources:
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+
+      # Ingress managed separately via raw K8s Ingress + cert-manager Certificate
+      ingress:
+        enabled: false
+
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+
+    # --- AlertManager ---
+    alertmanager:
+      enabled: true
+
+      persistence:
+        enabled: false
+
+      extraSecretMounts:
+        - name: alertmanager-telegram-secret
+          mountPath: /etc/alertmanager/secrets
+          secretName: alertmanager-secrets
+          readOnly: true
+
+      resources:
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+        requests:
+          cpu: "250m"
+          memory: "250Mi"
+
+    # --- AlertManager Configuration ---
+    alertmanagerFiles:
+      alertmanager.yml:
+        global:
+          resolve_timeout: 5m
+        route:
+          receiver: on_call_operator_default
+          group_by:
+            - alertname
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 4h
+        inhibit_rules:
+          - source_match:
+              severity: critical
+            target_match:
+              severity: warning
+            equal:
+              - alertname
+              - job
+              - instance
+        receivers:
+          - name: on_call_operator_default
+            telegram_configs:
+              - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+                send_resolved: true
+                chat_id: 510755639
+
+    # --- Alert Rules ---
+    # Alerting rules are managed in separate files and merged via kustomize patches:
+    #   alerting-rules-gpupoet.yaml
+    #   alerting-rules-tayle.yaml
+
+    # --- Extra Scrape Configs ---
+    extraScrapeConfigs: |
+      - job_name: "gpupoet_cache_metrics"
+        scrape_interval: 10s
+        scrape_timeout: 10s
+        metrics_path: "/ops/metrics"
+        static_configs:
+          - targets: ["gpupoet.com"]
+      - job_name: "prometheus self scrape"
+        basic_auth:
+          username_file: /etc/prometheus/secrets/prom_scrape_username
+          password_file: /etc/prometheus/secrets/prom_scrape_password
+        static_configs:
+          - targets: ["localhost:9090"]
+
+    # --- Sub-charts ---
+    kube-state-metrics:
+      enabled: true
+
+    prometheus-node-exporter:
+      enabled: false
+
+    prometheus-pushgateway:
+      enabled: false

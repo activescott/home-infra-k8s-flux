@@ -1,31 +1,28 @@
 resources:
-  - ./authorize-prometheus-to-k8s.yaml
-  - ./prometheus-statefulset.yaml
-  - ./prometheus-service.yaml
   - ./certificate.yaml
   - ./prometheus-ingress.yaml
+  - ./prometheus-pv.yaml
+  - ./helmrelease.yaml
+
+# Alerting rules are kept in separate files for easy editing.
+# Each file is a strategic merge patch that adds rules to the HelmRelease's serverFiles.
+patches:
+  - path: alerting-rules-gpupoet.yaml
+  - path: alerting-rules-tayle.yaml
 
 secretGenerator:
   - name: prometheus-secrets
     envs:
-      # secrets for the prometheus scrape config:
       - .env.secret.prometheus-self-scrape.encrypted
+  - name: alertmanager-secrets
+    envs:
+      - .env.secret.alertmanager.encrypted
 
-# kustomize help on configMapGenerator: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_configmapgenerator_
 configMapGenerator:
-  - name: prometheus-config
+  - name: prometheus-web-config
     files:
-      - config/prometheus.yaml
-      - config/web.yaml
-      # scrape configs:
-      - config/scrape-configs.gpupoet.yaml
-      - config/scrape-configs.prometheus.yaml
-      - config/alerting-rules.gpupoet.yaml
-      - config/alerting-rules.tayle.yaml
+      - web.yaml
 
 labels:
   - pairs:
-      # use `app.activescott.com/name` to avoid conflicts with other people's resources using "app" label.
       app.activescott.com/name: prometheus
-      # NOTE: tenet is specified in the overlays
-      #app.activescott.com/tenant:

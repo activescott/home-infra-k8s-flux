@@ -1,0 +1,82 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: monitoring
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: loki
+      version: "6.51.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: monitoring
+      interval: 24h
+  values:
+    deploymentMode: SingleBinary
+
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      schemaConfig:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+      storage:
+        type: filesystem
+      limits_config:
+        retention_period: 30d
+      compactor:
+        retention_enabled: true
+
+    singleBinary:
+      replicas: 1
+      persistence:
+        storageClass: ""
+        size: 50Gi
+        existingClaim: loki-storage-pvc
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+
+    # Disable components not needed in SingleBinary mode
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    backend:
+      replicas: 0
+
+    gateway:
+      enabled: false
+
+    # Disable minio - we use local filesystem
+    minio:
+      enabled: false
+
+    # Disable self-monitoring
+    monitoring:
+      selfMonitoring:
+        enabled: false
+      lokiCanary:
+        enabled: false
+
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+
+    test:
+      enabled: false

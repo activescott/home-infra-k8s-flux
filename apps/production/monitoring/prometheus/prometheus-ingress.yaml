@@ -20,7 +20,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: prometheus-service
-            # port of the referenced service. A port name or port number is required for a IngressServiceBackend.
+            # Service created by the prometheus Helm chart
+            name: prometheus-server
             port:
-              name: web-ui
+              number: 80

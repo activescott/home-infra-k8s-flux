@@ -1,0 +1,9 @@
+resources:
+  - ./helmrelease.yaml
+
+namespace: monitoring
+
+buildMetadata: [originAnnotations, transformerAnnotations]
+
+commonLabels:
+  app.activescott.com/name: alloy

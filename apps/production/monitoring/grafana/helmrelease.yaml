@@ -1,0 +1,66 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: grafana
+      version: "10.5.12"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: monitoring
+      interval: 24h
+  values:
+    replicas: 1
+
+    persistence:
+      enabled: true
+      existingClaim: grafana-storage-pvc
+
+    securityContext:
+      runAsUser: 4020
+      runAsGroup: 4020
+      fsGroup: 4020
+
+    # Provision both Prometheus and Loki datasources
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            url: http://prometheus-server.monitoring.svc:80
+            access: proxy
+            isDefault: true
+          - name: Loki
+            type: loki
+            url: http://loki.monitoring.svc:3100
+            access: proxy
+
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "750Mi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+
+    # Ingress managed separately via raw K8s Ingress + cert-manager Certificate
+    ingress:
+      enabled: false
+
+    # Pod annotations for Prometheus scraping
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "3000"
+
+    # The Helm chart creates a service named "grafana" on port 80 by default
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 80
+      targetPort: 3000
