@@ -23,7 +23,10 @@ spec:
       # 2. discovery.relabel - Maps verbose internal K8s metadata labels to clean,
       #    short names (e.g. __meta_kubernetes_namespace -> namespace). These become
       #    the label dimensions searchable in Loki/Grafana, enabling queries like
-      #    {namespace="gpupoet-prod", app="gpupoet"}.
+      #    {namespace="gpupoet-prod", app="app"}.
+      #    A synthetic "service_name" label is also created by joining
+      #    namespace + app (e.g. "tinkerbell-prod/app") for use in Grafana's
+      #    service dropdown where bare "app" would be ambiguous.
       #
       # 3. loki.source.kubernetes - Tails container logs from the discovered pods
       #    (via the K8s API, similar to `kubectl logs -f`) and attaches the
@@ -60,6 +63,14 @@ spec:
             rule {
               source_labels = ["__meta_kubernetes_pod_label_app"]
               target_label  = "app"
+            }
+            // Build a "service_name" label from namespace/app so that
+            // Grafana's service dropdown shows e.g. "tinkerbell-prod/app"
+            // instead of a single ambiguous "app" entry.
+            rule {
+              source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app"]
+              separator     = "/"
+              target_label  = "service_name"
             }
           }
 
