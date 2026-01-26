@@ -32,7 +32,6 @@ spec:
 
       extraArgs:
         web.config.file: /etc/prometheus-web/web.yaml
-        web.enable-lifecycle: ""
 
       extraConfigmapMounts:
         - name: prometheus-web-config
