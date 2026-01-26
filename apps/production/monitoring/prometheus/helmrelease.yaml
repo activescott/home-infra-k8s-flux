@@ -127,6 +127,13 @@ spec:
         static_configs:
           - targets: ["localhost:9090"]
 
+    # Disable configmap-reload sidecar — web.yaml basic auth blocks its
+    # /-/reload calls (401). Config changes come via HelmRelease updates
+    # which trigger pod restarts anyway.
+    configmapReload:
+      prometheus:
+        enabled: false
+
     # --- Sub-charts ---
     kube-state-metrics:
       enabled: true
