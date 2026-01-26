@@ -1,0 +1,10 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: prometheus-basic-auth
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/basicauth/
+  basicAuth:
+    secret: prometheus-basic-auth
+    removeHeader: true

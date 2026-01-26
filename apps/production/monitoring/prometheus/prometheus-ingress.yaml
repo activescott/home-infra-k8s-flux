@@ -5,6 +5,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: prometheus-ingress
+  annotations:
+    # to reference the middleware use:  <middleware-namespace>-<middleware-name>@kubernetescrd
+    #   per https://doc.traefik.io/traefik/v2.2/middlewares/overview/#provider-namespace
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-prometheus-basic-auth@kubernetescrd
 spec:
   tls:
   # The patches in kustomize are ugly here (the patch is basically the whole Ingress). This could probably be made cleaner using a configMap + configMapGenerator or something to grab these values from a simple property file or labels or something

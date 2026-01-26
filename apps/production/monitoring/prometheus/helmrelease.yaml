@@ -30,21 +30,6 @@ spec:
         runAsGroup: 4030
         fsGroup: 4030
 
-      extraArgs:
-        web.config.file: /etc/prometheus-web/web.yaml
-
-      extraConfigmapMounts:
-        - name: prometheus-web-config
-          mountPath: /etc/prometheus-web
-          configMap: prometheus-web-config
-          readOnly: true
-
-      extraSecretMounts:
-        - name: prometheus-scrape-secrets
-          mountPath: /etc/prometheus/secrets
-          secretName: prometheus-secrets
-          readOnly: true
-
       resources:
         limits:
           cpu: "1"
@@ -121,15 +106,11 @@ spec:
         static_configs:
           - targets: ["gpupoet.com"]
       - job_name: "prometheus self scrape"
-        basic_auth:
-          username_file: /etc/prometheus/secrets/prom_scrape_username
-          password_file: /etc/prometheus/secrets/prom_scrape_password
         static_configs:
           - targets: ["localhost:9090"]
 
-    # Disable configmap-reload sidecar — web.yaml basic auth blocks its
-    # /-/reload calls (401). Config changes come via HelmRelease updates
-    # which trigger pod restarts anyway.
+    # Disable configmap-reload sidecar — config changes come via HelmRelease
+    # updates which trigger pod restarts anyway.
     configmapReload:
       prometheus:
         enabled: false

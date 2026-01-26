@@ -3,6 +3,7 @@ resources:
   - ./prometheus-ingress.yaml
   - ./prometheus-pv.yaml
   - ./helmrelease.yaml
+  - ./basic-auth-middleware.yaml
 
 # Alerting rules are kept in separate files for easy editing.
 # Each file is a strategic merge patch that adds rules to the HelmRelease's serverFiles.
@@ -11,23 +12,16 @@ patches:
   - path: alerting-rules-tayle.yaml
 
 secretGenerator:
-  - name: prometheus-secrets
-    options:
-      disableNameSuffixHash: true
-    envs:
-      - .env.secret.prometheus-self-scrape.encrypted
   - name: alertmanager-secrets
     options:
       disableNameSuffixHash: true
     envs:
       - .env.secret.alertmanager.encrypted
-
-configMapGenerator:
-  - name: prometheus-web-config
+  - name: prometheus-basic-auth
     options:
       disableNameSuffixHash: true
     files:
-      - web.yaml
+      - users=basic-auth-users
 
 labels:
   - pairs:
