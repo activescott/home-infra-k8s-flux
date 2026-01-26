@@ -26,6 +26,11 @@ spec:
       runAsGroup: 4020
       fsGroup: 4020
 
+    # Disable the init container that chowns /var/lib/grafana — the hostPath
+    # is already owned by 4020:4020 and the init container lacks permission.
+    initChownData:
+      enabled: false
+
     # Provision both Prometheus and Loki datasources
     datasources:
       datasources.yaml:

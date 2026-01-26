@@ -16,6 +16,9 @@ See [Flux Troubleshooting Cheatsheet](https://fluxcd.io/flux/cheatsheets/trouble
 # usually most informative:
 flux get kustomizations --watch
 
+# very informative too, but very detailed:
+flux logs -f
+
 # force reconciliation to source:
 flux reconcile kustomization flux-system --with-source
 

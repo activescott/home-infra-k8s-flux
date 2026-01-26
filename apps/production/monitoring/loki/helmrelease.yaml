@@ -36,6 +36,7 @@ spec:
         retention_period: 30d
       compactor:
         retention_enabled: true
+        delete_request_store: filesystem
 
     singleBinary:
       replicas: 1
