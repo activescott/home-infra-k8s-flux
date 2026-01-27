@@ -71,8 +71,9 @@ spec:
     monitoring:
       selfMonitoring:
         enabled: false
-      lokiCanary:
-        enabled: false
+
+    lokiCanary:
+      enabled: false
 
     chunksCache:
       enabled: false
