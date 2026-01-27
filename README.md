@@ -161,16 +161,50 @@ Get the ReceiverURL by running `kubectl -n flux-system get receiver` it will pri
 
 per https://fluxcd.io/flux/guides/webhook-receivers/
 
+### Restoring a Cluster from Flux Repo
+
+You can use the flux bootstrap at anytime to re-provision the cluster with everything in flux. I've done this on a clean k3s a few times now and it works flawlessly:
+
+
+```sh
+  flux bootstrap github \
+  --token-auth \
+  --owner=activescott \
+  --repository=home-infra-k8s-flux \
+  --branch=main \
+  --path=clusters/nas1 \
+  --personal \
+  --components-extra=image-reflector-controller,image-automation-controller                                                                                                                                                                                                                                                                                                                  
+```
+
+Since I use SOPS to encrypt secrets and keep them in git, need to provision that root key
+```sh
+./scripts/create-sops-age-decryption-secret.sh
+```
+
+Force reconcile:
+
+```sh
+flux reconcile kustomization infra-configs
+```
+
+...that should should show some output "waiting for Kustomization reconciliation..."
+
+
+Then you can monitor with:
+
+```sh
+flux logs -f
+
+# or flux get kustomization --watch
+```
+
+Should see output lines like `Namespace/activescott-redirect created` for each flux resource as it is created. 
+
+
 ### YAML+Kustomize
 
 I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packaging up an app into an opaque package and provide it to others, but IMHO not for managing a cluster directly. When consuming apps, I prefer consuming yaml if provided, but don't mind consuming Helm.
-
-## TODO:
-
-- [x] Setup transmission with secrets
-- [x] Setup image updates for tayle: https://fluxcd.io/flux/guides/image-update/ & https://fluxcd.io/flux/components/image/imageupdateautomations/
-- [ ] Expose webhook receiver for tayle main events: https://fluxcd.io/flux/guides/webhook-receivers/
-- [ ] Setup transmission with image updates and
 
 ## Posterity / Done
 
