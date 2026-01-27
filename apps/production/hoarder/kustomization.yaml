@@ -83,10 +83,10 @@ patches:
               resources:
                 limits:
                   cpu: "5"
-                  memory: "0.5Gi"
+                  memory: "512Mi"
                 requests:
                   cpu: "0.5"
-                  memory: "0.3Gi"
+                  memory: "307Mi"
 
   # Add resource limits to meilisearch deployment:
   - target:
@@ -109,7 +109,7 @@ patches:
                   memory: "1Gi"
                 requests:
                   cpu: "0.5"
-                  memory: "0.3Gi"
+                  memory: "307Mi"
 
   # Add resource limits to web deployment:
   - target:
@@ -132,7 +132,7 @@ patches:
                   memory: "2Gi"
                 requests:
                   cpu: "0.5"
-                  memory: "0.3Gi"
+                  memory: "307Mi"
 
 images:
   - name: ghcr.io/hoarder-app/hoarder
