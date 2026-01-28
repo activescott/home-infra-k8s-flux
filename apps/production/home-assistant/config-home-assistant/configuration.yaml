@@ -43,9 +43,10 @@ homeassistant:
 http:
   use_x_forwarded_for: true
   trusted_proxies:
-    # NOTE: these are kubernetes cluster networks
-    # first 16 bits fixed: 10.42.0.0 - 10.42.255.255:
-    - 10.42.0.0/16
+    # Kubernetes cluster pod network CIDR. This may change when the cluster is reset.
+    # To find current CIDRs run:
+    #   kubectl --context nas cluster-info dump | grep -oE '(cluster-cidr|service-cidr)[^,]*'
+    - 172.16.0.0/16
 
 # Notify Groups:
 ## See https://www.home-assistant.io/integrations/notify.group/
