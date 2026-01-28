@@ -2,6 +2,7 @@
 
 import { execSync } from 'child_process';
 import { Octokit } from '@octokit/rest';
+import * as readline from 'readline';
 
 interface ImageRepository {
   name: string;
@@ -24,26 +25,98 @@ interface WebhookResult {
   hookId?: number;
 }
 
+async function promptForToken(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(prompt);
+
+    if (!process.stdin.isTTY) {
+      // Non-interactive mode - just read a line
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      rl.question('', (answer) => {
+        rl.close();
+        resolve(answer);
+      });
+      return;
+    }
+
+    // Interactive mode - hide input and show asterisks
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+
+    let token = '';
+
+    const onData = (char: string) => {
+      // Handle Enter key
+      if (char === '\n' || char === '\r') {
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        resolve(token);
+        return;
+      }
+
+      // Handle Ctrl+C
+      if (char === '\u0003') {
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener('data', onData);
+        process.stdout.write('\n');
+        process.exit(1);
+      }
+
+      // Handle backspace
+      if (char === '\u007F' || char === '\b') {
+        if (token.length > 0) {
+          token = token.slice(0, -1);
+          process.stdout.write('\b \b');
+        }
+        return;
+      }
+
+      // Regular character
+      token += char;
+      process.stdout.write('*');
+    };
+
+    process.stdin.on('data', onData);
+  });
+}
+
 class UpdateFluxImageScanningWebhooks {
   private octokit: Octokit;
   private webhookUrl: string = '';
   private webhookSecret: string = '';
   private results: WebhookResult[] = [];
 
-  constructor() {
-    const githubToken = process.env.GITHUB_TOKEN;
-    if (!githubToken) {
-      throw new Error('GITHUB_TOKEN environment variable is required');
-    }
-
+  private constructor(githubToken: string) {
     this.octokit = new Octokit({
       auth: githubToken,
     });
   }
 
+  static async create(): Promise<UpdateFluxImageScanningWebhooks> {
+    let githubToken = process.env.GITHUB_TOKEN;
+
+    if (!githubToken) {
+      console.log('GITHUB_TOKEN not found in environment.');
+      githubToken = await promptForToken('Enter GITHUB_TOKEN: ');
+
+      if (!githubToken) {
+        throw new Error('GITHUB_TOKEN is required');
+      }
+    }
+
+    return new UpdateFluxImageScanningWebhooks(githubToken);
+  }
+
   private execKubectl(command: string): string {
     try {
-      return execSync(`kubectl ${command}`, { encoding: 'utf8' });
+      return execSync(`kubectl --context nas ${command}`, { encoding: 'utf8' });
     } catch (error) {
       console.error(`Failed to execute kubectl command: ${command}`);
       throw new Error(`kubectl command failed: ${error}`);
@@ -368,6 +441,10 @@ class UpdateFluxImageScanningWebhooks {
 
 // Run the script
 if (require.main === module) {
-  const updater = new UpdateFluxImageScanningWebhooks();
-  updater.run();
+  UpdateFluxImageScanningWebhooks.create()
+    .then((updater) => updater.run())
+    .catch((error) => {
+      console.error(`❌ Error: ${error.message}`);
+      process.exit(1);
+    });
 }
