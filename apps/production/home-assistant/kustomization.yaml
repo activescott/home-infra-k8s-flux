@@ -16,3 +16,27 @@ secretGenerator:
   - name: hass-creds
     envs:
       - .env.secret.hass.encrypted
+
+configMapGenerator:
+  - name: hass-configuration
+    files:
+      - config-home-assistant/configuration.yaml
+
+patches:
+  - target:
+      kind: StatefulSet
+      name: home-assistant
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: hass-configuration
+          configMap:
+            name: hass-configuration
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: hass-configuration
+          mountPath: /config/configuration.yaml
+          subPath: configuration.yaml
+          readOnly: true
