@@ -32,7 +32,15 @@ spec:
       #    (via the K8s API, similar to `kubectl logs -f`) and attaches the
       #    relabeled metadata to each log line.
       #
-      # 4. loki.write - Pushes labeled log lines to Loki's HTTP API.
+      # 4. loki.process - Processes log lines before sending to Loki:
+      #    - Joins multi-line stack traces into single entries
+      #    - Drops health check request noise
+      #    - Parses pino JSON to extract level, msg, module
+      #    - Maps numeric pino levels to string names (info, warn, error, etc.)
+      #    - Promotes level to a Loki label for efficient filtering
+      #    - Attaches msg and module as structured metadata
+      #
+      # 5. loki.write - Pushes labeled log lines to Loki's HTTP API.
       configMap:
         content: |
           // Stage 1: Discover all pods via the Kubernetes API
@@ -77,10 +85,68 @@ spec:
           // Stage 3: Tail container logs from discovered pods
           loki.source.kubernetes "pods" {
             targets    = discovery.relabel.pods.output
+            forward_to = [loki.process.default.receiver]
+          }
+
+          // Stage 4: Process log lines (parse JSON, drop noise, extract fields)
+          loki.process "default" {
+            // Join multi-line stack traces into single log entries.
+            // Lines starting with { (JSON) or non-whitespace begin a new entry;
+            // indented continuation lines (e.g. "    at Module._compile(...)") are
+            // appended to the preceding entry.
+            stage.multiline {
+              firstline     = "^(\\{|\\S)"
+              max_wait_time = "3s"
+              max_lines     = 128
+            }
+
+            // Drop health check request logs to reduce noise.
+            // Covers tinkerbell (/health/*) and gpupoet (/api/health/*).
+            stage.drop {
+              expression = ".*GET /(api/)?health/(readiness|liveness).*"
+            }
+
+            // Parse pino JSON log lines. Extracts level, msg, module, time.
+            // Non-JSON lines (plain text HTTP logs, CronJob output) pass through
+            // unmodified since stage.json silently skips unparseable lines.
+            stage.json {
+              expressions = {
+                level  = "level",
+                msg    = "msg",
+                module = "module",
+                time   = "time",
+              }
+            }
+
+            // Map pino numeric levels to human-readable names for Grafana
+            // level detection and color coding.
+            stage.template {
+              source   = "level"
+              template = "{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else }}{{ .Value }}{{ end }}"
+            }
+
+            // Promote level to a Loki label for efficient stream selectors
+            // like {level="error"}. Low cardinality (6 values).
+            stage.labels {
+              values = {
+                level = "",
+              }
+            }
+
+            // Attach msg and module as structured metadata, searchable in
+            // LogQL (e.g. | module = "readability") without increasing label
+            // cardinality.
+            stage.structured_metadata {
+              values = {
+                msg    = "",
+                module = "",
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 
-          // Stage 4: Push labeled log lines to Loki
+          // Stage 5: Push labeled log lines to Loki
           loki.write "default" {
             endpoint {
               url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
