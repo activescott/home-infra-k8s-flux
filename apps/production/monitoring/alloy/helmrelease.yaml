@@ -121,15 +121,40 @@ spec:
             // Map pino numeric levels to human-readable names for Grafana
             // level detection and color coding.
             //
-            // NOTE: The template value uses River's {{ }} syntax which conflicts
-            // with Helm's Go template processing (the Alloy chart passes
-            // configMap.content through Helm's `tpl` function). We wrap the
-            // entire River template expression in Go's raw string output
-            // syntax ({{` ... `}}) so Helm emits it literally without trying
-            // to parse the inner {{ }} as Go template actions.
-            stage.template {
-              source   = "level"
-              template = "{{`{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else }}{{ .Value }}{{ end }}`}}"
+            // NOTE: We use stage.replace instead of stage.template here
+            // because stage.template uses River's {{ }} syntax which
+            // conflicts with Helm's Go template processing — the Alloy
+            // chart passes configMap.content through Helm's `tpl` function,
+            // which interprets {{ }} as Go template actions and fails.
+            stage.replace {
+              source     = "level"
+              expression = "^10$"
+              replace    = "trace"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^20$"
+              replace    = "debug"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^30$"
+              replace    = "info"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^40$"
+              replace    = "warn"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^50$"
+              replace    = "error"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^60$"
+              replace    = "fatal"
             }
 
             // Promote level to a Loki label for efficient stream selectors
