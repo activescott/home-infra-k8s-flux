@@ -122,10 +122,10 @@ spec:
             // level detection and color coding.
             //
             // NOTE: We use stage.replace instead of stage.template here
-            // because stage.template uses River's {{ }} syntax which
-            // conflicts with Helm's Go template processing — the Alloy
-            // chart passes configMap.content through Helm's `tpl` function,
-            // which interprets {{ }} as Go template actions and fails.
+            // because stage.template uses River's double-curly-brace syntax
+            // which conflicts with Helm's Go template processing — the Alloy
+            // chart passes configMap.content through Helm's tpl function,
+            // which interprets double-curly-braces as Go template actions.
             stage.replace {
               source     = "level"
               expression = "^10$"
