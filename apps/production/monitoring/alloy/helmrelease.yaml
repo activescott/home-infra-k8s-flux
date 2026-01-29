@@ -157,6 +157,18 @@ spec:
               replace    = "fatal"
             }
 
+            // Replace the log line body with just the msg field from the
+            // parsed JSON. This makes the Grafana log view show clean
+            // human-readable messages instead of raw JSON. The full JSON
+            // fields (level, time, module, etc.) are still available as
+            // structured metadata and labels.
+            // For non-JSON lines (plain HTTP logs, CronJob output), stage.json
+            // doesn't populate the extracted map, so stage.output is a no-op
+            // and the original log line passes through unchanged.
+            stage.output {
+              source = "msg"
+            }
+
             // Promote level to a Loki label for efficient stream selectors
             // like {level="error"}. Low cardinality (6 values).
             stage.labels {
