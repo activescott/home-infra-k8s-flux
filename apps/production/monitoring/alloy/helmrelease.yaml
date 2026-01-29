@@ -120,9 +120,16 @@ spec:
 
             // Map pino numeric levels to human-readable names for Grafana
             // level detection and color coding.
+            //
+            // NOTE: The template value uses River's {{ }} syntax which conflicts
+            // with Helm's Go template processing (the Alloy chart passes
+            // configMap.content through Helm's `tpl` function). We wrap the
+            // entire River template expression in Go's raw string output
+            // syntax ({{` ... `}}) so Helm emits it literally without trying
+            // to parse the inner {{ }} as Go template actions.
             stage.template {
               source   = "level"
-              template = "{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else }}{{ .Value }}{{ end }}"
+              template = "{{`{{ if eq .Value \"10\" }}trace{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else }}{{ .Value }}{{ end }}`}}"
             }
 
             // Promote level to a Loki label for efficient stream selectors
