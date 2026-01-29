@@ -14,11 +14,13 @@ Processing stages added (in order):
 
 3. **`stage.json`** — Parses pino JSON, extracts `level`, `msg`, `module`, `time`. Non-JSON lines pass through unmodified.
 
-4. **`stage.template`** — Maps pino numeric levels to strings: 10->trace, 20->debug, 30->info, 40->warn, 50->error, 60->fatal.
+4. **`stage.replace` (x6)** — Maps pino numeric levels to strings: 10->trace, 20->debug, 30->info, 40->warn, 50->error, 60->fatal. Uses `stage.replace` instead of `stage.template` because `stage.template` uses River's double-curly-brace syntax which conflicts with Helm's `tpl` function (the Alloy chart passes `configMap.content` through Go template processing).
 
-5. **`stage.labels`** — Promotes `level` to a Loki label for efficient `{level="error"}` queries.
+5. **`stage.output`** — Replaces the raw JSON log line body with just the extracted `msg` field, so Grafana shows clean human-readable messages. Non-JSON lines pass through unchanged since `stage.json` doesn't populate the extracted map for unparseable lines, making `stage.output` a no-op.
 
-6. **`stage.structured_metadata`** — Attaches `msg` and `module` as structured metadata searchable in LogQL.
+6. **`stage.labels`** — Promotes `level` to a Loki label for efficient `{level="error"}` queries.
+
+7. **`stage.structured_metadata`** — Attaches `msg` and `module` as structured metadata searchable in LogQL.
 
 ### Part 2: Loki Config (`apps/production/monitoring/loki/helmrelease.yaml`)
 
@@ -36,14 +38,20 @@ Added `allow_structured_metadata: true` to `limits_config` to enable the structu
 
 No changes needed — both already use pino JSON output. The Alloy pipeline handles them uniformly.
 
-## Verification Steps
+## Issues Encountered
 
-After Flux deploys the Alloy and Loki changes:
+### Helm tpl conflict
+The Alloy Helm chart passes `configMap.content` through Go's `tpl` function, which interprets `{{ }}` as Go template actions. This caused the initial HelmRelease upgrade to fail silently — the deployed ConfigMap retained the old config (no processing pipeline) while the HelmRelease showed a failed status.
 
-1. `kubectl -n monitoring rollout status daemonset/alloy`
-2. `kubectl -n monitoring logs -l app.kubernetes.io/name=alloy --tail=50` — check for config errors
-3. Grafana Explore: `{namespace="tinkerbell-prod"} |= "health"` — expect no results
-4. `{namespace="tinkerbell-prod", level="info"}` — expect results with level label
-5. Expand a log entry — verify `msg` and `module` in structured metadata
-6. `{namespace="gpupoet-prod", container="cache-revalidation"}` — CronJob plain text preserved
-7. After tinkerbell JSDOM fix: `{namespace="tinkerbell-prod"} |= "display:"` — expect no CSS garbage
+- **`stage.template`** uses River's `{{ }}` syntax for conditional logic, which `tpl` tried to parse as Go template actions. The `\"` inside those actions is not valid Go template syntax, causing `unexpected "\\" in operand`.
+- **Backtick escaping** (`{{` `` ` `` `...` `` ` `` `}}`) also failed with `missing value for command`.
+- **Comments** containing literal `{{ }}` (e.g., "River's {{ }} syntax") were also parsed by `tpl`.
+- **Solution**: Replaced `stage.template` with 6 `stage.replace` blocks using plain regex, and rewrote comments to avoid double-curly-brace literals entirely.
+
+## Verification
+
+Confirmed working:
+- Health check probe logs (`GET /health/readiness`, `GET /health/liveness`) are dropped
+- Pino JSON log lines display as clean `msg` text instead of raw JSON
+- Plain text HTTP logs (e.g., `POST /mcp 200 - - 2.412 ms`) pass through unchanged
+- Structured metadata fields (level, msg, module) are extracted and searchable
