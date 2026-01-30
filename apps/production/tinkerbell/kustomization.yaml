@@ -36,7 +36,7 @@ secretGenerator:
 images:
   - name: tinkerbell-image-app
     newName: ghcr.io/activescott/tinkerbell/app # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:name"}
-    newTag: v0.10.1 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
+    newTag: v0.11.0 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
   - name: tinkerbell-image-db
     newName: postgres
     newTag: "18"
