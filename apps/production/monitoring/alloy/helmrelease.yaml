@@ -230,32 +230,18 @@ spec:
 
           // Parse Plex log format: "Jan 27, 2026 12:39:48.421 [tid] LEVEL - msg"
           loki.process "plex" {
-            // Normalize level to lowercase in the raw log line BEFORE regex
-            // extraction. stage.replace with source= doesn't modify extracted
-            // values in this Alloy version, so we rewrite the log line first.
-            stage.replace {
-              expression = "\\] INFO - "
-              replace    = "] info - "
-            }
-            stage.replace {
-              expression = "\\] DEBUG - "
-              replace    = "] debug - "
-            }
-            stage.replace {
-              expression = "\\] WARN(ING)? - "
-              replace    = "] warn - "
-            }
-            stage.replace {
-              expression = "\\] ERROR - "
-              replace    = "] error - "
-            }
-            stage.replace {
-              expression = "\\] FATAL - "
-              replace    = "] fatal - "
-            }
-
             stage.regex {
               expression = "^\\S+ \\d+, \\d{4} [\\d:.]+ \\[\\d+\\] (?P<level>\\S+) - (?P<message>.*)$"
+            }
+
+            // Normalize level to lowercase. Uses stage.template because
+            // stage.replace doesn't modify extracted values or the log line
+            // in this Alloy version. The {{ "{{" }}/{{ "}}" }} escaping
+            // prevents Helm's tpl function from interpreting the River
+            // template delimiters as Go template actions.
+            stage.template {
+              source   = "level"
+              template = "{{ "{{" }} .Value | lower {{ "}}" }}"
             }
 
             // Use the parsed message as the log line body
