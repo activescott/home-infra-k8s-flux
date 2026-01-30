@@ -43,3 +43,49 @@ All data is on hostPath volumes. Prometheus and Grafana reuse their pre-existing
 | Loki       | `/mnt/thedatapool/no-backup/app-data/loki`                  | No         |
 | Prometheus | `/mnt/thedatapool/no-backup/app-data/prometheus/storage`    | No         |
 | Grafana    | `/mnt/thedatapool/app-data/grafana/var-lib-grafana`         | Yes        |
+
+## Accessing Grafana
+
+Grafana is exposed at `https://grafana.activescott.com` via an Ingress with TLS (cert-manager).
+
+### Grafana MCP Server (for Claude Code)
+
+The [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana) server allows Claude Code to query Loki logs, Prometheus metrics, dashboards, and more directly through Grafana's API.
+
+**Setup:**
+
+1. Install: `brew install mcp-grafana`
+2. Create a Grafana service account token:
+   - Go to Administration > Users and access > Service accounts
+   - Add a service account with **Viewer** role
+   - Add a token and copy it
+3. Set the token in your shell profile: `export GRAFANA_SERVICE_ACCOUNT_TOKEN="<token>"`
+4. The `.mcp.json` at the repo root configures Claude Code to use the server
+
+**Available capabilities:** Loki log queries (LogQL), Prometheus metric queries (PromQL), dashboard search/retrieval, alert rules, label exploration, and more.
+
+## Log Collection Details
+
+Alloy runs as a DaemonSet and collects logs from **all namespaces** with no exclusions. It attaches these labels to every log stream:
+
+| Label          | Source                              |
+| -------------- | ----------------------------------- |
+| `namespace`    | Pod's Kubernetes namespace          |
+| `pod`          | Pod name                            |
+| `container`    | Container name                      |
+| `app`          | Pod's `app` label                   |
+| `service_name` | Synthetic: `namespace/app`          |
+| `level`        | Log level (pino JSON logs only)     |
+
+The Alloy pipeline also:
+- Joins multi-line stack traces
+- Drops health check logs (`GET /health/*` and `GET /api/health/*`)
+- Parses pino JSON logs, extracting `level`, `msg`, and `module`
+- Replaces raw JSON body with the parsed `msg` field for readability
+
+Log retention is **30 days**.
+
+### Notes
+
+- Some apps (e.g. Plex) write most logs to files inside the container rather than stdout/stderr. Alloy only captures stdout/stderr via the Kubernetes API, so these file-based logs won't appear in Loki.
+- Loki has `auth_enabled: false`, so it can also be queried directly via port-forward: `kubectl --context nas port-forward -n monitoring svc/loki 3100:3100`
