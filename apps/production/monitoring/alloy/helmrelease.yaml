@@ -230,35 +230,32 @@ spec:
 
           // Parse Plex log format: "Jan 27, 2026 12:39:48.421 [tid] LEVEL - msg"
           loki.process "plex" {
-            stage.regex {
-              expression = "^\\S+ \\d+, \\d{4} [\\d:.]+ \\[\\d+\\] (?P<level>\\S+) - (?P<message>.*)$"
+            // Normalize level to lowercase in the raw log line BEFORE regex
+            // extraction. stage.replace with source= doesn't modify extracted
+            // values in this Alloy version, so we rewrite the log line first.
+            stage.replace {
+              expression = "\\] INFO - "
+              replace    = "] info - "
+            }
+            stage.replace {
+              expression = "\\] DEBUG - "
+              replace    = "] debug - "
+            }
+            stage.replace {
+              expression = "\\] WARN(ING)? - "
+              replace    = "] warn - "
+            }
+            stage.replace {
+              expression = "\\] ERROR - "
+              replace    = "] error - "
+            }
+            stage.replace {
+              expression = "\\] FATAL - "
+              replace    = "] fatal - "
             }
 
-            // Normalize level to lowercase for consistency with other log streams
-            stage.replace {
-              source     = "level"
-              expression = "^INFO$"
-              replace    = "info"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^DEBUG$"
-              replace    = "debug"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^WARN(ING)?$"
-              replace    = "warn"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^ERROR$"
-              replace    = "error"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^FATAL$"
-              replace    = "fatal"
+            stage.regex {
+              expression = "^\\S+ \\d+, \\d{4} [\\d:.]+ \\[\\d+\\] (?P<level>\\S+) - (?P<message>.*)$"
             }
 
             // Use the parsed message as the log line body
