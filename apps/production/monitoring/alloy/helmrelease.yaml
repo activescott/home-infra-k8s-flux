@@ -16,6 +16,11 @@ spec:
       interval: 24h
   values:
     alloy:
+      mounts:
+        extra:
+          - name: plex-logs
+            mountPath: /mnt/plex-logs
+            readOnly: true
       # Alloy log collection pipeline:
       #
       # 1. discovery.kubernetes - Queries the K8s API to find all running pods.
@@ -197,8 +202,96 @@ spec:
             }
           }
 
+          // ── Plex file-based log collection ──────────────────────────────
+          // Plex writes logs to files rather than stdout. The host directory
+          // is mounted into Alloy at /mnt/plex-logs via a hostPath volume.
+          // DirectoryOrCreate ensures Alloy pods on nodes without the Plex
+          // data directory start with an empty dir (no files to tail).
+
+          // Discover *.log files under the mounted Plex log directory
+          local.file_match "plex_logs" {
+            path_targets = [{
+              __path__     = "/mnt/plex-logs/*.log",
+              namespace    = "plex",
+              app          = "plex",
+              source       = "file",
+              service_name = "plex/plex",
+            }]
+          }
+
+          // Tail discovered Plex log files, starting from end to avoid
+          // ingesting all historical data on first startup
+          loki.source.file "plex_logs" {
+            targets    = local.file_match.plex_logs.targets
+            forward_to = [loki.process.plex.receiver]
+
+            tail_from_end = true
+          }
+
+          // Parse Plex log format: "Jan 27, 2026 12:39:48.421 [tid] LEVEL - msg"
+          loki.process "plex" {
+            stage.regex {
+              expression = "^\\S+ \\d+, \\d{4} [\\d:.]+ \\[\\d+\\] (?P<level>\\S+) - (?P<message>.*)$"
+            }
+
+            // Normalize level to lowercase for consistency with other log streams
+            stage.replace {
+              source     = "level"
+              expression = "^INFO$"
+              replace    = "info"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^DEBUG$"
+              replace    = "debug"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^WARN(ING)?$"
+              replace    = "warn"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^ERROR$"
+              replace    = "error"
+            }
+            stage.replace {
+              source     = "level"
+              expression = "^FATAL$"
+              replace    = "fatal"
+            }
+
+            // Use the parsed message as the log line body
+            stage.output {
+              source = "message"
+            }
+
+            // Promote level to a Loki label
+            stage.labels {
+              values = {
+                level = "",
+              }
+            }
+
+            // Attach filename as structured metadata so individual log files
+            // can be distinguished in LogQL queries
+            stage.structured_metadata {
+              values = {
+                filename = "",
+              }
+            }
+
+            forward_to = [loki.write.default.receiver]
+          }
+
     controller:
       type: daemonset
+      volumes:
+        extra:
+          - name: plex-logs
+            hostPath:
+              path: "/mnt/thedatapool/app-data/plex/config/Library/Application Support/Plex Media Server/Logs"
+              type: DirectoryOrCreate
 
     serviceAccount:
       create: true

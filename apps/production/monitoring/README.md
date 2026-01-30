@@ -85,7 +85,14 @@ The Alloy pipeline also:
 
 Log retention is **180 days** (6 months).
 
+### Plex File Log Collection
+
+Plex writes most logs to files rather than stdout. Alloy collects these via a hostPath volume mount from `/mnt/thedatapool/app-data/plex/config/Library/Application Support/Plex Media Server/Logs`. File logs are labeled with `source="file"`, `namespace="plex"`, `app="plex"` and have a separate `loki.process "plex"` pipeline that parses the Plex log format (`Jan 27, 2026 12:39:48.421 [tid] LEVEL - message`). The `filename` structured metadata distinguishes individual log files.
+
+Query example: `{namespace="plex", source="file"} | filename =~ ".*Plex Media Server.*"`
+
+Plex file logs have a **30-day retention** (vs 180d default) configured via `retention_stream` in the Loki HelmRelease.
+
 ### Notes
 
-- Some apps (e.g. Plex) write most logs to files inside the container rather than stdout/stderr. Alloy only captures stdout/stderr via the Kubernetes API, so these file-based logs won't appear in Loki.
 - Loki has `auth_enabled: false`, so it can also be queried directly via port-forward: `kubectl --context nas port-forward -n monitoring svc/loki 3100:3100`

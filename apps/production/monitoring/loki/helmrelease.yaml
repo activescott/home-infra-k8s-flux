@@ -35,6 +35,10 @@ spec:
       limits_config:
         retention_period: 180d
         allow_structured_metadata: true
+        retention_stream:
+          - selector: '{source="file", namespace="plex"}'
+            priority: 1
+            period: 30d
       compactor:
         retention_enabled: true
         delete_request_store: filesystem
