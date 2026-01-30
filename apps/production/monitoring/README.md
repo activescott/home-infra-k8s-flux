@@ -83,7 +83,7 @@ The Alloy pipeline also:
 - Parses pino JSON logs, extracting `level`, `msg`, and `module`
 - Replaces raw JSON body with the parsed `msg` field for readability
 
-Log retention is **30 days**.
+Log retention is **180 days** (6 months).
 
 ### Notes
 
