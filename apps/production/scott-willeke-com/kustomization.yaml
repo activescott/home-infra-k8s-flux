@@ -4,6 +4,7 @@ resources:
   - ../../base/scott-willeke-com/
   - certificate.yaml
   - image-scanning/
+  - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-ingress.yaml
   # patch the volume name in the PVC used for logs:
@@ -15,12 +16,6 @@ patches:
         path: /spec/volumeName
         value: scott-willeke-com-logs-pv
 namespace: scott-willeke-com-prod
-secretGenerator:
-  # image pull secret:
-  - name: github-container-registry-secret
-    type: kubernetes.io/dockerconfigjson
-    files:
-      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 # the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:

@@ -4,6 +4,7 @@ resources:
   - ../../base/ramblefeed/
   - app-ingress-certificate.yaml
   - image-scanning/
+  - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-app-deployment.yaml
     target:
@@ -27,11 +28,6 @@ secretGenerator:
   - name: app-creds
     envs:
       - .env.secret.app.encrypted
-  # image pull secret:
-  - name: github-container-registry-secret
-    type: kubernetes.io/dockerconfigjson
-    files:
-      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 images:
   - name: ramblefeed-image-app

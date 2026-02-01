@@ -7,6 +7,7 @@ resources:
   - ../../base/tayle/
   - app-ingress-certificate.yaml
   - image-scanning/
+  - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-app-ingress.yaml
   # patch the volume name in the PVC's used in the StatefulSets:
@@ -42,11 +43,6 @@ secretGenerator:
   - name: worker-creds
     envs:
       - .env.secret.worker.encrypted
-  # image pull secret:
-  - name: github-container-registry-secret
-    type: kubernetes.io/dockerconfigjson
-    files:
-      - .dockerconfigjson=ghcr.dockeronfigjson.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 # the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:
