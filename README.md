@@ -138,6 +138,10 @@ Per https://fluxcd.io/flux/components/kustomize/kustomizations/#kustomize-secret
 
 Image scanning for one app setup at `apps/production/tayle/image-scanning` per https://fluxcd.io/flux/guides/image-update/
 
+#### OCI Labels Required for GHCR Webhook Events
+
+Each app's Docker build workflow must include OCI labels (`org.opencontainers.image.source` and `org.opencontainers.image.revision`) on the container image. These labels link the GHCR package to its GitHub repo, which is required for GitHub to send package webhook events. Without them, Flux image automation won't receive notifications when new images are published. See the `labels:` parameter in each app's `docker/build-push-action` step.
+
 #### Image Updates from Github Web Hooks for Continuous Deployment
 
 A flux webhook receiver is set up in `/infrastructure/base/configs/image-scanning-webhook-receiver`. It has configured which ImageRepositories to refresh. More can be added.
