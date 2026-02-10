@@ -78,14 +78,38 @@ async function promptForToken(prompt: string): Promise<string> {
         return;
       }
 
-      // Regular character
+      // Regular character(s) — a paste arrives as a single data event containing
+      // the full string, so write one asterisk per character.
       token += char;
-      process.stdout.write('*');
+      process.stdout.write('*'.repeat(char.length));
     };
 
     process.stdin.on('data', onData);
   });
 }
+
+// GitHub has two webhook event types related to packages:
+//
+// - 'package': The newer/recommended event per GitHub docs. Fires for GitHub Packages.
+//   https://docs.github.com/en/webhooks/webhook-events-and-payloads#package
+//
+// - 'registry_package': The older/legacy event. GitHub docs say 'package' replaces it.
+//   https://docs.github.com/en/webhooks/webhook-events-and-payloads#registry_package
+//
+// The two doc pages read almost identically and GitHub officially recommends 'package'
+// over 'registry_package'. However, in practice we observed that a webhook subscribed
+// to only 'package' received zero deliveries despite GHCR images being pushed
+// successfully (with OCI labels linking the package to the repo). The GitHub webhook
+// settings UI still shows these as two separate checkboxes ("Packages" and "Registry
+// packages"), suggesting they are not fully unified on the backend.
+//
+// We subscribe to both events since:
+// 1. 'package' alone empirically does not fire for GHCR container image pushes.
+// 2. 'registry_package' may still be what GHCR actually emits despite being "legacy".
+// 3. The GHCR package must also be linked to the source repo (via OCI labels
+//    org.opencontainers.image.source and org.opencontainers.image.revision) for
+//    GitHub to route any package events to the repo's webhooks at all.
+const WEBHOOK_EVENTS = ['package', 'registry_package'];
 
 class UpdateFluxImageScanningWebhooks {
   private octokit: Octokit;
@@ -240,7 +264,7 @@ class UpdateFluxImageScanningWebhooks {
           content_type: 'json',
           secret: this.webhookSecret,
         },
-        events: ['package'],
+        events: WEBHOOK_EVENTS,
         active: true,
       });
 
@@ -276,7 +300,7 @@ class UpdateFluxImageScanningWebhooks {
           content_type: 'json',
           secret: this.webhookSecret,
         },
-        events: ['package'],
+        events: WEBHOOK_EVENTS,
         active: true,
       });
 
@@ -326,9 +350,12 @@ class UpdateFluxImageScanningWebhooks {
       differences.push(`Content-Type: "${webhook.config?.content_type}" → "json"`);
     }
 
-    if (!webhook.events?.includes('package')) {
+    // Verify all required events are present. GHCR needs 'registry_package' specifically;
+    // 'package' alone won't trigger for container image pushes.
+    const missingEvents = WEBHOOK_EVENTS.filter(e => !webhook.events?.includes(e));
+    if (missingEvents.length > 0) {
       const currentEvents = webhook.events ? webhook.events.join(', ') : 'none';
-      differences.push(`Events: [${currentEvents}] → [package]`);
+      differences.push(`Events: [${currentEvents}] → [${WEBHOOK_EVENTS.join(', ')}] (missing: ${missingEvents.join(', ')})`);
     }
 
     if (webhook.active !== true) {

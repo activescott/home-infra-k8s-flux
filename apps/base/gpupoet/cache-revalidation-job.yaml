@@ -3,7 +3,7 @@ kind: CronJob
 metadata:
   name: cache-revalidation
 spec:
-  schedule: "*/30 * * * *" # Run every 30 minutes
+  schedule: "*/90 * * * *" # Run every 90 minutes
   concurrencyPolicy: Forbid
   jobTemplate:
     spec:
