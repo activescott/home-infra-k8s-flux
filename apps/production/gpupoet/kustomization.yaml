@@ -53,13 +53,13 @@ patches:
       kind: CronJob
       name: indexnow-notifier
   # Temporarily suspend cache-revalidation CronJob
-  - patch: |-
-      - op: add
-        path: /spec/suspend
-        value: true
-    target:
-      kind: CronJob
-      name: cache-revalidation
+  # - patch: |-
+  #     - op: add
+  #       path: /spec/suspend
+  #       value: true
+  #   target:
+  #     kind: CronJob
+  #     name: cache-revalidation
 namespace: gpupoet-prod
 secretGenerator:
   # db
