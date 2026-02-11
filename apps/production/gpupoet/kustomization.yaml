@@ -52,14 +52,14 @@ patches:
     target:
       kind: CronJob
       name: indexnow-notifier
-  # Temporarily suspend cache-revalidation CronJob
-  # - patch: |-
-  #     - op: add
-  #       path: /spec/suspend
-  #       value: true
-  #   target:
-  #     kind: CronJob
-  #     name: cache-revalidation
+      # Temporarily suspend cache-revalidation CronJob
+      # - patch: |-
+      #     - op: add
+      #       path: /spec/suspend
+      #       value: true
+      #   target:
+      #     kind: CronJob
+      #     name: cache-revalidation
 namespace: gpupoet-prod
 secretGenerator:
   # db
@@ -74,7 +74,7 @@ secretGenerator:
 images:
   - name: gpupoet-image-app
     newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:name"}
-    newTag: v202602101840 # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:tag"}
+    newTag: v202602110445 # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:tag"}
   - name: gpupoet-image-db
     newName: postgres
     newTag: "17"
