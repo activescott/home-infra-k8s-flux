@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Builds the kustomize output for apps/production and validates it against the cluster via server-side dry run.
+# Usage: ./scripts/dry-run [kubectl-context]
+#   Default context: nas
+
+context="${1:-nas}"
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "Building kustomize output for apps/production..."
+echo "Using kubectl context: $context"
+echo ""
+
+kubectl kustomize "$repo_root/apps/production" \
+  | kubectl --context "$context" apply --dry-run='server' -f - 2>&1
