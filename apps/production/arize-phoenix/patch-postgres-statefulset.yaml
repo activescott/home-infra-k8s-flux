@@ -1,0 +1,20 @@
+# Remove hardcoded credentials (reverse index order to avoid shifting)
+# [4] POSTGRES_PASSWORD, [2] PGUSER, [1] POSTGRES_USER, [0] POSTGRES_DB
+- op: remove
+  path: /spec/template/spec/containers/0/env/4
+- op: remove
+  path: /spec/template/spec/containers/0/env/2
+- op: remove
+  path: /spec/template/spec/containers/0/env/1
+- op: remove
+  path: /spec/template/spec/containers/0/env/0
+# Inject db-creds secret (POSTGRES_PASSWORD, POSTGRES_USER, POSTGRES_DB, PGUSER)
+- op: add
+  path: /spec/template/spec/containers/0/envFrom
+  value:
+    - secretRef:
+        name: db-creds
+# Bind PVC to pre-created PV
+- op: add
+  path: /spec/volumeClaimTemplates/0/spec/volumeName
+  value: arize-phoenix-db-pv-data

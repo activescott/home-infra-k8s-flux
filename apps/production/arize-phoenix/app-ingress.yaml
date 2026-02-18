@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: phoenix-ingress
+spec:
+  tls:
+    - hosts:
+        - phoenix.activescott.com
+      secretName: phoenix-activescott-com-tls
+  rules:
+    - host: phoenix.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: phoenix
+                port:
+                  number: 6006
