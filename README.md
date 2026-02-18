@@ -75,7 +75,7 @@ flux -n tinkerbell-prod reconcile image repository repo-tinkerbell-app
 flux -n tayle-prod reconcile image repository repo-tayle-app
 flux -n tayle-prod reconcile image repository repo-tayle-worker
 
-# a handy way to do a drunrun on the kustomize (this prints a lot of warnings when it works but returns non-zero as long as there are no errors):
+# a handy way to do a dry run on the kustomize (this prints a lot of warnings when it works but returns non-zero as long as there are no errors):
 kubectl kustomize apps/production | kubectl apply --dry-run='server' -f -
 ```
 
