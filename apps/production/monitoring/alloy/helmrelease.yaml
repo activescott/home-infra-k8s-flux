@@ -40,10 +40,10 @@ spec:
       # 4. loki.process - Processes log lines before sending to Loki:
       #    - Joins multi-line stack traces into single entries
       #    - Drops health check request noise
-      #    - Parses pino JSON to extract level, msg, module
+      #    - Parses pino JSON to extract level for label promotion
       #    - Maps numeric pino levels to string names (info, warn, error, etc.)
       #    - Promotes level to a Loki label for efficient filtering
-      #    - Attaches msg and module as structured metadata
+      #    - Preserves raw JSON body so all fields are queryable via | json
       #
       # 5. loki.write - Pushes labeled log lines to Loki's HTTP API.
       configMap:
@@ -111,67 +111,23 @@ spec:
               expression = ".*GET /(api/)?health/(readiness|liveness).*"
             }
 
-            // Parse pino JSON log lines. Extracts level, msg, module, time.
-            // Non-JSON lines (plain text HTTP logs, CronJob output) pass through
-            // unmodified since stage.json silently skips unparseable lines.
+            // Extract level from pino JSON for label promotion.
+            // Non-JSON lines pass through since stage.json silently skips them.
             stage.json {
               expressions = {
-                level  = "level",
-                msg    = "msg",
-                module = "module",
-                time   = "time",
+                level = "level",
               }
             }
 
-            // Map pino numeric levels to human-readable names for Grafana
-            // level detection and color coding.
-            //
-            // NOTE: We use stage.replace instead of stage.template here
-            // because stage.template uses River's double-curly-brace syntax
-            // which conflicts with Helm's Go template processing — the Alloy
-            // chart passes configMap.content through Helm's tpl function,
-            // which interprets double-curly-braces as Go template actions.
-            stage.replace {
-              source     = "level"
-              expression = "^10$"
-              replace    = "trace"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^20$"
-              replace    = "debug"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^30$"
-              replace    = "info"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^40$"
-              replace    = "warn"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^50$"
-              replace    = "error"
-            }
-            stage.replace {
-              source     = "level"
-              expression = "^60$"
-              replace    = "fatal"
-            }
-
-            // Replace the log line body with just the msg field from the
-            // parsed JSON. This makes the Grafana log view show clean
-            // human-readable messages instead of raw JSON. The full JSON
-            // fields (level, time, module, etc.) are still available as
-            // structured metadata and labels.
-            // For non-JSON lines (plain HTTP logs, CronJob output), stage.json
-            // doesn't populate the extracted map, so stage.output is a no-op
-            // and the original log line passes through unchanged.
-            stage.output {
-              source = "msg"
+            // Pino outputs numeric levels (10=trace, 20=debug, 30=info, etc.)
+            // but Loki's detected_level expects string values ("info", "error").
+            // Without this mapping, levels show as raw numbers in Grafana and
+            // level-based filtering/color-coding doesn't work.
+            // Uses stage.template with Helm-escaped curly braces (same
+            // technique as the Plex section).
+            stage.template {
+              source   = "level"
+              template = "{{ "{{" }} if eq .Value \"10\" {{ "}}" }}trace{{ "{{" }} else if eq .Value \"20\" {{ "}}" }}debug{{ "{{" }} else if eq .Value \"30\" {{ "}}" }}info{{ "{{" }} else if eq .Value \"40\" {{ "}}" }}warn{{ "{{" }} else if eq .Value \"50\" {{ "}}" }}error{{ "{{" }} else if eq .Value \"60\" {{ "}}" }}fatal{{ "{{" }} else {{ "}}" }}{{ "{{" }} .Value {{ "}}" }}{{ "{{" }} end {{ "}}" }}"
             }
 
             // Promote level to a Loki label for efficient stream selectors
@@ -182,15 +138,9 @@ spec:
               }
             }
 
-            // Attach msg and module as structured metadata, searchable in
-            // LogQL (e.g. | module = "readability") without increasing label
-            // cardinality.
-            stage.structured_metadata {
-              values = {
-                msg    = "",
-                module = "",
-              }
-            }
+            // The raw JSON log body is preserved (no stage.output), so all
+            // pino fields (msg, module, noteId, url, err, etc.) are visible
+            // in Grafana's detected fields and queryable with | json in LogQL.
 
             forward_to = [loki.write.default.receiver]
           }
