@@ -60,9 +60,32 @@ The [grafana/mcp-grafana](https://github.com/grafana/mcp-grafana) server allows 
    - Add a service account with **Viewer** role
    - Add a token and copy it
 3. Set the token in your shell profile: `export GRAFANA_SERVICE_ACCOUNT_TOKEN="<token>"`
-4. The `.mcp.json` at the repo root configures Claude Code to use the server
+4. Add a `.mcp.json` at the repo root with the following content:
+   ```json
+   {
+     "mcpServers": {
+       "grafana": {
+         "command": "mcp-grafana",
+         "env": {
+           "GRAFANA_URL": "https://grafana.activescott.com",
+           "GRAFANA_SERVICE_ACCOUNT_TOKEN": "${GRAFANA_SERVICE_ACCOUNT_TOKEN}"
+         }
+       }
+     }
+   }
+   ```
+   The `${GRAFANA_SERVICE_ACCOUNT_TOKEN}` reference pulls the token from your shell environment at runtime.
 
-**Available capabilities:** Loki log queries (LogQL), Prometheus metric queries (PromQL), dashboard search/retrieval, alert rules, label exploration, and more.
+**Key tools:**
+- `mcp__grafana__query_loki_logs` - run LogQL queries against Loki
+- `mcp__grafana__list_loki_label_names` / `list_loki_label_values` - explore available labels
+- `mcp__grafana__query_prometheus` - run PromQL queries
+- `mcp__grafana__search_dashboards` - find dashboards
+- `mcp__grafana__list_datasources` - list configured datasources
+
+**Loki datasource UID:** `P8E80F9AEF21F6940`
+
+**Common log labels:** `namespace`, `pod`, `container`, `app`, `service_name`, `level`
 
 ## Log Collection Details
 
