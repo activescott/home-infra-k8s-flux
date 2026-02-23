@@ -37,7 +37,7 @@ secretGenerator:
 images:
   - name: tinkerbell-image-app
     newName: ghcr.io/activescott/tinkerbell/app # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:name"}
-    newTag: v0.16.0 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
+    newTag: v0.17.0 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
   - name: tinkerbell-image-mcp-gateway
     newName: ghcr.io/activescott/tinkerbell/mcp-gateway # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:name"}
     newTag: v0.1.2 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:tag"}
