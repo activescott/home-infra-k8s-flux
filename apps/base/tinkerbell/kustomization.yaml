@@ -10,3 +10,5 @@ resources:
   - searxng-deployment.yaml
   - searxng-service.yaml
   - searxng-configmap.yaml
+  - mcp-gateway-deployment.yaml
+  - mcp-gateway-service.yaml

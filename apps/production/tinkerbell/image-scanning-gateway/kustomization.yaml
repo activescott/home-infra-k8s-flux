@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/image-scanning/semver
+
+patches:
+  # Customize ImageRepository
+  - target:
+      kind: ImageRepository
+      name: repo-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: repo-tinkerbell-mcp-gateway
+      - op: replace
+        path: /spec/image
+        value: ghcr.io/activescott/tinkerbell/mcp-gateway
+
+  # Customize ImagePolicy
+  - target:
+      kind: ImagePolicy
+      name: policy-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: policy-tinkerbell-mcp-gateway
+      - op: replace
+        path: /spec/imageRepositoryRef/name
+        value: repo-tinkerbell-mcp-gateway
+
+  # Customize ImageUpdateAutomation
+  - target:
+      kind: ImageUpdateAutomation
+      name: update-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: update-tinkerbell-mcp-gateway

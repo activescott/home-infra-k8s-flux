@@ -3,7 +3,8 @@ resources:
   - db-pv.yaml
   - ../../base/tinkerbell/
   - app-ingress-certificate.yaml
-  - image-scanning/
+  - image-scanning-app/
+  - image-scanning-gateway/
   - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-app-deployment.yaml
@@ -14,6 +15,10 @@ patches:
     target:
       kind: Ingress
       name: app-ingress
+  - path: patch-mcp-gateway-deployment.yaml
+    target:
+      kind: Deployment
+      name: mcp-gateway
   - path: patch-db-statefulset.yaml
     target:
       kind: StatefulSet
@@ -33,6 +38,9 @@ images:
   - name: tinkerbell-image-app
     newName: ghcr.io/activescott/tinkerbell/app # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:name"}
     newTag: v0.16.0 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
+  - name: tinkerbell-image-mcp-gateway
+    newName: ghcr.io/activescott/tinkerbell/mcp-gateway # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:name"}
+    newTag: v0.1.1 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:tag"}
   - name: tinkerbell-image-db
     newName: postgres
     newTag: "18"

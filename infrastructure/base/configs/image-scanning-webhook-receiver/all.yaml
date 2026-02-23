@@ -94,3 +94,6 @@ spec:
     - kind: ImageRepository
       name: repo-tinkerbell-app
       namespace: tinkerbell-prod
+    - kind: ImageRepository
+      name: repo-tinkerbell-mcp-gateway
+      namespace: tinkerbell-prod
