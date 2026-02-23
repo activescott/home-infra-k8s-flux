@@ -40,7 +40,7 @@ images:
     newTag: v0.16.0 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-app:tag"}
   - name: tinkerbell-image-mcp-gateway
     newName: ghcr.io/activescott/tinkerbell/mcp-gateway # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:name"}
-    newTag: v0.1.1 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:tag"}
+    newTag: v0.1.2 # {"$imagepolicy": "tinkerbell-prod:policy-tinkerbell-mcp-gateway:tag"}
   - name: tinkerbell-image-db
     newName: postgres
     newTag: "18"
