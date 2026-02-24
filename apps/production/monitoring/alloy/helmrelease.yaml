@@ -40,9 +40,11 @@ spec:
       # 4. loki.process - Processes log lines before sending to Loki:
       #    - Joins multi-line stack traces into single entries
       #    - Drops health check request noise
-      #    - Parses pino JSON to extract level for label promotion
+      #    - Parses pino JSON to extract level and msg
+      #    - Falls back msg to the full log line for non-JSON entries
       #    - Maps numeric pino levels to string names (info, warn, error, etc.)
       #    - Promotes level to a Loki label for efficient filtering
+      #    - Stores msg as structured metadata for Grafana visibility
       #    - Preserves raw JSON body so all fields are queryable via | json
       #
       # 5. loki.write - Pushes labeled log lines to Loki's HTTP API.
@@ -111,12 +113,21 @@ spec:
               expression = ".*GET /(api/)?health/(readiness|liveness).*"
             }
 
-            // Extract level from pino JSON for label promotion.
-            // Non-JSON lines pass through since stage.json silently skips them.
+            // Extract level and msg from pino JSON for label promotion
+            // and structured metadata. Non-JSON lines pass through since
+            // stage.json silently skips them.
             stage.json {
               expressions = {
                 level = "level",
+                msg   = "msg",
               }
+            }
+
+            // For non-JSON lines, msg is empty after stage.json. Fall back
+            // to the full log line so msg is always populated.
+            stage.template {
+              source   = "msg"
+              template = "{{ "{{" }} if .Value {{ "}}" }}{{ "{{" }} .Value {{ "}}" }}{{ "{{" }} else {{ "}}" }}{{ "{{" }} .Entry {{ "}}" }}{{ "{{" }} end {{ "}}" }}"
             }
 
             // Pino outputs numeric levels (10=trace, 20=debug, 30=info, etc.)
@@ -138,9 +149,18 @@ spec:
               }
             }
 
+            // Store msg as structured metadata so it's visible in Grafana
+            // without needing | json. For JSON lines this is the pino msg
+            // field; for non-JSON lines it's the full log line.
+            stage.structured_metadata {
+              values = {
+                msg = "",
+              }
+            }
+
             // The raw JSON log body is preserved (no stage.output), so all
-            // pino fields (msg, module, noteId, url, err, etc.) are visible
-            // in Grafana's detected fields and queryable with | json in LogQL.
+            // pino fields (module, noteId, url, err, etc.) remain queryable
+            // with | json in LogQL.
 
             forward_to = [loki.write.default.receiver]
           }
