@@ -7,7 +7,8 @@ spec:
   chart:
     spec:
       chart: wordpress
-      version: "27.0.0"
+      # Find latest version at https://app-catalog.vmware.com/bitnami/releases/a38d840c-0692-4786-87ec-e4eac1128259
+      version: "29.1.1"
       sourceRef:
         kind: HelmRepository
         name: bitnami
