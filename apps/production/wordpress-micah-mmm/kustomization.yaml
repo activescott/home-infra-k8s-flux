@@ -1,0 +1,22 @@
+resources:
+  - namespace.yaml
+  - ../../base/wordpress
+  - certificate.yaml
+  - pv.yaml
+
+secretGenerator:
+  - name: wordpress-creds
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.wordpress-creds.encrypted
+
+patches:
+  - path: patch-helmrelease.yaml
+
+namespace: wordpress-micah-mmm
+
+labels:
+  - pairs:
+      app.activescott.com/name: wordpress
+      app.activescott.com/tenant: micah

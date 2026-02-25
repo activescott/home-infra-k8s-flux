@@ -1,0 +1,28 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: wordpress
+spec:
+  values:
+    wordpressBlogName: "Micah's Meticulous Mowing"
+    wordpressUsername: micah
+    existingSecret: wordpress-creds
+
+    ingress:
+      enabled: true
+      hostname: mmm.willeke.com
+      tls: true
+      extraTls:
+        - hosts:
+            - mmm.willeke.com
+          secretName: mmm-willeke-com-tls
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-production
+
+    persistence:
+      existingClaim: wordpress-micah-mmm-wp-pvc
+
+    mariadb:
+      primary:
+        persistence:
+          existingClaim: wordpress-micah-mmm-mariadb-pvc

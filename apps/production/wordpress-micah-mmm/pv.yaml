@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-micah-mmm-wp-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/wordpress
+    type: DirectoryOrCreate
+  claimRef:
+    name: wordpress-micah-mmm-wp-pvc
+    namespace: wordpress-micah-mmm
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-micah-mmm-wp-pvc
+  namespace: wordpress-micah-mmm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: wordpress-micah-mmm-wp-pv
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-micah-mmm-mariadb-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/mariadb
+    type: DirectoryOrCreate
+  claimRef:
+    name: wordpress-micah-mmm-mariadb-pvc
+    namespace: wordpress-micah-mmm
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-micah-mmm-mariadb-pvc
+  namespace: wordpress-micah-mmm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: wordpress-micah-mmm-mariadb-pv
