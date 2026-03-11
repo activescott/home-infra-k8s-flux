@@ -9,6 +9,9 @@ spec:
     wordpressUsername: micah
     existingSecret: wordpress-creds
 
+    service:
+      type: ClusterIP
+
     ingress:
       enabled: true
       hostname: mmm.willeke.com
