@@ -1,0 +1,24 @@
+resources:
+  - namespace.yaml
+  - db-pv.yaml
+  - phoenix-service.yaml
+  - app-ingress.yaml
+  - app-ingress-certificate.yaml
+  - https://github.com/Arize-ai/phoenix//kustomize/base?ref=arize-phoenix-v12.35.0
+patches:
+  - path: patch-phoenix-statefulset.yaml
+    target:
+      kind: StatefulSet
+      name: phoenix
+  - path: patch-postgres-statefulset.yaml
+    target:
+      kind: StatefulSet
+      name: postgres
+namespace: arize-phoenix
+secretGenerator:
+  - name: phoenix-creds
+    envs:
+      - .env.secret.phoenix.encrypted
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted

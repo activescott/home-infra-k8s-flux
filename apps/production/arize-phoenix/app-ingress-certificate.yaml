@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: phoenix-activescott-com-tls
+  namespace: arize-phoenix
+spec:
+  secretName: phoenix-activescott-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - phoenix.activescott.com

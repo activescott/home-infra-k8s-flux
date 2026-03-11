@@ -1,0 +1,34 @@
+# Remove hardcoded PHOENIX_SQL_DATABASE_URL (will be provided by phoenix-creds secret)
+- op: remove
+  path: /spec/template/spec/containers/0/env/2
+# Inject phoenix-creds secret as env vars (PHOENIX_SECRET, PHOENIX_SQL_DATABASE_URL, etc.)
+- op: add
+  path: /spec/template/spec/containers/0/envFrom
+  value:
+    - secretRef:
+        name: phoenix-creds
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: PHOENIX_ENABLE_AUTH
+    value: "True"
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: PHOENIX_TELEMETRY_ENABLED
+    value: "false"
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: PHOENIX_ENABLE_PROMETHEUS
+    value: "true"
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: PHOENIX_CSRF_TRUSTED_ORIGINS
+    value: "https://phoenix.activescott.com"
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: PHOENIX_ROOT_URL
+    value: "https://phoenix.activescott.com"
