@@ -52,6 +52,15 @@ patches:
     target:
       kind: CronJob
       name: indexnow-notifier
+  # Amazon Searcher: Add imagePullSecrets (GHCR package is public but consistent with other deployments)
+  - patch: |-
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: github-container-registry-secret
+    target:
+      kind: Deployment
+      name: amazon-searcher
       # Temporarily suspend cache-revalidation CronJob
       # - patch: |-
       #     - op: add
@@ -80,4 +89,7 @@ images:
     newTag: "17"
   - name: indexnow-notifier-image-placeholder
     newName: ghcr.io/activescott/gpu-agent/indexnow-notifier
+    newTag: latest
+  - name: amazon-searcher-image-placeholder
+    newName: ghcr.io/activescott/amazon-searcher
     newTag: latest
