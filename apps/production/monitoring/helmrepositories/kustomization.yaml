@@ -1,5 +1,6 @@
 resources:
   - ./grafana-helmrepository.yaml
+  - ./grafana-community-helmrepository.yaml
   - ./prometheus-community-helmrepository.yaml
 
 namespace: monitoring

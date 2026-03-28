@@ -2,16 +2,69 @@
 
 Helm-managed observability stack deployed via Flux CD. Provides metrics (Prometheus), log aggregation (Loki + Alloy), and visualization (Grafana).
 
-## Helm Chart Versions
+## How to Upgrade
 
-| Component  | Chart                                        | Version  | File                          | Releases                                                                                             |
-| ---------- | -------------------------------------------- | -------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Loki       | `grafana/loki`                               | `6.51.0` | `loki/helmrelease.yaml`       | [Releases](https://github.com/grafana/loki/tree/main/production/helm/loki)                           |
-| Alloy      | `grafana/alloy`                              | `1.5.2`  | `alloy/helmrelease.yaml`      | [Releases](https://github.com/grafana/alloy/tree/main/operations/helm)                               |
-| Grafana    | `grafana/grafana`                            | `10.5.12`| `grafana/helmrelease.yaml`    | [Releases](https://github.com/grafana/helm-charts/tree/main/charts/grafana)                          |
-| Prometheus | `prometheus-community/prometheus`            | `28.6.0` | `prometheus/helmrelease.yaml` | [Releases](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus)          |
+### Step 1: Find the latest chart and app versions
 
-To bump a chart version, edit `spec.chart.spec.version` in the corresponding `helmrelease.yaml` file. Flux will reconcile the change automatically on the next interval (10m) or immediately via `flux reconcile helmrelease <name> -n monitoring`.
+Each Helm chart has its own version number that is separate from the application version it deploys. Use `helm search repo` to see the mapping:
+
+```bash
+# Update local repo caches first
+helm repo update
+
+# Show latest versions (chart version -> app version)
+helm search repo grafana-community/grafana
+helm search repo grafana-community/loki
+helm search repo grafana/alloy
+helm search repo prometheus-community/prometheus
+
+# Show all available versions (useful for finding a specific app version)
+helm search repo grafana-community/grafana --versions | head -20
+```
+
+For example, to find which chart version ships Grafana 12.4.2:
+
+```bash
+helm search repo grafana-community/grafana --versions | grep 12.4.2
+# grafana-community/grafana    11.3.6    12.4.2    ...
+```
+
+### Step 2: Update the chart version
+
+Edit `spec.chart.spec.version` in the corresponding `helmrelease.yaml` file listed in the table below.
+
+### Step 3: Reconcile
+
+Flux will pick up the change on its next interval (10m), or force it immediately:
+
+```bash
+flux reconcile helmrelease <name> -n monitoring
+```
+
+Verify:
+
+```bash
+flux get helmreleases -n monitoring
+```
+
+### Helm Repositories
+
+Grafana and Loki charts migrated from `grafana/helm-charts` to `grafana-community/helm-charts` in early 2026. Alloy has not migrated yet and still uses the original `grafana` repo. When Alloy migrates, remove the old `grafana` HelmRepository.
+
+| Repo name              | URL                                                    | Charts served    | File                                                      |
+| ---------------------- | ------------------------------------------------------ | ---------------- | --------------------------------------------------------- |
+| `grafana-community`    | `https://grafana-community.github.io/helm-charts`      | Grafana, Loki    | `helmrepositories/grafana-community-helmrepository.yaml`  |
+| `grafana`              | `https://grafana.github.io/helm-charts`                | Alloy            | `helmrepositories/grafana-helmrepository.yaml`            |
+| `prometheus-community` | `https://prometheus-community.github.io/helm-charts`   | Prometheus       | `helmrepositories/prometheus-community-helmrepository.yaml` |
+
+### Helm Chart Versions
+
+| Component  | Chart                             | Chart Version | App Version | File                          |
+| ---------- | --------------------------------- | ------------- | ----------- | ----------------------------- |
+| Grafana    | `grafana-community/grafana`       | `11.3.6`      | `12.4.2`    | `grafana/helmrelease.yaml`    |
+| Loki       | `grafana-community/loki`          | `9.3.3`       | `3.7.1`     | `loki/helmrelease.yaml`       |
+| Alloy      | `grafana/alloy`                   | `1.5.2`       | `v1.12.2`   | `alloy/helmrelease.yaml`      |
+| Prometheus | `prometheus-community/prometheus` | `28.6.0`      | `v3.9.1`    | `prometheus/helmrelease.yaml` |
 
 ## Architecture
 

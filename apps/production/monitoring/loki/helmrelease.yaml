@@ -8,10 +8,10 @@ spec:
   chart:
     spec:
       chart: loki
-      version: "6.51.0"
+      version: "9.3.3"
       sourceRef:
         kind: HelmRepository
-        name: grafana
+        name: grafana-community
         namespace: monitoring
       interval: 24h
   values:
@@ -71,11 +71,6 @@ spec:
     # Disable minio - we use local filesystem
     minio:
       enabled: false
-
-    # Disable self-monitoring
-    monitoring:
-      selfMonitoring:
-        enabled: false
 
     lokiCanary:
       enabled: false
