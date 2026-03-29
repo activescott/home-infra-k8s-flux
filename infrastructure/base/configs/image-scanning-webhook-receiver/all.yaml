@@ -97,3 +97,6 @@ spec:
     - kind: ImageRepository
       name: repo-tinkerbell-mcp-gateway
       namespace: tinkerbell-prod
+    - kind: ImageRepository
+      name: repo-amazon-searcher
+      namespace: gpupoet-prod

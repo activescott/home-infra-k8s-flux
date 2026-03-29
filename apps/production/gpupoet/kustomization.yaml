@@ -8,6 +8,7 @@ resources:
   - www-redirect-middleware.yaml
   - www-redirect-ingress.yaml
   - image-scanning/
+  - image-scanning-amazon-searcher/
   - indexnow-pv.yaml
   - ../shared/ghcr-pull-secret/
 patches:
@@ -91,5 +92,5 @@ images:
     newName: ghcr.io/activescott/gpu-agent/indexnow-notifier
     newTag: latest
   - name: amazon-searcher-image-placeholder
-    newName: ghcr.io/activescott/amazon-searcher
-    newTag: latest
+    newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:name"}
+    newTag: latest # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:tag"}
