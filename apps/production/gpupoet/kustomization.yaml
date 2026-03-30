@@ -93,4 +93,4 @@ images:
     newTag: latest
   - name: amazon-searcher-image-placeholder
     newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:name"}
-    newTag: v202603290402 # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:tag"}
+    newTag: v202603300713 # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:tag"}
