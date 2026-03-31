@@ -5,12 +5,6 @@ resources:
   - ./helmrelease.yaml
   - ./basic-auth-middleware.yaml
 
-# Alerting rules are kept in separate files for easy editing.
-# Each file is a strategic merge patch that adds rules to the HelmRelease's serverFiles.
-patches:
-  - path: alerting-rules-gpupoet.yaml
-  - path: alerting-rules-tayle.yaml
-
 secretGenerator:
   - name: alertmanager-secrets
     options:

@@ -93,9 +93,74 @@ spec:
                 chat_id: 510755639
 
     # --- Alert Rules ---
-    # Alerting rules are managed in separate files and merged via kustomize patches:
-    #   alerting-rules-gpupoet.yaml
-    #   alerting-rules-tayle.yaml
+    # All alerting rules go into the standard alerting_rules.yml key so they're
+    # automatically included in Prometheus's rule_files without extra config.
+    serverFiles:
+      alerting_rules.yml:
+        groups:
+          - name: gpupoet
+            rules:
+              - alert: ProbeFailure
+                expr: 'up{instance="gpupoet.com"} < 1.0'
+                for: 60m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Probe failure. Check https://gpupoet.com/ops/metrics
+              - alert: MissingMetricsFailure
+                expr: 'scrape_samples_scraped{instance="gpupoet.com"} < 7.0'
+                for: 60m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Missing metrics. Check https://gpupoet.com/ops/metrics
+              - alert: CacheRevalidationJobFailure
+                expr: 'coinpoet_last_job_success{instance="gpupoet.com"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Cache revalidation job failed
+                  description: The gpupoet cache revalidation cronjob has failed. Check the app logs and https://gpupoet.com/ops/metrics for details.
+              - alert: AmazonSearchFailure
+                expr: 'increase(coinpoet_amazon_searches_total{status="error",instance="gpupoet.com"}[1h]) > 3'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Multiple Amazon search failures in the last hour
+                  description: More than 3 Amazon search errors in 1 hour. Check proxy config and amazon-searcher service.
+              - alert: AmazonSearchStale
+                expr: '(time() - coinpoet_amazon_last_success_timestamp_seconds{instance="gpupoet.com"}) > 7200'
+                for: 30m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: No successful Amazon searches in over 2 hours
+                  description: Amazon searching has not succeeded in over 2 hours. Check amazon-searcher pod logs.
+          - name: tayle
+            rules:
+              - alert: PodNotReady
+                expr: 'kube_pod_status_ready{exported_namespace="tayle-prod",pod!~"^db-backup-.*",condition="false"} > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Tayle Pod not ready. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+              - alert: DeploymentNotAvailable
+                expr: 'kube_deployment_status_condition{exported_namespace="tayle-prod",condition="Available",status="false"} > 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Tayle Deployment not available. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+              - alert: StatefulSetNotReady
+                expr: 'kube_statefulset_status_replicas_ready{exported_namespace="tayle-prod"} == 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Tayle StatefulSet has no ready replicas. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
 
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |
