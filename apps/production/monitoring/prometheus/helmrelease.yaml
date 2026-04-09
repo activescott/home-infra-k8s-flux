@@ -123,13 +123,13 @@ spec:
                   summary: Cache revalidation job failed
                   description: The gpupoet cache revalidation cronjob has failed. Check the app logs and https://gpupoet.com/ops/metrics for details.
               - alert: AmazonSearchFailure
-                expr: 'increase(coinpoet_amazon_searches_total{status="error",instance="gpupoet.com"}[1h]) > 3'
+                expr: 'increase(coinpoet_amazon_searches_total{status="error",instance="gpupoet.com"}[1h]) > 4'
                 for: 5m
                 labels:
                   severity: critical
                 annotations:
                   summary: Multiple Amazon search failures in the last hour
-                  description: More than 3 Amazon search errors in 1 hour. Check proxy config and amazon-searcher service.
+                  description: More than 4 Amazon search errors in 1 hour. Check proxy config and amazon-searcher service.
               - alert: AmazonSearchStale
                 expr: '(time() - coinpoet_amazon_last_success_timestamp_seconds{instance="gpupoet.com"}) > 7200'
                 for: 30m
