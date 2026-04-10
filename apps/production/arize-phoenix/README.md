@@ -87,12 +87,30 @@ Set environment variables:
 
 ## Upgrading
 
-Change the git tag in `kustomization.yaml`:
+1. Find the latest release (the repo is a monorepo; filter by the `arize-phoenix-v` prefix):
 
-```yaml
-resources:
-  - https://github.com/Arize-ai/phoenix//kustomize/base?ref=arize-phoenix-v<NEW_VERSION>
-```
+   ```bash
+   gh api repos/Arize-ai/phoenix/releases --jq '.[] | select(.tag_name | startswith("arize-phoenix-v")) | .tag_name' | head
+   ```
+
+2. Check what image that tag actually pins. Every release tag lags one version behind in the kustomize base (release-please tags the commit before the image is built/pushed), so `ref=arize-phoenix-vX.Y.Z` typically deploys `version-X.Y.(Z-1)` or earlier:
+
+   ```bash
+   gh api 'repos/Arize-ai/phoenix/contents/kustomize/base/phoenix.yaml?ref=arize-phoenix-v<NEW_VERSION>' --jq '.content' | base64 -d | yq '.spec.template.spec.containers[0].image'
+   ```
+
+3. Verify env index 2 is still `PHOENIX_SQL_DATABASE_URL` in the upstream phoenix.yaml — `patch-phoenix-statefulset.yaml` removes it by numeric index and will silently remove the wrong var if upstream reorders:
+
+   ```bash
+   gh api 'repos/Arize-ai/phoenix/contents/kustomize/base/phoenix.yaml?ref=arize-phoenix-v<NEW_VERSION>' --jq '.content' | base64 -d | yq '.spec.template.spec.containers[0].env[2].name'
+   ```
+
+4. Bump the ref in `kustomization.yaml` and commit. Flux reconciles automatically; phoenix runs alembic migrations on startup.
+
+   ```yaml
+   resources:
+     - https://github.com/Arize-ai/phoenix//kustomize/base?ref=arize-phoenix-v<NEW_VERSION>
+   ```
 
 ## Verification
 
