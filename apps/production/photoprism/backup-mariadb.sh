@@ -17,7 +17,7 @@ for ns in photoprism-scott photoprism-oksana; do
   out="$OUT_DIR/photoprism-${ns}-${TS}.sql"
   echo "=== Dumping $ns -> $out ==="
   kubectl --context "$KCTX" exec -n "$ns" mariadb-0 -- \
-    sh -c 'mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --single-transaction --triggers "$MARIADB_DATABASE"' \
+    sh -c 'mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" --single-transaction --routines --triggers "$MARIADB_DATABASE"' \
     > "$out"
   bytes=$(wc -c < "$out")
   tables=$(grep -c '^CREATE TABLE' "$out" || true)
