@@ -18,8 +18,8 @@ spec:
     # --- Prometheus Server ---
     server:
       enabled: true
-      retention: "30d"
-      retentionSize: "100GB"
+      retention: "180d"
+      retentionSize: "190GB"
 
       persistentVolume:
         enabled: true
@@ -185,7 +185,7 @@ spec:
       enabled: true
 
     prometheus-node-exporter:
-      enabled: false
+      enabled: true
 
     prometheus-pushgateway:
       enabled: false
