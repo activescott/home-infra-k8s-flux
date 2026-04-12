@@ -99,6 +99,14 @@ spec:
             - name: PHOTOPRISM_SPONSOR
               value: "true"
 
+            # Run the photoprism process as non-root after container init.
+            # The entrypoint runs as root (needed for TLS certs), then drops to this UID/GID.
+            # Host volume directories must be owned by this UID/GID.
+            - name: PHOTOPRISM_UID
+              value: "1000"
+            - name: PHOTOPRISM_GID
+              value: "1000"
+
           # working dir set in the docker-compose file
           workingDir: "/photoprism"
 
@@ -119,16 +127,15 @@ spec:
 
           # container-level securityContext, which has different config than pod-level securityContext: https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#security-context-1
           securityContext:
-            # privileged for /dev/dri access
-            privileged: true
+            # privileged was previously enabled for /dev/dri GPU access (Intel Quick Sync).
+            # Disabled because PHOTOPRISM_FFMPEG_ENCODER is set to "software" and /dev/dri is not mounted.
+            # Re-enable if GPU transcoding is restored.
+            # privileged: true
 
       securityContext:
-        #runAsUser: 3004
-        #runAsGroup: 3004
+        # Not using runAsUser/runAsGroup here because photoprism's entrypoint needs root for init.
+        # Instead, PHOTOPRISM_UID/GID env vars handle the privilege drop after init.
         fsGroup: 1000
-        #
-        #supplementalGroups:
-        #  - 107 # for GPU access, must match the host's "render" group id per https://jellyfin.org/docs/general/administration/hardware-acceleration/intel/#kubernetes
 
         # seccomp and AppArmor are explicitly unconfined in
         # docker-compose and recommended to disable in photoprism docs:

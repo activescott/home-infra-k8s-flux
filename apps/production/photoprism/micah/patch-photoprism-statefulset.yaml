@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: photoprism-app
+spec:
+  template:
+    spec:
+      containers:
+        - name: photoprism
+          env:
+            # mariadb name is changed by namePrefix kustomize transformer:
+            - name: PHOTOPRISM_DATABASE_SERVER
+              value: mariadb:3306
+
+            - name: PHOTOPRISM_SITE_URL
+              value: "https://photos.micah.willeke.com/"
+            - name: PHOTOPRISM_SITE_CAPTION
+              value: "Micah's Photos"
+            - name: PHOTOPRISM_SITE_TITLE
+              value: "Micah's Photos"
+            - name: PHOTOPRISM_SITE_DESCRIPTION
+              value: "Various photographs from Micah"
+            - name: PHOTOPRISM_SITE_AUTHOR
+              value: "Micah Willeke"
+
+      # pod-level volumes:
+      volumes:
+        - name: import
+          hostPath:
+            path: /mnt/thedatapool/photos/micah/import
+        - name: originals
+          hostPath:
+            path: /mnt/thedatapool/photos/micah/organized-originals
+        - name: storage
+          hostPath:
+            path: /mnt/thedatapool/app-data/photoprism-micah/app/storage
