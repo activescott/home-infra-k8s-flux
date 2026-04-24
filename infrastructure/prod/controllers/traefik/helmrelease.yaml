@@ -33,6 +33,12 @@ spec:
         cpu: "2.0"
         memory: "1Gi"
 
+    service:
+      spec:
+        # Preserve real client IPs instead of SNAT'ing through kube-proxy.
+        # Required for PostHog geo-location and IP-based analytics.
+        externalTrafficPolicy: Local
+
     rbac:
       enabled: true
       #namespaced: false # false = allow traefik to be used across namespaces
