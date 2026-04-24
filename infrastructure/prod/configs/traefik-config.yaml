@@ -1,0 +1,12 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        # Preserve real client IPs instead of SNAT'ing through kube-proxy.
+        # Required for PostHog geo-location and IP-based analytics.
+        externalTrafficPolicy: Local
