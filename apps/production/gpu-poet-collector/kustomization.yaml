@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# All collector resources land in the same namespace as the gpupoet app, so
+# they can re-use the existing `github-container-registry-secret` imagePull
+# secret created by apps/production/gpupoet/.
+namespace: gpupoet-prod
+
+resources:
+  - pv.yaml
+  - pvc.yaml
+  - service.yaml
+  - deployment.yaml
+  - image-scanning/
+
+# Generates a Secret named `gpu-poet-collector-secrets` from the encrypted
+# .env file. SOPS-decryption happens automatically via flux's kustomize
+# controller (see infrastructure/configs/create-sops-age-decryption-secret.sh).
+#
+# Workflow before first deploy:
+#   1. Edit .env.secret.collector and replace the placeholder with a real PAT.
+#   2. Run: scripts/encrypt-env-files.sh apps/production/gpu-poet-collector/
+#   3. Verify .env.secret.collector.encrypted now exists.
+#   4. Add `- ./gpu-poet-collector` to apps/production/kustomization.yaml.
+#   5. Commit & push (only the .encrypted file is committed; the plaintext is
+#      gitignored).
+secretGenerator:
+  - name: gpu-poet-collector-secrets
+    envs:
+      - .env.secret.collector.encrypted
+
+# kustomize built-in image transformer; the comment in deployment.yaml gives
+# Flux's image-automation a hook to bump the tag here.
+images:
+  - name: gpu-poet-collector-image
+    newName: ghcr.io/activescott/gpu-poet-data/collector
+    newTag: latest # replaced by ImagePolicy on first reconciliation

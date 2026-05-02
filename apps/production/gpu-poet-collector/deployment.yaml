@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-poet-collector
+  labels:
+    app: gpu-poet-collector
+spec:
+  # Single instance only — runs git operations against a PVC and HTTP fetches
+  # against rate-limited external sites; concurrent replicas would conflict.
+  replicas: 1
+  strategy:
+    # Recreate (not RollingUpdate) — the PVC is RWO so two pods cannot mount
+    # it simultaneously during a rollout.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gpu-poet-collector
+  template:
+    metadata:
+      labels:
+        app: gpu-poet-collector
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      imagePullSecrets:
+        - name: github-container-registry-secret
+      containers:
+        - name: collector
+          image: gpu-poet-collector-image # {"$imagepolicy": "gpupoet-prod:policy-gpu-poet-collector"}
+          ports:
+            - name: metrics
+              containerPort: 9100
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: GIT_REPO_URL
+              value: https://github.com/activescott/gpu-poet-data.git
+            - name: GIT_USER_NAME
+              value: gpu-poet-collector-bot
+            - name: GIT_USER_EMAIL
+              value: gpu-poet-collector-bot@users.noreply.github.com
+            - name: COLLECT_INTERVAL_SECONDS
+              value: "604800" # 7 days
+            - name: INNER_LOOP_INTERVAL_SECONDS
+              value: "60"
+            - name: METRICS_PORT
+              value: "9100"
+            - name: LOG_LEVEL
+              value: info
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gpu-poet-collector-secrets
+                  key: GITHUB_TOKEN
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gpu-poet-collector-pvc
+      terminationGracePeriodSeconds: 60

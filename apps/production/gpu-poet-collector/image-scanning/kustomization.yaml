@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../base/image-scanning/timestamp
+
+configurations:
+  - secret-name-reference.yaml
+
+patches:
+  - target:
+      kind: ImageRepository
+      name: repo-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: repo-gpu-poet-collector
+      - op: replace
+        path: /spec/image
+        value: ghcr.io/activescott/gpu-poet-data/collector
+
+  - target:
+      kind: ImagePolicy
+      name: policy-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: policy-gpu-poet-collector
+      - op: replace
+        path: /spec/imageRepositoryRef/name
+        value: repo-gpu-poet-collector
+
+  - target:
+      kind: ImageUpdateAutomation
+      name: update-placeholder
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: update-gpu-poet-collector

@@ -54,6 +54,24 @@ spec:
         cpu: "1"
         memory: "2Gi"
 
+    # Sidecar that watches ConfigMaps in the same namespace with the label
+    # `grafana_dashboard=1` and writes their JSON contents into Grafana's
+    # provisioned-dashboard directory. Used to ship our own dashboards as code:
+    # see ./dashboards/ + configMapGenerator in kustomization.yaml.
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+        folder: /tmp/dashboards
+        provider:
+          name: sidecarProvider
+          orgid: 1
+          folder: GPU Poet
+          type: file
+          disableDelete: false
+          allowUiUpdates: true
+
     # Provision standard Kubernetes monitoring dashboards from grafana.com.
     # These two sections (dashboardProviders + dashboards) work together:
     # - dashboardProviders defines WHERE on disk Grafana looks for dashboard JSON files

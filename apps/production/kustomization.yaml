@@ -9,6 +9,7 @@ resources:
   - ./plex
   - ./scott-willeke-com
   - ./gpupoet
+  - ./gpu-poet-collector
   - ./coinpoet-redirect
   - ./activescott-redirect
   - ./ramblefeed

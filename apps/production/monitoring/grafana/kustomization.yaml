@@ -4,6 +4,19 @@ resources:
   - ./grafana-pv.yaml
   - ./helmrelease.yaml
 
+# Dashboards checked in here are picked up by the Grafana sidecar (enabled in
+# helmrelease.yaml under sidecar.dashboards). The sidecar watches ConfigMaps
+# with label `grafana_dashboard=1` and provisions any JSON keys as dashboards.
+configMapGenerator:
+  - name: grafana-dashboard-gpupoet-com
+    namespace: monitoring
+    files:
+      - dashboards/gpupoet-com.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
+
 labels:
   - pairs:
       app.activescott.com/name: grafana
