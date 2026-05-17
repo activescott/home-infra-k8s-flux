@@ -285,17 +285,13 @@ spec:
         static_configs:
           - targets: ["localhost:9090"]
 
-    # Enable the configmap-reload sidecar so changes to scrape configs and
-    # alerting_rules.yml are picked up by the running pod.
-    #
-    # Previously disabled with a comment claiming "HelmRelease updates trigger
-    # pod restarts anyway." That's wrong: Helm only restarts pods when the
-    # Deployment spec changes, not when a child ConfigMap's contents change.
-    # On 2026-05-17 we shipped a new scrape job + alert rules; Flux rendered
-    # the new ConfigMap, but the long-running prometheus-server pod kept its
-    # old in-memory config until we manually hit /-/reload. The sidecar
-    # watches the mounted ConfigMap and calls /-/reload automatically on
-    # change.
+    # Without this sidecar, scrape and alert-rule edits silently fail to take
+    # effect: Helm only rolls pods on Deployment-spec changes, not on child
+    # ConfigMap content changes, so the rendered ConfigMap drifts ahead of
+    # the long-running pod's in-memory config until something forces a
+    # restart. Burned us on 2026-05-17 — a payment-error alert PR appeared
+    # to deploy successfully but didn't actually arm until /-/reload was hit
+    # manually.
     configmapReload:
       prometheus:
         enabled: true
