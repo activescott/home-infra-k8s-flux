@@ -285,11 +285,16 @@ spec:
         static_configs:
           - targets: ["localhost:9090"]
 
-    # Disable configmap-reload sidecar — config changes come via HelmRelease
-    # updates which trigger pod restarts anyway.
+    # Without this sidecar, scrape and alert-rule edits silently fail to take
+    # effect: Helm only rolls pods on Deployment-spec changes, not on child
+    # ConfigMap content changes, so the rendered ConfigMap drifts ahead of
+    # the long-running pod's in-memory config until something forces a
+    # restart. Burned us on 2026-05-17 — a payment-error alert PR appeared
+    # to deploy successfully but didn't actually arm until /-/reload was hit
+    # manually.
     configmapReload:
       prometheus:
-        enabled: false
+        enabled: true
 
     # --- Sub-charts ---
     kube-state-metrics:
