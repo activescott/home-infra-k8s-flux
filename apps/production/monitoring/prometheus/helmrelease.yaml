@@ -204,17 +204,29 @@ spec:
                     Tayle StatefulSet has no ready replicas. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
           - name: tinkerbell-llm-providers
             rules:
-              # Critical: an LLM provider returned 402 Payment Required.
-              # This is the credit-balance-too-low case that took prod silent.
-              # Single occurrence fires — customer impact is total.
+              # Critical: an LLM provider rejected requests with a payment
+              # error (e.g. Anthropic 400 + "credit balance too low",
+              # OpenAI 402, etc). Fires when the per-provider
+              # `last_payment_error_timestamp` is more recent than the
+              # `last_success_timestamp`. The `unless` clause clears the
+              # alert ONLY when a successful call lands on the SAME
+              # provider — a quiet window with no chat activity won't
+              # auto-resolve it. Default vector matching joins on
+              # `provider` so cross-provider successes don't suppress.
               - alert: LLMProviderPaymentRequired
-                expr: 'increase(tinkerbell_llm_provider_errors_total{error_type="payment"}[5m]) > 0'
+                expr: |
+                  (tinkerbell_llm_provider_last_payment_error_timestamp_seconds > 0)
+                  unless
+                  (
+                    tinkerbell_llm_provider_last_success_timestamp_seconds
+                    > tinkerbell_llm_provider_last_payment_error_timestamp_seconds
+                  )
                 for: 1m
                 labels:
                   severity: critical
                 annotations:
-                  summary: 'LLM provider {{ $labels.provider }} returned a payment error — top up the account.'
-                  description: 'tinkerbell_llm_provider_errors_total{error_type=payment, provider={{ $labels.provider }}, status_code={{ $labels.status_code }}} increased. Chat is silently failing for users. Top up at console.anthropic.com (or the relevant provider) immediately.'
+                  summary: 'LLM provider {{ $labels.provider }} is failing with a payment error — top up the account.'
+                  description: 'Provider {{ $labels.provider }} last returned a payment-bucketed error at timestamp {{ $value }} and has not had a successful call since. Chat is silently failing for users. Top up at console.anthropic.com (or the relevant provider) and send a test message to clear the alert.'
               - alert: LLMProviderRateLimited
                 expr: 'rate(tinkerbell_llm_provider_errors_total{error_type="rate_limit"}[10m]) > 0.05'
                 for: 10m
