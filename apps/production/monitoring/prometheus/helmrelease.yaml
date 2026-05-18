@@ -64,9 +64,23 @@ spec:
           cpu: "250m"
           memory: "250Mi"
 
-    # --- AlertManager Configuration ---
-    alertmanagerFiles:
-      alertmanager.yml:
+      # Enable the AlertManager configmap-reload sidecar. Without this,
+      # changes to .config below land in the ConfigMap but the running
+      # pod keeps serving the old in-memory config until the next
+      # restart. We hit this exact failure mode on 2026-05-17 — see
+      # the comment on the prometheus configmapReload block below for
+      # the full incident write-up.
+      configmapReload:
+        enabled: true
+
+      # The chart's previous top-level `alertmanagerFiles.alertmanager.yml`
+      # block was IGNORED — the chart renders AlertManager config from
+      # `alertmanager.config` (nested under the subchart values). Our
+      # config sat in the wrong path silently for ~110 days, so
+      # AlertManager ran on the chart default (single "default-receiver"
+      # with no notifier) and routed every alert into the void. Telegram
+      # delivery never worked. Moving the config to the correct path here.
+      config:
         global:
           resolve_timeout: 5m
         route:
