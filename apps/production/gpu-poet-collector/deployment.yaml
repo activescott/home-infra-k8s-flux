@@ -71,10 +71,14 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 384Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              # Steady state sits ~210-357Mi but cold start (Playwright
+              # Chromium launch + git pull + initial scrape buffers) briefly
+              # crosses 512Mi and gets OOMKilled — observed during the
+              # v202605180624 rollout. 1Gi gives ~3x headroom on the peak.
+              memory: 1Gi
       volumes:
         - name: data
           persistentVolumeClaim:
