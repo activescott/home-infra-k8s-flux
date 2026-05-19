@@ -14,8 +14,8 @@ secretGenerator:
   - name: prometheus-basic-auth
     options:
       disableNameSuffixHash: true
-    files:
-      - users=basic-auth-users
+    envs:
+      - .env.secret.prometheus-basic-auth.encrypted
 
 labels:
   - pairs:
