@@ -87,7 +87,7 @@
           "editorMode": "code",
           "expr": "ALERTS{alertname=~\"Probe.*|Missing.*|Cache.*|Amazon.*|Collector.*\"}",
           "instant": false,
-          "legendFormat": "{{alertname}}",
+          "legendFormat": "{{alertname}} ({{alertstate}}, {{job}})",
           "range": true,
           "refId": "A"
         }
