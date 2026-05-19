@@ -19,9 +19,6 @@ spec:
     metadata:
       labels:
         app: gpu-poet-collector
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9100"
     spec:
       imagePullSecrets:
         - name: github-container-registry-secret
