@@ -85,7 +85,7 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "ALERTS{instance=\"gpupoet.com\"}",
+          "expr": "ALERTS{alertname=~\"Probe.*|Missing.*|Cache.*|Amazon.*|Collector.*\"}",
           "instant": false,
           "legendFormat": "__auto",
           "range": true,
