@@ -64,7 +64,7 @@ For a single-maintainer home-infra repo, the marginal security benefit of `requi
 
 In priority order:
 
-1. **Migrate `apps/production/monitoring/prometheus/basic-auth-users` to SOPS** and rotate the password. The old hash is permanently in git history and on the public internet; treat the old password as compromised. Detailed plan in `docs/specs/prometheus-basic-auth-sops/plan.md`. Planned as a follow-up commit separate from this review.
+1. ~~**Migrate `apps/production/monitoring/prometheus/basic-auth-users` to SOPS** and rotate the password.~~ ✅ Done in commit `c7013cc` (2026-05-19). See `docs/specs/prometheus-basic-auth-sops/summary.md`. The old hash is still permanently in git history, but the credential it represents was rotated as part of the migration.
 2. **Consider enabling required PR review on `main`** (currently not set). For a solo-maintainer repo this is debatable, but it converts a single-credential compromise (PAT/SSH key) into a two-step compromise. The cost is needing to open a PR for your own changes.
 3. **Consider repointing `ImageUpdateAutomation.spec.git.push.branch`** to a non-`main` branch (e.g. `flux-image-updates`) and merging to `main` via PR. Only meaningful once PR review is required.
 4. **Long-term: migrate from classic PAT to a GitHub App** for the Flux bootstrap credential with least-privilege scopes and rotation.
