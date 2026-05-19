@@ -87,6 +87,13 @@ Grafana and Loki charts migrated from `grafana/helm-charts` to `grafana-communit
 - **Prometheus** scrapes metrics from pods, kube-state-metrics (sub-chart), and external targets (gpupoet). Includes AlertManager (sub-chart) for Telegram notifications.
 - **Grafana** is provisioned with both Prometheus and Loki as datasources.
 
+### Adding a scrape target
+
+Pick **one** of these — never both, or every metric will appear twice (one series per `job` label) and rules without a `job=` selector will fire duplicate alerts:
+
+- **Pod annotation** (`prometheus.io/scrape: "true"` + `prometheus.io/port: "<n>"` on the pod template). Scraped by the chart's default `kubernetes-pods` job; series carry `job="kubernetes-pods"`. Use this for most pods.
+- **Static `extraScrapeConfigs` entry** in `prometheus/helmrelease.yaml`. Series carry your chosen `job` label. Use this when you need a stable, readable job name for alert-rule selectors, or when the target isn't a pod (e.g. `gpupoet.com`).
+
 ## Storage
 
 All data is on hostPath volumes. Prometheus and Grafana reuse their pre-existing paths to preserve historical data.
