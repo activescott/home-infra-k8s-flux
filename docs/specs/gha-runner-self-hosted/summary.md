@@ -66,13 +66,19 @@ Wiring:
 
 ### In the application repos
 
-- `activescott/tinkerbell` branch `ci/self-hosted-runner-smoke`:
-  switched `.github/workflows/cleanup-packages.yaml` from
-  `runs-on: ubuntu-latest` to `runs-on: tinkerbell-runners`. Triggered
-  via `gh workflow run` — completed in 5s, runner pod spun up and
-  terminated cleanly. Smoke test passed.
-- `activescott/ramblefeed`: same change pending push for the
-  `cleanup-packages.yaml` workflow.
+- **`activescott/tinkerbell` PR #76** (branch `ci/self-hosted-runner-smoke`):
+  switched `.github/workflows/cleanup-packages.yaml` AND
+  `.github/workflows/lint-pr-title.yaml` to `runs-on: tinkerbell-runners`.
+  PR-open triggered the lint-pr-title check on the new runner — passed
+  in 31s. Independent `gh workflow run` against cleanup-packages
+  completed in 5s. All other PR checks (validate, integration-tests,
+  docker-build) on ubuntu-24.04 are green.
+- **`activescott/ramblefeed` PR #32** (branch `ci/self-hosted-runner-smoke`):
+  switched `cleanup-packages.yaml` AND the `validate` job in
+  `release.yaml` to `runs-on: ramblefeed-runners`. PR-open triggered
+  the validate check on the new runner — passed in 52s. The heavier
+  `e2e` job stayed on `ubuntu-24.04` for now (needs DinD-nested
+  minikube validation in a follow-up).
 
 ## Verification
 
@@ -121,48 +127,66 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
 
 ## Open items / where work left off
 
-1. **Push the ramblefeed `cleanup-packages.yaml` change**. Edit is
-   already in the working tree at
-   `/Users/scott/src/activescott/ramblefeed/.github/workflows/cleanup-packages.yaml`;
-   needs commit + push + a `gh workflow run` smoke trigger.
-2. **Merge the tinkerbell smoke-test branch** (`ci/self-hosted-runner-smoke`)
-   into `main` so the cleanup workflow stays on the self-hosted runner.
-3. **Expand to more workflows incrementally**, per the plan's "Strategy:
-   incremental switchover, lightweight jobs first". Order:
-   - `lint-pr-title.yaml` (Node + npm; stock image has Node 20 built in;
-     workflow uses `actions/setup-node@v4` so no extra deps needed).
-   - `sync-litellm-pricing.yaml` (scheduled, just curl + jq via a
-     well-known action).
-   - `build.yaml` in both repos — these are Docker Buildx → GHCR.
-     `containerMode: dind` is already on, so this should work; first
-     run is the validation.
-   - `ci.yaml` (tinkerbell) / `release.yaml` (ramblefeed) — these
-     include `minikube + skaffold + Playwright`. Workflows need explicit
-     `medyagh/setup-minikube`, skaffold install, and
-     `npx playwright install --with-deps` steps because the stock
-     runner image doesn't ship them. This is the biggest cold-start
-     cost and may need a custom runner image later.
-4. **Loki/Grafana parses controller logs poorly** — ARC controller
-   emits tab-separated zap-console format, listener emits logfmt.
-   Tracked separately at `docs/specs/arc-logs-parsing/` (TODO: create
-   that spec when the work starts). Quick fix planned: set
-   `flags.logFormat: "json"` on the controller chart values (the
-   change is already staged in
-   `apps/production/github-runners/controller/helmrelease.yaml` but
-   not yet committed), and add a `stage.logfmt` fallback to
-   `apps/production/monitoring/alloy/helmrelease.yaml` for the
-   listener.
-5. **Resource sizing**: each runner pod requests 500m CPU / 1 Gi RAM
+1. **Merge tinkerbell PR #76 and ramblefeed PR #32**. Both have at
+   least one PR-triggered check (lint-pr-title for tinkerbell,
+   `validate` job of release.yaml for ramblefeed) already green on
+   the new self-hosted runners; the rest of the workflows still run
+   on `ubuntu-24.04`. Squash-merge when ready — no further validation
+   needed.
+2. **Expand to the heavy workflows**, in this order:
+   - `sync-litellm-pricing.yaml` (tinkerbell): scheduled, just curl +
+     jq via well-known actions. One-line switch.
+   - `build.yaml` (both repos): Docker Buildx → GHCR push. Uses
+     `docker/setup-buildx-action@v3`. `containerMode: dind` is already
+     on, so first manual `gh workflow run` is the validation.
+   - `ci.yaml` (tinkerbell) `validate` + `docker-build` jobs: same
+     reasoning as ramblefeed's `validate` switch — Node and Docker
+     Buildx work on the stock image.
+   - `ci.yaml` (tinkerbell) `integration-tests` job and
+     `release.yaml` (ramblefeed) `e2e` job — these run minikube
+     (`docker` driver) + skaffold + Playwright inside the runner pod.
+     This is the biggest unknown: minikube-docker-driver inside DinD
+     inside a Kubernetes pod is several layers of nesting. First run
+     is the validation; may need to switch minikube to `none` driver
+     or `kvm2`, or pre-pull images in a custom runner image. This is
+     where the majority of the burned minutes live — biggest billing
+     win, biggest risk.
+3. **Resource sizing**: each runner pod requests 500m CPU / 1 Gi RAM
    with limits at 4 CPU / 6 Gi. `maxRunners: 2` per scale set, so
    worst case = 4 concurrent runner pods cluster-wide (8 GB / 8 CPU
    committed at limit). Watch node pressure during the first ci.yaml
    run.
-6. **Adding more repos** (`serverless-aws-static-file-handler`,
+4. **Adding more repos** (`serverless-aws-static-file-handler`,
    `gpu-agent`, `serverless-http-invoker`): copy
    `apps/production/github-runners/runners/tinkerbell/` to a new dir,
    change the four name strings (HelmRelease name, githubConfigUrl,
    githubConfigSecret, runnerScaleSetName), add the encrypted PAT,
    add the line in `apps/production/github-runners/kustomization.yaml`.
+5. **Pre-existing tinkerbell-prod/app Deployment failure**: the
+   `apps` Kustomization is stuck in not-ready because of a failing
+   Deployment in `tinkerbell-prod`. Unrelated to ARC but is masking
+   the apps-Kustomization status. Worth a separate investigation.
+
+## Log parsing in Loki
+
+Three distinct log formats emit from ARC; all now parse via the
+existing Alloy pipeline at
+`apps/production/monitoring/alloy/helmrelease.yaml`:
+
+- **arc-systems / manager** (controller, JSON `severity`/`message`):
+  handled by `stage.json` with JMESPath `||` fallback from
+  pino-style `level`/`msg` keys.
+- **arc-systems / listener** (logfmt `time=... level=INFO msg=...`):
+  handled by added `stage.logfmt`.
+- **arc-runners / dind** (Docker daemon logfmt): same `stage.logfmt`.
+- **arc-runners / runner** (`[RUNNER 2026-05-22 05:53:07Z INFO Listener]
+  ...`): handled by added `stage.regex`.
+- Trailing `stage.template` lowercases the level so the `level` label
+  stays consistent across all streams (`info`, `warn`, `error`).
+
+Plain text runner messages (e.g. `Exiting runner...`, `√ Removed
+.credentials`) have no level marker — they remain at
+`level=<no value>`, which is acceptable.
 
 ## Non-obvious environment notes
 
