@@ -17,3 +17,4 @@ resources:
   - ./tinkerbell
   - ./wordpress-micah-mmm
   - ./arize-phoenix
+  - ./github-runners

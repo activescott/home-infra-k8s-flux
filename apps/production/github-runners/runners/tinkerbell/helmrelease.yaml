@@ -1,0 +1,40 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: tinkerbell-runners
+  namespace: arc-runners
+spec:
+  interval: 1h
+  dependsOn:
+    - name: arc-controller
+      namespace: arc-systems
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: ">=0.14.0 <0.15.0"
+      sourceRef:
+        kind: HelmRepository
+        name: actions-runner-controller
+        namespace: arc-systems
+      interval: 24h
+  values:
+    githubConfigUrl: https://github.com/activescott/tinkerbell
+    githubConfigSecret: tinkerbell-github-token
+    runnerScaleSetName: tinkerbell-runners
+    minRunners: 0
+    maxRunners: 2
+    containerMode:
+      type: dind
+    template:
+      spec:
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.328.0  # {"$imagepolicy": "arc-runners:policy-actions-runner:tag"}
+            command: ["/home/runner/run.sh"]
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "4"
+                memory: "6Gi"
