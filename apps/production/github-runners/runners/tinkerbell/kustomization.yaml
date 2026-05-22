@@ -9,3 +9,7 @@ secretGenerator:
   - name: tinkerbell-github-token
     envs:
       - .env.secret.github-token.encrypted
+    options:
+      # Helm chart references the secret by name string — no resource for
+      # kustomize to follow, so the hash suffix would break the reference.
+      disableNameSuffixHash: true
