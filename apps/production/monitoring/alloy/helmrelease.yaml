@@ -113,13 +113,17 @@ spec:
               expression = ".*GET /(api/)?health/(readiness|liveness).*"
             }
 
-            // Extract level and msg from pino JSON for label promotion
-            // and structured metadata. Non-JSON lines pass through since
-            // stage.json silently skips them.
+            // Extract level and msg from JSON for label promotion and
+            // structured metadata. Two field-name conventions in the wild:
+            //   - pino (Node) and many others: "level" + "msg"
+            //   - controller-runtime / GCP-style: "severity" + "message"
+            //     (e.g. ARC controller in arc-systems)
+            // JMESPath `||` coalesces to the first non-empty value.
+            // Non-JSON lines pass through since stage.json silently skips them.
             stage.json {
               expressions = {
-                level = "level",
-                msg   = "msg",
+                level = "level || severity",
+                msg   = "msg || message",
               }
             }
 
