@@ -15,6 +15,8 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      annotations:
+        grafana_folder: GPU Poet
       disableNameSuffixHash: true
   - name: grafana-dashboard-github-actions-runners
     namespace: monitoring
@@ -23,6 +25,8 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      annotations:
+        grafana_folder: GitHub Actions
       disableNameSuffixHash: true
 
 labels:
