@@ -29,7 +29,7 @@ spec:
       spec:
         containers:
           - name: runner
-            image: 2.334.0 # {"$imagepolicy": "arc-runners:policy-actions-runner:tag"}
+            image: ghcr.io/actions/actions-runner:2.334.0 # {"$imagepolicy": "arc-runners:policy-actions-runner"}
             command: ["/home/runner/run.sh"]
             resources:
               requests:
