@@ -66,19 +66,27 @@ Wiring:
 
 ### In the application repos
 
-- **`activescott/tinkerbell` PR #76** (branch `ci/self-hosted-runner-smoke`):
-  switched `.github/workflows/cleanup-packages.yaml` AND
-  `.github/workflows/lint-pr-title.yaml` to `runs-on: tinkerbell-runners`.
-  PR-open triggered the lint-pr-title check on the new runner — passed
-  in 31s. Independent `gh workflow run` against cleanup-packages
-  completed in 5s. All other PR checks (validate, integration-tests,
-  docker-build) on ubuntu-24.04 are green.
-- **`activescott/ramblefeed` PR #32** (branch `ci/self-hosted-runner-smoke`):
-  switched `cleanup-packages.yaml` AND the `validate` job in
-  `release.yaml` to `runs-on: ramblefeed-runners`. PR-open triggered
-  the validate check on the new runner — passed in 52s. The heavier
-  `e2e` job stayed on `ubuntu-24.04` for now (needs DinD-nested
-  minikube validation in a follow-up).
+- **`activescott/tinkerbell` PR #76** (branch `ci/self-hosted-runner-smoke`).
+  On `tinkerbell-runners`: `cleanup-packages.yaml`, `lint-pr-title.yaml`,
+  `ci.yaml`'s `docker-build` job, `sync-litellm-pricing.yaml`,
+  `build.yaml`. Still on `ubuntu-24.04`: `ci.yaml`'s `validate`,
+  `integration-tests`, `release`, `trigger-build`.
+  - PR-validated on new runner: lint-pr-title (37s), docker-build
+    (8m4s — DinD path works), cleanup-packages (5s via manual
+    dispatch).
+  - **`validate` reverted to ubuntu-24.04**: on the self-hosted
+    runner the job exited 1 after vitest reported all 294 tests
+    green, with a trailing `Error: Cannot find module
+    '/nonexistent/path/server.js'`. Looks like a tinkerbell test
+    teardown / unhandled-promise issue, not an ARC issue — same
+    PR's docker-build passed clean on the same runner. Needs a
+    targeted investigation in tinkerbell before re-switching.
+- **`activescott/ramblefeed` PR #32** (branch `ci/self-hosted-runner-smoke`).
+  On `ramblefeed-runners`: `cleanup-packages.yaml`, `release.yaml`'s
+  `validate` job, `build.yaml`. Still on `ubuntu-24.04`:
+  `release.yaml`'s `e2e`, `release`, `trigger-build`.
+  - PR-validated on new runner: validate (52s).
+  - `build.yaml` validates naturally on next release-driven dispatch.
 
 ## Verification
 
