@@ -165,7 +165,15 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
 5. **Pre-existing tinkerbell-prod/app Deployment failure**: the
    `apps` Kustomization is stuck in not-ready because of a failing
    Deployment in `tinkerbell-prod`. Unrelated to ARC but is masking
-   the apps-Kustomization status. Worth a separate investigation.
+   the apps-Kustomization status. Diagnosed during this work — the
+   v0.31.6 image fails to start with
+   `Error: Cannot find package 'handlebars' imported from
+   /app/packages/chat/dist/workflows/template-resolver.js`. Old
+   ReplicaSet (v0.31.5) is still serving 1/1; new ReplicaSet
+   (v0.31.6) is CrashLoopBackOff. This is a build-time dependency
+   bug in the tinkerbell app, not infra. Fix in the tinkerbell repo
+   (likely missing `handlebars` in `packages/chat/package.json`
+   dependencies, or excluded by the Docker multistage build).
 
 ## Log parsing in Loki
 
