@@ -30,12 +30,19 @@ spec:
     # (also requires the controller chart's `metrics:` block to be enabled
     # — see controller/helmrelease.yaml — and listenerMetrics below to
     # define which metrics this listener emits).
+    # When providing listenerTemplate, spec.containers is required by the
+    # chart's AutoscalingListener CRD validation. A container named
+    # "listener" is appended onto the chart-generated default; an empty
+    # block keeps the defaults while letting us add metadata.annotations.
     listenerTemplate:
       metadata:
         annotations:
           prometheus.io/scrape: "true"
           prometheus.io/port: "8080"
           prometheus.io/path: "/metrics"
+      spec:
+        containers:
+          - name: listener
     listenerMetrics:
       counters:
         gha_started_jobs_total:
