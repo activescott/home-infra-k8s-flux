@@ -63,6 +63,15 @@ Wiring:
    have committed as plaintext. Renamed to drop the suffix, then ran
    `./scripts/encrypt-env-files.sh apps/production/github-runners/runners`,
    then deleted the plaintext originals.
+4. **`listenerTemplate.spec.containers` is required by the chart's
+   AutoscalingListener CRD** even when you only want to add
+   `metadata.annotations`. Adding metadata-only first caused
+   `AutoscalingListener.actions.github.com is invalid:
+   spec.template.spec.containers: Required value` and listener pods
+   stopped being created. Fix: include `containers: [{ name: listener }]`
+   in `listenerTemplate.spec`. The container name matters — if it
+   isn't `listener`, the chart treats it as a side-car instead of
+   merging onto the listener container's default config.
 
 ### In the application repos
 
@@ -182,6 +191,57 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
    bug in the tinkerbell app, not infra. Fix in the tinkerbell repo
    (likely missing `handlebars` in `packages/chat/package.json`
    dependencies, or excluded by the Docker multistage build).
+
+## Telemetry & dashboard
+
+A Grafana dashboard "Github Actions Self-hosted Runners" is provisioned
+under the `GitHub Actions` folder (Flux-managed via the existing
+sidecar pattern at
+`apps/production/monitoring/grafana/dashboards/github-actions-runners.json`).
+
+Per-dashboard folder routing is now enabled cluster-wide: the Grafana
+sidecar has `folderAnnotation: grafana_folder`, and each dashboard
+ConfigMap sets that annotation in its kustomization (e.g.
+`grafana_folder: GitHub Actions`). Dashboards without an annotation
+land in a `Dashboards` default.
+
+**ARC metrics opt-in** — both ARC charts gate metrics behind values
+that are commented out by default. Now enabled:
+
+- `gha-runner-scale-set-controller` chart: `metrics:` block bound to
+  `:8080/metrics`, with `prometheus.io/scrape` pod annotations so the
+  existing `kubernetes-pods` Prometheus job picks it up. Emits
+  `gha_controller_running_listeners`,
+  `gha_controller_running_ephemeral_runners`,
+  `gha_controller_failed_ephemeral_runners`,
+  `gha_controller_pending_ephemeral_runners` — all labeled by
+  `name`/`namespace`/`repository`.
+- `gha-runner-scale-set` chart (per scale set): `listenerMetrics:`
+  block uncommented with the chart's documented label sets; the
+  listener pod now emits `gha_started_jobs_total`,
+  `gha_completed_jobs_total` (with the `job_result` label —
+  succeeded/failed/cancelled), `gha_running_jobs`,
+  `gha_busy_runners`, `gha_idle_runners`, `gha_registered_runners`,
+  `gha_min_runners`/`gha_max_runners`/`gha_desired_runners`,
+  `gha_job_startup_duration_seconds`, and
+  `gha_job_execution_duration_seconds`. `listenerTemplate.spec` must
+  include a `name: listener` container (empty otherwise) when
+  `metadata.annotations` is set, otherwise the chart's
+  AutoscalingListener CRD validation fails — see the gotchas list
+  below.
+
+Dashboard panels:
+
+- Stats: controller, listener, active runner pods, completed runners
+  in last 24h.
+- Jobs (listener metrics): completed jobs by result, running jobs
+  gauge, job start rate, p50/p95 startup + execution duration
+  histograms.
+- Runner activity: concurrent running runner pods by scale set
+  (regex `label_replace` from pod name).
+- Resource usage: CPU and memory per pod across both namespaces.
+- Logs: controller/listener warnings & errors, full runner-pod
+  log stream.
 
 ## Log parsing in Loki
 
