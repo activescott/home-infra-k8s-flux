@@ -64,15 +64,17 @@ spec:
         label: grafana_dashboard
         labelValue: "1"
         folder: /tmp/dashboards
-        # Each dashboard ConfigMap can opt into its own Grafana folder by
-        # adding `metadata.annotations.grafana_folder: <folder name>`. If
-        # the annotation is missing, the dashboard lands in the
-        # `provider.folder` below (kept as the root "Dashboards" group).
+        # Default location for sidecar-loaded dashboards is the root
+        # ("General" folder in Grafana — no folder shown). A ConfigMap
+        # can opt INTO a named folder by adding
+        # `metadata.annotations.grafana_folder: <folder>`. Until we have
+        # 3+ dashboards that share a theme, leave the annotation off and
+        # let them sit at the root.
         folderAnnotation: grafana_folder
         provider:
           name: sidecarProvider
           orgid: 1
-          folder: Dashboards
+          folder: ""
           type: file
           disableDelete: false
           allowUiUpdates: true
