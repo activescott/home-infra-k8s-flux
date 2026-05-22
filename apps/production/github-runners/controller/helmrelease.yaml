@@ -18,6 +18,8 @@ spec:
     image:
       repository: ghcr.io/actions/gha-runner-scale-set-controller
       tag: "0.14.1"  # {"$imagepolicy": "arc-systems:policy-arc-controller:tag"}
+    flags:
+      logFormat: "json"
     resources:
       requests:
         cpu: "50m"

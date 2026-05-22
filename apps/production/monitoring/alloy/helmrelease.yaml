@@ -123,6 +123,26 @@ spec:
               }
             }
 
+            // Fallback for logfmt-style lines (e.g. ARC autoscaling
+            // listener: `time=... level=INFO source=... msg=Compare ...`).
+            // stage.logfmt silently no-ops on non-logfmt lines, and lines
+            // already parsed by stage.json are skipped too (this stage
+            // only overwrites when a logfmt key is present).
+            stage.logfmt {
+              mapping = {
+                level = "",
+                msg   = "",
+              }
+            }
+
+            // ARC's logfmt level is uppercase ("INFO", "DEBUG"). Lowercase
+            // it so downstream Loki `level` labels stay consistent with
+            // the pino path (info/warn/error).
+            stage.template {
+              source   = "level"
+              template = "{{ "{{" }} .Value | lower {{ "}}" }}"
+            }
+
             // For non-JSON lines, msg is empty after stage.json. Fall back
             // to the full log line so msg is always populated.
             stage.template {
