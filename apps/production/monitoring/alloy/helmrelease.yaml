@@ -139,9 +139,18 @@ spec:
               }
             }
 
-            // ARC's logfmt level is uppercase ("INFO", "DEBUG"). Lowercase
-            // it so downstream Loki `level` labels stay consistent with
-            // the pino path (info/warn/error).
+            // Fallback for GitHub Actions runner's bracketed log format
+            // (arc-runners "runner" container, e.g.
+            // `[RUNNER 2026-05-22 05:53:07Z INFO Listener] Runner execution finished`).
+            // stage.regex silently no-ops on non-matching lines, so this
+            // does not disturb json/logfmt-parsed lines above.
+            stage.regex {
+              expression = "^\\[RUNNER \\S+ \\S+Z (?P<level>\\w+) [^\\]]+\\] "
+            }
+
+            // Levels arrive in many cases ("INFO", "DEBUG", "info"). Lowercase
+            // so downstream Loki `level` labels stay consistent with the
+            // pino path (info/warn/error).
             stage.template {
               source   = "level"
               template = "{{ "{{" }} .Value | lower {{ "}}" }}"
