@@ -16,6 +16,14 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-github-actions-runners
+    namespace: monitoring
+    files:
+      - dashboards/github-actions-runners.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
 
 labels:
   - pairs:
