@@ -20,6 +20,19 @@ spec:
       tag: "0.14.2" # {"$imagepolicy": "arc-systems:policy-arc-controller:tag"}
     flags:
       logFormat: "json"
+    # Enable Prometheus metrics. Both the controller-manager and the
+    # listener bind to :8080 /metrics.
+    metrics:
+      controllerManagerAddr: ":8080"
+      listenerAddr: ":8080"
+      listenerEndpoint: "/metrics"
+    # Annotations let the existing kubernetes-pods scrape job in
+    # monitoring/prometheus pick up controller metrics with no extra
+    # scrape config.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8080"
+      prometheus.io/path: "/metrics"
     resources:
       requests:
         cpu: "50m"
