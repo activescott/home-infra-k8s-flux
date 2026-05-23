@@ -144,30 +144,26 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
 
 ## Open items / where work left off
 
-1. **Merge tinkerbell PR #76 and ramblefeed PR #32**. Both have at
-   least one PR-triggered check (lint-pr-title for tinkerbell,
-   `validate` job of release.yaml for ramblefeed) already green on
-   the new self-hosted runners; the rest of the workflows still run
-   on `ubuntu-24.04`. Squash-merge when ready — no further validation
-   needed.
-2. **Expand to the heavy workflows**, in this order:
-   - `sync-litellm-pricing.yaml` (tinkerbell): scheduled, just curl +
-     jq via well-known actions. One-line switch.
-   - `build.yaml` (both repos): Docker Buildx → GHCR push. Uses
-     `docker/setup-buildx-action@v3`. `containerMode: dind` is already
-     on, so first manual `gh workflow run` is the validation.
-   - `ci.yaml` (tinkerbell) `validate` + `docker-build` jobs: same
-     reasoning as ramblefeed's `validate` switch — Node and Docker
-     Buildx work on the stock image.
-   - `ci.yaml` (tinkerbell) `integration-tests` job and
-     `release.yaml` (ramblefeed) `e2e` job — these run minikube
-     (`docker` driver) + skaffold + Playwright inside the runner pod.
-     This is the biggest unknown: minikube-docker-driver inside DinD
-     inside a Kubernetes pod is several layers of nesting. First run
-     is the validation; may need to switch minikube to `none` driver
-     or `kvm2`, or pre-pull images in a custom runner image. This is
-     where the majority of the burned minutes live — biggest billing
-     win, biggest risk.
+1. **DONE**: tinkerbell PR #76 (merged 2026-05-22 17:45 UTC) and
+   ramblefeed PR #32 (merged 2026-05-23 01:00 UTC). Subsequent
+   migrations:
+   - tinkerbell PR #82 — moved all remaining `ci.yaml` jobs
+     (`validate`, `integration-tests`, `docker-build`, `release`,
+     `trigger-build`) to `tinkerbell-runners`. Merged; latest run on
+     main has `integration-tests` failing with the same
+     "294 tests pass then exit 1" symptom that caused the original
+     `validate` revert. Looks like a tinkerbell-side teardown bug;
+     not yet fixed.
+   - ramblefeed PR #34 — moved `release` and `trigger-build` jobs to
+     `ramblefeed-runners`. Attempted `e2e` too and reverted it; see
+     the "ramblefeed `e2e`: self-hosted spike" section below.
+2. **`e2e` (ramblefeed) and `integration-tests` (tinkerbell) remain
+   on / failing on self-hosted**. Both involve nested container
+   runtimes (`e2e` via minikube; `integration-tests` may or may not —
+   needs the tinkerbell exit-1 root-caused first). See the
+   "ramblefeed `e2e`: self-hosted spike" section for the investigation
+   so far, hypotheses, and success criteria. These are still the
+   biggest billing win, biggest risk items.
 3. **Resource sizing**: each runner pod requests 500m CPU / 1 Gi RAM
    with limits at 4 CPU / 6 Gi. `maxRunners: 2` per scale set, so
    worst case = 4 concurrent runner pods cluster-wide (8 GB / 8 CPU
@@ -191,6 +187,154 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
    bug in the tinkerbell app, not infra. Fix in the tinkerbell repo
    (likely missing `handlebars` in `packages/chat/package.json`
    dependencies, or excluded by the Docker multistage build).
+
+## ramblefeed `e2e`: self-hosted spike (2026-05-23)
+
+Ramblefeed PR #34 migrated `release.yaml`'s `release` and
+`trigger-build` jobs to `ramblefeed-runners` (low risk; same Node-only
+pattern as `validate`). It also tried `e2e` and reverted it back to
+`ubuntu-24.04` after two failing runs. The `e2e` revert is documented
+inline in `.github/workflows/release.yaml` (comment pointing to PR #34).
+
+### What was tried
+
+Two CI runs on `ramblefeed-runners`:
+
+1. **Run `26321726597`** — `runs-on: ramblefeed-runners`, no other
+   change to the e2e step. `Setup minikube` step ran
+   `minikube start --driver docker --addons ingress,ingress-dns --wait all`
+   and failed at the inner kubeadm step:
+   `[kubelet-check] The kubelet is not healthy after 4m0.000669451s`
+   Total step time ≈ 7 min (dominated by ~520 MiB kicbase image pull).
+   minikube exited 109.
+2. **Run `26322255627`** — added
+   `start-args: --force-systemd=true --extra-config=kubelet.cgroup-driver=systemd`
+   to the `medyagh/setup-minikube` step (the literal flag minikube
+   suggests in its own error message; see
+   <https://github.com/kubernetes/minikube/issues/4172>). Behavior
+   shifted: first kubeadm attempt still timed out on `kubelet healthz`,
+   but the internal retry got the control plane partway up. The job
+   then hung in `Enabling 'ingress' returned an error: running
+   callbacks: [waiting for app.kubernetes.io/name=ingress-nginx pods:
+   context deadline exceeded]` and minikube exited 80 at
+   `GUEST_START: extra waiting: WaitExtra: context deadline exceeded`.
+   Total step time ≈ 26 min.
+
+`validate` (same workflow, same scale set) passed in both runs (~1 min),
+so the runner pod and DinD sidecar themselves are healthy — the failure
+is specifically in nested-kube startup.
+
+### Why this works on GitHub-hosted runners and not on ours
+
+GitHub-hosted `ubuntu-24.04` is a **VM** (Azure-provided), not a
+container. The layering when minikube docker driver runs there is:
+
+```
+Azure VM (real kernel, systemd PID 1, full /dev /sys /proc)
+  └─ host dockerd (installed in the image)
+       └─ minikube kic node container (its own systemd + containerd)
+            └─ kubelet + control-plane static pods
+```
+
+On our self-hosted ARC scale set the layering is:
+
+```
+TrueNAS host (kernel 5.15.131+truenas, k3s node)
+  └─ runner pod  (no systemd; runner user; container)
+  └─ DinD sidecar pod-container (privileged; running dockerd as PID ~1)
+       └─ minikube kic node container
+            └─ kubelet + control-plane static pods
+```
+
+Concrete differences that plausibly explain the failure:
+
+1. **Two extra layers of container nesting**. Even when each `dockerd`
+   is privileged, cgroup paths, namespace mounts, and `/proc`
+   visibility get progressively quirkier. The kic node's kubelet
+   talking to its own container runtime sometimes fails to set up
+   the pod sandbox cgroup correctly.
+2. **No outer systemd**. The DinD sidecar runs `dockerd` directly as
+   PID ~1, not under systemd. The kic node container *does* include
+   systemd, but kubelet expects coherent cgroup driver alignment
+   between itself, the container runtime, and the host init —
+   harder to achieve here. `--force-systemd` only sets the kic-side
+   driver; if the DinD layer below is on cgroupfs, the alignment
+   still breaks.
+3. **TrueNAS-patched kernel**. `5.15.131+truenas` is missing the
+   `configs` module (kubeadm preflight printed
+   `modprobe: FATAL: Module configs not found in directory
+   /lib/modules/5.15.131+truenas`). The warning itself is non-fatal,
+   but TrueNAS often disables or rebuilds other modules
+   (kernel namespaces, `binfmt_misc`, BPF-related). Some of those are
+   load-bearing for nested kubelet startup. The Azure kernel has
+   everything stock kubeadm expects.
+4. **minikube ingress addon assumes a real Service of type
+   LoadBalancer with an external IP**. On GitHub VMs that IP comes
+   from `minikube tunnel` (or the addon's NodePort fallback); inside
+   our nested setup, the ingress-controller pod itself never
+   reconciles to Ready in run 2, so even partial control-plane
+   success doesn't unblock the addon.
+
+### Hypotheses worth testing (not ranked, all carry risk)
+
+- **`kind` instead of `minikube`**. `helm/kind-action` uses
+  containerd-in-docker by design and is much more commonly used in
+  CI nested setups. Would require a `kind` cluster spin-up,
+  installing the nginx ingress controller via Helm/manifest (kind
+  has no built-in ingress addon), and adjusting `scripts/dev` /
+  skaffold profile to target the kind context. Open question: does
+  the same nesting issue bite kind, just with different symptoms?
+- **`minikube --driver=none`** with a custom runner image. The `none`
+  driver runs Kubernetes binaries directly on the host (= the runner
+  pod), no inner docker layer. Removes nesting entirely but requires
+  the runner pod to ship with `crictl`, `conntrack`, `cri-dockerd` /
+  containerd, `socat`, `ethtool`, `iptables`, and systemd-or-equivalent
+  cgroup management. Means building a custom `gha-runner-scale-set`
+  runner image (Dockerfile baked off the upstream
+  `ghcr.io/actions/actions-runner` and published to GHCR), tracked by
+  Flux ImageRepository just like the controller image.
+- **Drop minikube/skaffold entirely; target the host cluster**. The
+  runner already has cluster credentials (it lives in the cluster).
+  Build the app image with `docker/build-push-action`, deploy to a
+  per-PR namespace via `kubectl apply -k k8s/overlays/ci/<sha>` (new
+  overlay), `wait` for readiness, run Playwright against the
+  per-PR DNS name through the cluster's existing ingress, tear down.
+  Largest workflow + scripts change, but trades nesting for
+  infrastructure we already operate.
+- **Pre-build a runner image with kicbase + Kubernetes images
+  pre-pulled**. Cuts the ~7-minute kicbase pull at every run. Does
+  not address the kubelet-healthz timeout root cause, so this is at
+  best a follow-on optimization once a working configuration exists.
+- **A different cgroup configuration on the DinD sidecar**. The ARC
+  chart's dind container could be customized via
+  `template.spec.containers[name=dind]` overrides to enable
+  systemd-cgroup mode in dockerd
+  (`--exec-opt native.cgroupdriver=systemd`) and matching args on
+  the runner. Cheap to try; may or may not be sufficient on this
+  kernel.
+
+### Success criteria for any solution
+
+- `e2e` job completes within the existing 30-minute timeout on
+  `ramblefeed-runners`, with Playwright tests running against a
+  deployed copy of the app under realistic ingress routing.
+- No new privileged-host-mount requirement beyond what `containerMode:
+  dind` already grants (which is privileged-ish already, so this is a
+  low bar).
+- Doesn't require manual maintenance per release of minikube/kind/k8s
+  beyond what we'd accept for tinkerbell's `integration-tests` (which
+  has the same nesting shape, see below).
+
+### Related: tinkerbell `integration-tests` may have a similar story
+
+Tinkerbell PR #82 moved `integration-tests` to `tinkerbell-runners` and
+it currently fails on main with all 294 vitest tests green plus a
+trailing exit 1 (same symptom as the original `validate` failure that
+was reverted in PR #76). Worth checking whether the actual failing
+process is itself spinning up something that nests (or whether it's
+just an unhandled-promise teardown bug in the test harness) before
+attacking the ramblefeed `e2e` case — the cheaper fix may live in the
+tinkerbell repo.
 
 ## Telemetry & dashboard
 
