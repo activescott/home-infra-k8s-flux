@@ -325,6 +325,51 @@ Concrete differences that plausibly explain the failure:
   beyond what we'd accept for tinkerbell's `integration-tests` (which
   has the same nesting shape, see below).
 
+### What would actually break the deadlock
+
+Both runs hung at the same point: the inner kubelet waited on its own
+`healthz` and timed out. The hypotheses above attack peripheral things
+(image bloat, version pinning, cgroup args). The cgroup-delegation
+chain analysis suggests something more pointed: kubelet inside kic can't
+get the cgroup subtree it needs because **the two layers above it —
+the ARC runner pod and the DinD sidecar — provide no systemd to
+delegate cgroup ownership down**. `--force-systemd` only changes
+kubelet's driver inside kic; it doesn't create a systemd in the layers
+above to ask. Approaches that attack that specific assumption rather
+than the symptoms:
+
+- **Replace minikube with `kind`**. kind is engineered around "the node
+  *is* a container." There's no inner kic-node container and no second
+  dockerd underneath the DinD sidecar's dockerd. The chain becomes
+  runner-pod → DinD-dockerd → kind-node (kubelet inside that one
+  container, no further nesting). One fewer cgroup delegation hop,
+  much higher odds of working. kind has no built-in ingress addon, so
+  the workflow would also Helm-install nginx-ingress. This is the
+  standard approach in GitHub Actions for "I need a kube cluster"
+  inside DinD and is documented to work.
+- **Switch this scale set to `containerMode: kubernetes`** instead of
+  `dind`. ARC's `kubernetes` container mode drops the DinD sidecar
+  entirely and gives the runner pod direct access to the *host*
+  Kubernetes API (the same `nas1` cluster). Tests that need a cluster
+  use the cluster they're already in, via a per-PR namespace
+  (`kubectl apply -k k8s/overlays/ci/<sha>`) and the existing
+  ingress controller. The cost is losing docker-in-docker for image
+  builds — but ramblefeed's `build.yaml` and tinkerbell's
+  `docker-build` are separate workflows and can keep using a
+  DinD-mode runner if needed (two scale sets per repo, one for
+  `e2e`/`integration-tests`, one for builds). This stops fighting the
+  nesting entirely.
+- **Inject a systemd shim in the runner pod and configure DinD with
+  `--exec-opt native.cgroupdriver=systemd`**. Cheap to try; provides
+  the missing middle-layer systemd that the kic kubelet's
+  delegation chain expects. Likely still brittle but worth one shot
+  if neither of the above is workable.
+
+Out of scope for both `kind` and `containerMode: kubernetes`: minikube
+itself is no longer used, so any ramblefeed-side reliance on
+minikube-specific behavior (ingress addon DNS, mount-host-files, etc.)
+becomes part of the migration cost.
+
 ### Related: tinkerbell `integration-tests` may have a similar story
 
 Tinkerbell PR #82 moved `integration-tests` to `tinkerbell-runners` and
