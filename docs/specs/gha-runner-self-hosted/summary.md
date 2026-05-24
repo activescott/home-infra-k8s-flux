@@ -518,7 +518,7 @@ self-hosted runner iteration is summarized here so future repos
    Total wall clock: ~6m. The diagnostic improvements are commit
    `103338e` in ramblefeed.
 
-### Mitigation in flight
+### Mitigation that was tried (PR #6)
 
 PR #6 in this repo overrides the chart-default dind sidecar args on
 `ramblefeed-runners` to add `--exec-opt native.cgroupdriver=systemd`.
@@ -528,21 +528,71 @@ flags must be kept verbatim; the chart docs are silent on this and the
 only authoritative source is
 `gha-runner-scale-set/templates/_helpers.tpl`.
 
+**PR #6 turned out to NOT be the fix** — see "Actual root cause"
+below. Leaving the override in place because cgroupdriver=systemd is
+still a defensible default for nested kube on systemd-based kind nodes
+(kindest/node runs systemd as PID 1).
+
+### Actual root cause: host inotify exhaustion
+
+With a manual `kind create cluster --retain` (replacing helm/kind-action)
+plus `docker exec kind-control-plane journalctl -u kubelet` we got the
+real verdict from the kubelet itself:
+
+```
+E manager.go:294] Registration of the raw container factory failed:
+                  inotify_init: too many open files
+E kubelet.go:1728] Failed to start cAdvisor
+```
+
+That is the kind known-issue
+"[pod errors due to too many open files](https://kind.sigs.k8s.io/docs/user/known-issues/#pod-errors-due-to-too-many-open-files)".
+TrueNAS Scale's default `fs.inotify.max_user_watches=8192` (set in
+`/etc/sysctl.d/10-truenas.conf`) is far too low for nested kube.
+
+**Fix (applied to the TrueNAS host)**:
+
+```
+# /etc/sysctl.d/99-sysctl.conf (load order > 10-truenas.conf)
+fs.inotify.max_user_instances = 512
+fs.inotify.max_user_watches = 524288
+```
+
+Then `sudo sysctl --system` to apply to the running kernel.
+
+After that change, ramblefeed
+[PR #35](https://github.com/activescott/ramblefeed/pull/35) `e2e` job
+on `ramblefeed-runners` passed in 19m30s
+([run 26365728718](https://github.com/activescott/ramblefeed/actions/runs/26365728718)).
+Kind cluster brought up in 22s.
+
 ### Reusable lessons
 
-- **For nested kube on self-hosted ARC**: bump `helm/kind-action`
-  `verbosity: 5` and `wait: 300s` by default; with the chart defaults,
-  kind silently "succeeds" with a Ready-timeout warning and the real
-  failure surfaces much later.
-- **Always add a fast-fail `kubectl wait --for=condition=ready node`
-  step** between Setup kind and any wait-on for app readiness. It cut
-  failed-run wall clock from 19m to 6m here.
-- **Always capture `kind export logs` on failure** — kubelet,
-  containerd, and kube-system pod logs come together in one tarball,
-  uploaded as an artifact. Without this you are flying blind.
-- **dind args overrides are full replacements, not merges.** Copy the
-  chart's default `--host=unix:///run/docker/docker.sock` and
-  `--group=$(DOCKER_GROUP_GID)` into any override or dind will fail to
-  start.
-- **Tinkerbell `integration-tests` likely needs the same dind override**
-  (cgroupdriver=systemd) if/when that work resumes.
+- **The real prereq for kind on these runners is the host sysctl bump
+  above.** Tinkerbell `integration-tests` and any other nested-kube
+  workflow gets it for free now that the limits are raised
+  cluster-wide. Verify with
+  `cat /proc/sys/fs/inotify/max_user_instances` (≥ 512) before
+  reaching for cgroup/systemd hacks.
+- **Do not trust kubeadm's "required cgroups disabled" hint.** It is
+  generic and was actively misleading here. The authoritative signal
+  is the kubelet's own journal — burned one iteration before getting
+  to it.
+- **Use `kind create cluster --retain --verbosity 5` (not
+  helm/kind-action)** when iterating on nested-kube CI.
+  `helm/kind-action` does not expose `--retain`, so the kind node
+  container gets auto-deleted on failure and you lose the kubelet log.
+  The wrapper also silently installs `kubectl`; remember to install
+  it explicitly when dropping the wrapper.
+- **Add a fast-fail `kubectl wait --for=condition=ready node --all
+  --timeout=300s`** between Setup kind and the wait-on for app
+  readiness. Cuts failed-run wall clock from ~19m to ~6m.
+- **Capture forensics on failure**: `docker exec kind-control-plane
+  journalctl -u kubelet`, containerd journal, `/proc/1/cgroup`,
+  `mount`, `ls /sys/fs/cgroup`, both inside the kind container and on
+  the outer dind sidecar. Tar it up and upload with the test
+  artifacts.
+- **dind args overrides are full replacements, not merges.** If you
+  override dind args, copy the chart's default
+  `--host=unix:///run/docker/docker.sock` and
+  `--group=$(DOCKER_GROUP_GID)` verbatim or dind will fail to start.
