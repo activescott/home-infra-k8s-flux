@@ -164,6 +164,16 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
    "ramblefeed `e2e`: self-hosted spike" section for the investigation
    so far, hypotheses, and success criteria. These are still the
    biggest billing win, biggest risk items.
+
+   **Update (2026-05-23, ramblefeed)**: see "ramblefeed `e2e`:
+   kind-on-self-hosted iteration" section below. ramblefeed migrated
+   local dev + e2e CI from minikube to kind ([activescott/ramblefeed#35](https://github.com/activescott/ramblefeed/pull/35)).
+   First CI attempt on `ramblefeed-runners` failed with kubeadm's own
+   verdict `kubelet is unhealthy ... required cgroups disabled` —
+   exact match to this doc's "What would actually break the deadlock"
+   prediction. Mitigation: PR #6 in this repo adds
+   `--exec-opt native.cgroupdriver=systemd` to the ramblefeed-runners
+   dind sidecar.
 3. **Resource sizing**: each runner pod requests 500m CPU / 1 Gi RAM
    with limits at 4 CPU / 6 Gi. `maxRunners: 2` per scale set, so
    worst case = 4 concurrent runner pods cluster-wide (8 GB / 8 CPU
@@ -471,3 +481,68 @@ Plain text runner messages (e.g. `Exiting runner...`, `√ Removed
 - **Each scale set's `runnerScaleSetName` is the `runs-on:` label**
   the workflow must use. Mismatches won't error visibly — jobs just
   queue forever.
+
+## ramblefeed `e2e`: kind-on-self-hosted iteration (2026-05-23)
+
+ramblefeed PR [#35](https://github.com/activescott/ramblefeed/pull/35)
+migrates local dev + the `e2e` job from minikube to kind, with `e2e`
+also moving from `ubuntu-24.04` to `ramblefeed-runners`. See
+ramblefeed `specs/migrate-dev-to-kind/` for the migration spec; the
+self-hosted runner iteration is summarized here so future repos
+(tinkerbell `integration-tests`, etc.) inherit the lessons.
+
+### What was tried (this iteration)
+
+1. **Run [`26340785844`](https://github.com/activescott/ramblefeed/actions/runs/26340785844)** —
+   `runs-on: ramblefeed-runners` + `helm/kind-action@v1` with default
+   `wait: 120s`, `verbosity: 0`. `Setup kind` step *completed with a
+   warning* (`Waiting <= 2m0s for control-plane = Ready timed out`),
+   then skaffold deployed and pods stayed `Pending` because the kind
+   node was `NotReady` (auto `node.kubernetes.io/not-ready:NoSchedule`
+   taint). Wait-on timed out at 10m. Total wall clock: ~19m.
+
+2. **Run [`26348389705`](https://github.com/activescott/ramblefeed/actions/runs/26348389705)** —
+   added a fast-fail `kubectl wait --for=condition=ready node` step,
+   bumped `helm/kind-action` to `verbosity: 5` and `wait: 300s`, and
+   expanded failure diagnostics to include `kind export logs`,
+   `kubectl describe nodes`, and cluster-wide events. `Setup kind`
+   now explicitly *failed* with kubeadm spelling it out:
+
+   ```
+   [kubelet-check] The kubelet is not healthy after 4m0.000833957s
+     - The kubelet is not running
+     - The kubelet is unhealthy due to a misconfiguration of the node
+       in some way (required cgroups disabled)
+   ```
+
+   Total wall clock: ~6m. The diagnostic improvements are commit
+   `103338e` in ramblefeed.
+
+### Mitigation in flight
+
+PR #6 in this repo overrides the chart-default dind sidecar args on
+`ramblefeed-runners` to add `--exec-opt native.cgroupdriver=systemd`.
+Args here REPLACE (not merge with) the chart default, so the chart's
+`--host=unix:///run/docker/docker.sock` and `--group=$(DOCKER_GROUP_GID)`
+flags must be kept verbatim; the chart docs are silent on this and the
+only authoritative source is
+`gha-runner-scale-set/templates/_helpers.tpl`.
+
+### Reusable lessons
+
+- **For nested kube on self-hosted ARC**: bump `helm/kind-action`
+  `verbosity: 5` and `wait: 300s` by default; with the chart defaults,
+  kind silently "succeeds" with a Ready-timeout warning and the real
+  failure surfaces much later.
+- **Always add a fast-fail `kubectl wait --for=condition=ready node`
+  step** between Setup kind and any wait-on for app readiness. It cut
+  failed-run wall clock from 19m to 6m here.
+- **Always capture `kind export logs` on failure** — kubelet,
+  containerd, and kube-system pod logs come together in one tarball,
+  uploaded as an artifact. Without this you are flying blind.
+- **dind args overrides are full replacements, not merges.** Copy the
+  chart's default `--host=unix:///run/docker/docker.sock` and
+  `--group=$(DOCKER_GROUP_GID)` into any override or dind will fail to
+  start.
+- **Tinkerbell `integration-tests` likely needs the same dind override**
+  (cgroupdriver=systemd) if/when that work resumes.
