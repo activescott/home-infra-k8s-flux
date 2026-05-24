@@ -88,3 +88,22 @@ spec:
               limits:
                 cpu: "4"
                 memory: "6Gi"
+          # Override the chart-injected dind sidecar so dockerd uses the
+          # systemd cgroup driver. Without this, kind clusters created
+          # inside this dind cannot reach kubelet=Ready (cgroup-delegation
+          # mismatch between dockerd's default cgroupfs and the kind
+          # node's systemd PID 1). See ramblefeed
+          # specs/migrate-dev-to-kind/plan.md "Phase B execution detail"
+          # and this repo's docs/specs/gha-runner-self-hosted/summary.md
+          # "What would actually break the deadlock".
+          #
+          # Args here REPLACE the chart default; defaults come from the
+          # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
+          # and `--group` flags the chart relied on.
+          - name: dind
+            args:
+              - dockerd
+              - --host=unix:///run/docker/docker.sock
+              - --group=$(DOCKER_GROUP_GID)
+              - --exec-opt
+              - native.cgroupdriver=systemd
