@@ -16,5 +16,6 @@ resources:
   - ./oksana-willeke-redirect
   - ./tinkerbell
   - ./wordpress-micah-mmm
+  - ./wordpress-micah-mmm-v2
   - ./arize-phoenix
   - ./github-runners
