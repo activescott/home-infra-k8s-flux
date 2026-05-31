@@ -8,6 +8,7 @@ overlay into `apps/production/kustomization.yaml` and Flux will
 deploy v2.
 
 Companion docs:
+
 - [`plan.md`](./plan.md) — the full migration design and risk
   register.
 - [`todo.md`](./todo.md) — flat checklist tracking every action.
@@ -35,11 +36,11 @@ kubectl --context nas -n wordpress-micah-mmm get pods
 The official Docker images run as different UIDs than the Bitnami
 images, so the v2 dirs need different ownership:
 
-| Dir | UID:GID | Why |
-|---|---|---|
-| `mariadb` | `999:999` | Official `library/mariadb` runs as `mysql` user, UID 999. |
-| `mariadb-initdb` | `999:999` (or world-readable) | mariadb container reads from here on first init. |
-| `wp-content` | `33:33` | Official `library/wordpress` runs as `www-data`, UID 33. |
+| Dir              | UID:GID                       | Why                                                       |
+| ---------------- | ----------------------------- | --------------------------------------------------------- |
+| `mariadb`        | `999:999`                     | Official `library/mariadb` runs as `mysql` user, UID 999. |
+| `mariadb-initdb` | `999:999` (or world-readable) | mariadb container reads from here on first init.          |
+| `wp-content`     | `33:33`                       | Official `library/wordpress` runs as `www-data`, UID 33.  |
 
 ```bash
 sudo mkdir -p /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/{mariadb,mariadb-initdb,wp-content}
@@ -88,6 +89,7 @@ sudo chmod 0444    /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/mariadb-init
 ```
 
 Expected:
+
 - `restore.sql` is several MB at minimum (system DBs + bn_wordpress).
 - `CREATE TABLE` count is in the dozens.
 - `CREATE DATABASE.*bitnami_wordpress` count is at least 1.
@@ -98,9 +100,22 @@ The wp-content tree is on the same filesystem already (PVC of old
 is hostPath-backed). Direct `rsync` is faster than going through
 the pod.
 
+**Path note:** the Bitnami chart's persistent volume mount is at
+`/bitnami/wordpress/` inside the pod, but its on-disk layout
+contains a nested `wordpress/` subdir, so the actual wp-content
+on the host is at:
+
+```
+/mnt/thedatapool/app-data/wordpress-micah-mmm/wordpress/wordpress/wp-content/
+```
+
+(Double `wordpress` is correct.) The PV's declared `hostPath`
+points at the parent of that — Bitnami's first-start init populated
+the nested `wordpress/` dir on top of it.
+
 ```bash
 sudo rsync -a --info=stats2 \
-  /mnt/thedatapool/app-data/wordpress-micah-mmm/wordpress/wp-content/ \
+  /mnt/thedatapool/app-data/wordpress-micah-mmm/wordpress/wordpress/wp-content/ \
   /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/wp-content/
 
 # Chown the copy to the UID the official wordpress container runs as
