@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+  labels:
+    app: wordpress
+    role: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+      role: web
+  # RWO PVC + 1 replica → use Recreate so the new pod can mount
+  # the PVC after the old pod releases (RollingUpdate would deadlock
+  # on the volume handoff).
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        role: web
+    spec:
+      # Official wordpress image runs Apache as www-data (uid:gid 33:33).
+      securityContext:
+        fsGroup: 33
+      containers:
+        - name: wordpress
+          # Tags: https://hub.docker.com/_/wordpress/tags
+          image: wordpress:6.9.1-php8.3-apache
+          env:
+            # In-namespace DNS name of the mariadb Service.
+            - name: WORDPRESS_DB_HOST
+              value: mariadb
+            - name: WORDPRESS_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-db-user
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-db-password
+            - name: WORDPRESS_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-db-name
+            - name: WORDPRESS_TABLE_PREFIX
+              value: wp_
+            # WP secret keys + salts. Passing these as env vars
+            # makes the official image's wp-config.php template
+            # bake the same values that the prior install used,
+            # so logged-in user sessions and password reset tokens
+            # survive the migration.
+            - name: WORDPRESS_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-auth-key
+            - name: WORDPRESS_SECURE_AUTH_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-secure-auth-key
+            - name: WORDPRESS_LOGGED_IN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-logged-in-key
+            - name: WORDPRESS_NONCE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-nonce-key
+            - name: WORDPRESS_AUTH_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-auth-salt
+            - name: WORDPRESS_SECURE_AUTH_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-secure-auth-salt
+            - name: WORDPRESS_LOGGED_IN_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-logged-in-salt
+            - name: WORDPRESS_NONCE_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-nonce-salt
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - mountPath: /var/www/html/wp-content
+              name: wp-content
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          readinessProbe:
+            httpGet:
+              path: /wp-login.php
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /wp-login.php
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: wp-content
+          persistentVolumeClaim:
+            claimName: wordpress-wp-content

@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Tenant overlay for Micah's Meticulous Mowing
+# (mmm.willeke.com), using the new upstream WordPress base.
+# This overlay coexists with the legacy Bitnami-chart-based
+# `wordpress-micah-mmm` namespace until cutover. See
+# docs/specs/wordpress-micah-mmm-migrate-off-bitnami/ for the
+# full migration plan and host-side runbook.
+
+namespace: wordpress-micah-mmm-v2
+
+resources:
+  - namespace.yaml
+  - ../../base/wordpress-upstream
+  - pv.yaml
+  - pvc.yaml
+  # ingress.yaml is intentionally NOT in this list until cutover
+  # (Phase 5 of the migration plan). Until then the live ingress
+  # serving mmm.willeke.com stays in the old namespace.
+
+secretGenerator:
+  - name: wordpress-creds
+    envs:
+      - .env.secret.wordpress-creds.encrypted
+
+labels:
+  - pairs:
+      app.activescott.com/name: wordpress
+      app.activescott.com/tenant: micah
+      app.activescott.com/migration: v2

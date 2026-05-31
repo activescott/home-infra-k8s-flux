@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-micah-mmm-v2-mariadb-data-pv
+spec:
+  accessModes: ["ReadWriteOnce"]
+  capacity:
+    storage: 10Gi
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: wordpress-micah-mmm-v2
+    name: wordpress-mariadb-data
+  hostPath:
+    # Must exist on nas before this PV binds. See
+    # docs/specs/wordpress-micah-mmm-migrate-off-bitnami/host-commands.md.
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/mariadb
+    type: Directory
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-micah-mmm-v2-mariadb-initdb-pv
+spec:
+  accessModes: ["ReadWriteOnce"]
+  capacity:
+    storage: 1Gi
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: wordpress-micah-mmm-v2
+    name: wordpress-mariadb-initdb
+  hostPath:
+    # User puts restore.sql here. Read once by mariadb container
+    # on first init, then ignored on subsequent restarts.
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/mariadb-initdb
+    type: Directory
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: wordpress-micah-mmm-v2-wp-content-pv
+spec:
+  accessModes: ["ReadWriteOnce"]
+  capacity:
+    storage: 10Gi
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: wordpress-micah-mmm-v2
+    name: wordpress-wp-content
+  hostPath:
+    # User populates this with a copy of the old
+    # /opt/bitnami/wordpress/wp-content/ tree, owned by uid:gid 33:33.
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/wp-content
+    type: Directory

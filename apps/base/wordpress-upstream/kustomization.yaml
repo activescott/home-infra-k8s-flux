@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Hand-written manifests for an upstream WordPress + MariaDB stack
+# using the Docker official-images (library/wordpress, library/mariadb).
+# Replaces the legacy apps/base/wordpress/ which used the Bitnami chart.
+# See docs/specs/wordpress-micah-mmm-migrate-off-bitnami/ for the why.
+#
+# Each tenant overlay must provide, in their namespace:
+#   - PVs and PVCs for the three claims this base references:
+#       wordpress-mariadb-data    (mounted at /var/lib/mysql)
+#       wordpress-mariadb-initdb  (mounted at /docker-entrypoint-initdb.d, read-only)
+#       wordpress-wp-content      (mounted at /var/www/html/wp-content)
+#   - A Secret named `wordpress-creds` carrying:
+#       mariadb-root-password
+#       wordpress-db-user, wordpress-db-password, wordpress-db-name
+#       wordpress-auth-key, wordpress-secure-auth-key,
+#       wordpress-logged-in-key, wordpress-nonce-key,
+#       wordpress-auth-salt, wordpress-secure-auth-salt,
+#       wordpress-logged-in-salt, wordpress-nonce-salt
+#   - An Ingress claiming the tenant's hostname and routing to the
+#     `wordpress` Service.
+#
+# Image versions are pinned here. All overlays inherit the same versions.
+
+resources:
+  - statefulset-mariadb.yaml
+  - service-mariadb.yaml
+  - deployment-wordpress.yaml
+  - service-wordpress.yaml

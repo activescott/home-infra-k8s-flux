@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb
+  labels:
+    app: wordpress
+    role: mariadb
+spec:
+  serviceName: mariadb
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wordpress
+      role: mariadb
+  template:
+    metadata:
+      labels:
+        app: wordpress
+        role: mariadb
+    spec:
+      # Official mariadb image's mariadb user is uid:gid 999:999.
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+      containers:
+        - name: mariadb
+          # Tags: https://hub.docker.com/_/mariadb/tags
+          image: mariadb:12.2.2-noble
+          env:
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: mariadb-root-password
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mariadb-data
+            # First-start init dir. The official entrypoint executes
+            # every *.sql / *.sql.gz / *.sh in here, in lexical order,
+            # IFF the data dir is empty (i.e. first init only).
+            # Tenant overlays populate this PVC with a single
+            # `restore.sql` carrying the prior mysqldump.
+            - mountPath: /docker-entrypoint-initdb.d
+              name: mariadb-initdb
+              readOnly: true
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+          readinessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - 'mariadb-admin -uroot -p"$MARIADB_ROOT_PASSWORD" ping'
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -c
+                - 'mariadb-admin -uroot -p"$MARIADB_ROOT_PASSWORD" ping'
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: mariadb-data
+          persistentVolumeClaim:
+            claimName: wordpress-mariadb-data
+        - name: mariadb-initdb
+          persistentVolumeClaim:
+            claimName: wordpress-mariadb-initdb
