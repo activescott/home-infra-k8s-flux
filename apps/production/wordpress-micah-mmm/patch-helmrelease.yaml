@@ -35,10 +35,17 @@ spec:
       digest: "sha256:a767c9fcab3eb2c140c791fb0095b575cb9696ea1732972bc8e0b522194f68a1"
 
     mariadb:
-      # Same rationale as the wordpress image.digest pin above.
-      # Resolved version of this digest: MariaDB 12.2.2.
+      # Bumped from sha256:3092b0b7... (which is no longer pullable from
+      # the public Bitnami registry due to their Aug-2025 secure-images
+      # distribution change — only :latest stays public) to the current
+      # :latest amd64 sub-digest. Resolved version is still MariaDB 12.2.2;
+      # the new image is the same MariaDB minor.patch built on a fresh
+      # Photon OS 5 base layer (2026-05-30 build). No DB engine version
+      # change, no schema migration. The motivation is to restore the
+      # ability to reschedule the pod from the public registry without
+      # relying on the node's local image cache.
       image:
-        digest: "sha256:3092b0b72758aedadea2f16ad352388f0067ec68a6a58672a6a7ae61d4278e81"
+        digest: "sha256:be1cefc3af0bbfc5d359dc1fde74f0d573a1ec6cb8ec7b50375708bfcf1d8eee"
       primary:
         persistence:
           existingClaim: wordpress-micah-mmm-mariadb-pvc
