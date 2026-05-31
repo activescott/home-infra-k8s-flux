@@ -6,6 +6,64 @@ This is my Kubernetes [Flux](https://fluxcd.io/) repository. It contains everyth
 
 See [apps/production](apps/production).
 
+## Image source caveats
+
+### Bitnami images are not durable here — plan to migrate
+
+Workloads using a `bitnami/*` runtime image are operating on borrowed
+time and any digest pin against the free `docker.io/bitnami/*`
+namespace is **not a durable strategy**. Treat any such pin as a
+"good for weeks, maybe months" lock-in, not a long-term solution.
+
+**Why:** In Aug-Sep 2025 Broadcom split the Bitnami container catalog
+(see <https://github.com/bitnami/containers/issues/83267> and
+<https://news.broadcom.com/app-dev/broadcom-introduces-bitnami-secure-images-for-production-ready-containerized-applications>).
+The practical effect on this repo:
+
+- The public `docker.io/bitnami/<image>` namespace now publishes
+  **only `:latest`** (plus a `:latest-metadata` OCI artifact). All
+  prior version tags — `6.9.1`, `12.2.2-debian-12-r0`, etc. — were
+  removed. Verified directly against the registry API: only `latest`
+  and `latest-metadata` are listable.
+- Historical Debian-based images were moved to
+  <https://hub.docker.com/u/bitnamilegacy>, a **frozen archive that
+  does not receive security patches** and is described as a
+  temporary mirror.
+- Hardened, version-pinned images are in the paid
+  [Bitnami Secure Images](https://hub.docker.com/u/bitnamisecure)
+  catalog. Contact: <https://go-vmware.broadcom.com/contact-us>.
+- **Digest pins die quietly.** When Bitnami rebuilds `:latest`, the
+  old `amd64` sub-digest stops resolving from the public registry —
+  observed firsthand in this repo: the digest the wordpress-micah-mmm
+  cluster was running on 2026-02-24 already 404s from Docker Hub
+  by 2026-05-31. Pods keep running only while containerd has the
+  bytes cached locally; one node rebuild or image GC turns the
+  pinned pod into `ImagePullBackOff`.
+- Bitnami **charts** (`oci://registry-1.docker.io/bitnamicharts/*`)
+  are under a different rule today and still publish named version
+  tags publicly. That is the only Bitnami pin that currently
+  behaves like a normal pin — but that policy could change too,
+  so don't depend on it long-term.
+
+**Affected workloads in this repo:**
+
+| Path | What's pinned | Status |
+|---|---|---|
+| `apps/production/wordpress-micah-mmm/` | `bitnami/wordpress` + `bitnami/mariadb` images by digest; chart `bitnamicharts/wordpress:29.1.1` | Digests are sand — see [`docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md`](docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md) |
+
+**Recommended exit path:** migrate off `bitnami/*` runtime images
+toward upstream `library/wordpress` and `library/mariadb` (which
+have stable named tags). The chart can be replaced with hand-written
+manifests for a 1-replica site. Full migration sketch is in
+[`docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md`](docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md)
+under "Option D".
+
+**Do not add new `bitnami/*` runtime images** to this repo without
+accepting the same fragility. The source-licensed alternative (build
+images yourself from <https://github.com/bitnami/containers>, Apache
+2.0) is viable but requires standing up and maintaining a build
+pipeline; it does not come for free.
+
 ## Usage
 
 ### Handy CLI Commands working with Flux

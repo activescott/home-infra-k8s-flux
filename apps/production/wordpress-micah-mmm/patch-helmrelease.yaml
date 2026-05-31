@@ -27,23 +27,34 @@ spec:
       existingClaim: wordpress-micah-mmm-wp-pvc
 
     # Pin wordpress image by digest rather than the chart's :latest default
-    # so cluster state stops depending on whatever Bitnami currently points
-    # latest at (and so we get a real before/after diff on upgrades). This
-    # digest is what is running in the cluster as of 2026-05-30:
-    #   WordPress 6.9.1 on Photon OS 5 (bitnami/wordpress:latest at that time)
+    # to avoid silent same-day major-version rolls (the chart's :latest
+    # default would have rolled this pod to WordPress 7.0.0 on 2026-05-30
+    # at the next pod restart). Resolved version of this digest:
+    #   WordPress 6.9.1 on Photon OS 5 (bitnami/wordpress:latest at 2026-05-30)
+    #
+    # WARNING — this pin is NOT durable. The digest below already 404s
+    # from the public registry (Bitnami's Aug-2025 secure-images policy
+    # rotates non-:latest digests out of docker.io/bitnami). It survives
+    # only as long as containerd has the layers cached locally on the
+    # `nas` node. A node rebuild, image GC, or `crictl rmi` will brick
+    # this pod with ImagePullBackOff. Migrate off bitnami/wordpress per
+    # docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md
+    # ("Option D") when you can.
     image:
       digest: "sha256:a767c9fcab3eb2c140c791fb0095b575cb9696ea1732972bc8e0b522194f68a1"
 
     mariadb:
-      # Bumped from sha256:3092b0b7... (which is no longer pullable from
-      # the public Bitnami registry due to their Aug-2025 secure-images
-      # distribution change — only :latest stays public) to the current
-      # :latest amd64 sub-digest. Resolved version is still MariaDB 12.2.2;
-      # the new image is the same MariaDB minor.patch built on a fresh
-      # Photon OS 5 base layer (2026-05-30 build). No DB engine version
-      # change, no schema migration. The motivation is to restore the
-      # ability to reschedule the pod from the public registry without
-      # relying on the node's local image cache.
+      # Pinned to the amd64 sub-digest of bitnami/mariadb:latest at
+      # 2026-05-30. Resolved version: MariaDB 12.2.2 on Photon OS 5.
+      # Same major.minor.patch as what was previously running; the
+      # bump from the prior cluster digest sha256:3092b0b7... (now
+      # 404 from the registry, see Aug-2025 Bitnami policy) restored
+      # registry-side pullability — until the next :latest rebuild.
+      #
+      # WARNING — this pin is also not durable. The same Bitnami
+      # policy that 404'd the previous digest will 404 this one the
+      # next time :latest is rebuilt. See top-level README image
+      # source caveats and Option D in the spec summary.
       image:
         digest: "sha256:be1cefc3af0bbfc5d359dc1fde74f0d573a1ec6cb8ec7b50375708bfcf1d8eee"
       primary:
