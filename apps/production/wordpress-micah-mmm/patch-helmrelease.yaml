@@ -26,7 +26,19 @@ spec:
     persistence:
       existingClaim: wordpress-micah-mmm-wp-pvc
 
+    # Pin wordpress image by digest rather than the chart's :latest default
+    # so cluster state stops depending on whatever Bitnami currently points
+    # latest at (and so we get a real before/after diff on upgrades). This
+    # digest is what is running in the cluster as of 2026-05-30:
+    #   WordPress 6.9.1 on Photon OS 5 (bitnami/wordpress:latest at that time)
+    image:
+      digest: "sha256:a767c9fcab3eb2c140c791fb0095b575cb9696ea1732972bc8e0b522194f68a1"
+
     mariadb:
+      # Same rationale as the wordpress image.digest pin above.
+      # Resolved version of this digest: MariaDB 12.2.2.
+      image:
+        digest: "sha256:3092b0b72758aedadea2f16ad352388f0067ec68a6a58672a6a7ae61d4278e81"
       primary:
         persistence:
           existingClaim: wordpress-micah-mmm-mariadb-pvc
