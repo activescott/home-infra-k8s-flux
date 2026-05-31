@@ -15,7 +15,7 @@ README), so the chart abstraction is a net loss here.
 ## Why now
 
 `docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md`
-documents that the pin we just landed is *not durable*. Bitnami's
+documents that the pin we just landed is _not durable_. Bitnami's
 free tier rotates non-`:latest` digests out within weeks-to-months,
 and the digest the cluster was running on 2026-02-24 already 404s
 from the public registry as of 2026-05-31. The pinned pod survives
@@ -26,7 +26,7 @@ to ImagePullBackOff. Migrating now gets us off that clock.
 ## Non-goals
 
 - Upgrading WordPress beyond 6.9.1 in this migration. The goal is
-  *vendor* swap, not *version* bump. Same WP version, same MariaDB
+  _vendor_ swap, not _version_ bump. Same WP version, same MariaDB
   version, same data — different images and chart. Version bumps
   come after the vendor swap is stable.
 - Changing the storage class, network model, ingress controller,
@@ -77,13 +77,13 @@ bootstrap a clean WP core into the rest of `/var/www/html/`.
 
 ## Image and version choices
 
-| Component | Old | New | Rationale |
-|---|---|---|---|
-| WordPress | `bitnami/wordpress@sha256:a767c9fc…` (6.9.1, Photon 5) | `wordpress:6.9.1-php8.3-apache` | Exact same WP version. Apache + mod_php matches the Bitnami stack. PHP 8.3 matches Bitnami's PHP. Stable named tag from Docker official-images. |
-| MariaDB | `bitnami/mariadb@sha256:be1cefc3…` (12.2.2, Photon 5) | `mariadb:12.2.2-noble` | Exact same MariaDB version. `noble` is the Ubuntu 24.04 base — modern, official, stable. On-disk format is identical to Bitnami's MariaDB 12.2.2 build. |
-| Chart | `bitnamicharts/wordpress:29.1.1` | — none — | Replaced by hand-written kustomize overlay. |
+| Component | Old                                                    | New                             | Rationale                                                                                                                                               |
+| --------- | ------------------------------------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WordPress | `bitnami/wordpress@sha256:a767c9fc…` (6.9.1, Photon 5) | `wordpress:6.9.1-php8.3-apache` | Exact same WP version. Apache + mod_php matches the Bitnami stack. PHP 8.3 matches Bitnami's PHP. Stable named tag from Docker official-images.         |
+| MariaDB   | `bitnami/mariadb@sha256:be1cefc3…` (12.2.2, Photon 5)  | `mariadb:12.2.2-noble`          | Exact same MariaDB version. `noble` is the Ubuntu 24.04 base — modern, official, stable. On-disk format is identical to Bitnami's MariaDB 12.2.2 build. |
+| Chart     | `bitnamicharts/wordpress:29.1.1`                       | — none —                        | Replaced by hand-written kustomize overlay.                                                                                                             |
 
-We will *not* pin by digest. Named version tags from `library/*`
+We will _not_ pin by digest. Named version tags from `library/*`
 are stable artifacts on Docker Hub — that's the whole point of
 upstream official images. We get human-readable diffs on future
 bumps without the secure-images time-bomb.
@@ -92,17 +92,17 @@ bumps without the secure-images time-bomb.
 
 ### WordPress container
 
-| | Bitnami | Official `library/wordpress` |
-|---|---|---|
-| Install root | `/opt/bitnami/wordpress/` | `/var/www/html/` |
-| `wp-content/` | `/opt/bitnami/wordpress/wp-content/` | `/var/www/html/wp-content/` |
+|                 | Bitnami                                | Official `library/wordpress`  |
+| --------------- | -------------------------------------- | ----------------------------- |
+| Install root    | `/opt/bitnami/wordpress/`              | `/var/www/html/`              |
+| `wp-content/`   | `/opt/bitnami/wordpress/wp-content/`   | `/var/www/html/wp-content/`   |
 | `wp-config.php` | `/opt/bitnami/wordpress/wp-config.php` | `/var/www/html/wp-config.php` |
-| Web server | Apache from `/opt/bitnami/apache/` | Apache from Debian base |
-| Doc root | `/opt/bitnami/wordpress/` | `/var/www/html/` |
+| Web server      | Apache from `/opt/bitnami/apache/`     | Apache from Debian base       |
+| Doc root        | `/opt/bitnami/wordpress/`              | `/var/www/html/`              |
 
 **What to copy:** only the `wp-content/` subdirectory. That's
 where themes, plugins, uploads, mu-plugins, and any
-customizations live. The WP core PHP files are vendored *with*
+customizations live. The WP core PHP files are vendored _with_
 the image; copying them across vendors invites version-skew bugs.
 
 **`wp-config.php`:** the official `wordpress` image generates one
@@ -122,6 +122,7 @@ WORDPRESS_NONCE_SALT
 ```
 
 Plus the standard DB env vars:
+
 ```
 WORDPRESS_DB_HOST=mariadb
 WORDPRESS_DB_USER=<existing user>
@@ -136,11 +137,11 @@ grants permit. We reuse the existing values from
 
 ### MariaDB container
 
-| | Bitnami | Official `library/mariadb` |
-|---|---|---|
-| Datadir | `/bitnami/mariadb/data` | `/var/lib/mysql` |
-| Init scripts dir | `/docker-entrypoint-initdb.d/` | `/docker-entrypoint-initdb.d/` (same — official convention) |
-| Conf | `/opt/bitnami/mariadb/conf/my.cnf` | `/etc/mysql/my.cnf` |
+|                  | Bitnami                            | Official `library/mariadb`                                  |
+| ---------------- | ---------------------------------- | ----------------------------------------------------------- |
+| Datadir          | `/bitnami/mariadb/data`            | `/var/lib/mysql`                                            |
+| Init scripts dir | `/docker-entrypoint-initdb.d/`     | `/docker-entrypoint-initdb.d/` (same — official convention) |
+| Conf             | `/opt/bitnami/mariadb/conf/my.cnf` | `/etc/mysql/my.cnf`                                         |
 
 For v2 we start with a **fresh empty datadir** and rely on the
 official entrypoint to run `mariadb-install-db` on first start,
@@ -158,7 +159,7 @@ MARIADB_ROOT_PASSWORD=<from old creds — see note below>
 
 **Why same root password?** Because the dumped `mysql.global_priv`
 includes the existing root account hash. If we initialize with a
-*different* root password the init scripts will set one root
+_different_ root password the init scripts will set one root
 password, then the dump restore overwrites it with the old. We
 end up at the old password either way — but using the same one
 avoids a brief moment of init-vs-restore mismatch and matches the
@@ -296,7 +297,7 @@ Push, wait for Flux to apply.
   `wp-config.php` from env, connects to mariadb service, serves
   on port 80.
 - Smoke-test via `kubectl port-forward svc/wordpress -n
-  wordpress-micah-mmm-v2 8080:80` and curl:
+wordpress-micah-mmm-v2 8080:80` and curl:
   - `curl -H 'Host: mmm.willeke.com' http://localhost:8080/` → 200
   - `curl -H 'Host: mmm.willeke.com' http://localhost:8080/wp-json/wp/v2/posts` → 200, returns posts
   - `curl -H 'Host: mmm.willeke.com' http://localhost:8080/wp-login.php` → 200
@@ -338,7 +339,7 @@ swap Ingress back per "Rollback at any point during cutover."
   `/mnt/thedatapool/app-data/wordpress-micah-mmm/` after another
   week or two if confident.
 - Rename `wordpress-micah-mmm-v2` to `wordpress-micah-mmm` in a
-  follow-up commit *or* leave as `-v2` forever (low cost; signals
+  follow-up commit _or_ leave as `-v2` forever (low cost; signals
   there's been a migration). My recommendation: leave as `-v2`
   for one full year, then rename.
 
@@ -357,29 +358,29 @@ swap Ingress back per "Rollback at any point during cutover."
 
 ## Safety checkpoints (where to pause)
 
-| After phase | What to verify | If wrong, what to do |
-|---|---|---|
-| 1 — Backup | Files are non-empty and contain expected content (CREATE TABLE, themes/, plugins/) | Re-run; check pod paths |
-| 2 — Stage data | Files materialize at `/mnt/thedatapool/.../wordpress-micah-mmm-v2/` with correct ownership | Re-rsync; fix ownership |
-| 3 — Manifests | `kubectl kustomize` renders clean | Fix yaml |
-| 4 — Deploy v2 | Pods Ready; port-forward smoke test passes | Investigate; can scale v2 to 0 with no impact on live site |
-| **5 — Cutover** | **PAUSE FOR USER APPROVAL** | — |
-| 5 — Post-cutover | `https://mmm.willeke.com/` returns 200, renders, REST API works | Rollback ingress + scale old back up |
-| 6 — Soak | Daily browse passes | Same as cutover rollback |
-| 7 — Decommission | Old namespace removed cleanly | Restore from git (PVs Retain → data still on disk) |
+| After phase      | What to verify                                                                             | If wrong, what to do                                       |
+| ---------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| 1 — Backup       | Files are non-empty and contain expected content (CREATE TABLE, themes/, plugins/)         | Re-run; check pod paths                                    |
+| 2 — Stage data   | Files materialize at `/mnt/thedatapool/.../wordpress-micah-mmm-v2/` with correct ownership | Re-rsync; fix ownership                                    |
+| 3 — Manifests    | `kubectl kustomize` renders clean                                                          | Fix yaml                                                   |
+| 4 — Deploy v2    | Pods Ready; port-forward smoke test passes                                                 | Investigate; can scale v2 to 0 with no impact on live site |
+| **5 — Cutover**  | **PAUSE FOR USER APPROVAL**                                                                | —                                                          |
+| 5 — Post-cutover | `https://mmm.willeke.com/` returns 200, renders, REST API works                            | Rollback ingress + scale old back up                       |
+| 6 — Soak         | Daily browse passes                                                                        | Same as cutover rollback                                   |
+| 7 — Decommission | Old namespace removed cleanly                                                              | Restore from git (PVs Retain → data still on disk)         |
 
 ## Risk register
 
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| `wp-content/` contains absolute paths to `/opt/bitnami/...` (themes, plugins, uploads referencing them) | Low | Pages broken | Grep `wp-content/` for `/opt/bitnami` after rsync. If hits, decide per-case (sed-replace or update WP options.siteurl) |
-| Plugin/theme stores filesystem paths in DB | Medium | Plugin malfunction | Surveys after Phase 4 smoke test; fix with WP-CLI or wp_options edit |
-| WP-CLI not present in official image | High (it isn't bundled) | Inconvenience | Install via `apt` in a sidecar init container if needed for cutover-time DB ops |
-| MariaDB authentication plugin mismatch (Bitnami may use a non-default auth plugin) | Low | Pod can't connect | Default for MariaDB 12.x is `mysql_native_password`; `caching_sha2_password` is MySQL not MariaDB. Should be safe. Verify after Phase 4. |
-| TLS cert reissuance race during Ingress swap | Low | brief 5xx | Pre-stage TLS secret in v2 namespace (Phase 5 step 6) |
-| Ingress controller picks the wrong Ingress momentarily | Low | momentary 5xx | Delete old Ingress immediately after creating new |
-| ConfigMap > 1 MiB | Low (small site) | Restore path change | Phase 1 reports the size; fall back to init-container restore from hostPath if exceeded |
-| Salts mismatched (login cookies invalidated) | Low | Users logged out (this is Micah only — he can re-login) | Acceptable; not a true risk |
+| Risk                                                                                                    | Likelihood              | Impact                                                  | Mitigation                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `wp-content/` contains absolute paths to `/opt/bitnami/...` (themes, plugins, uploads referencing them) | Low                     | Pages broken                                            | Grep `wp-content/` for `/opt/bitnami` after rsync. If hits, decide per-case (sed-replace or update WP options.siteurl)                   |
+| Plugin/theme stores filesystem paths in DB                                                              | Medium                  | Plugin malfunction                                      | Surveys after Phase 4 smoke test; fix with WP-CLI or wp_options edit                                                                     |
+| WP-CLI not present in official image                                                                    | High (it isn't bundled) | Inconvenience                                           | Install via `apt` in a sidecar init container if needed for cutover-time DB ops                                                          |
+| MariaDB authentication plugin mismatch (Bitnami may use a non-default auth plugin)                      | Low                     | Pod can't connect                                       | Default for MariaDB 12.x is `mysql_native_password`; `caching_sha2_password` is MySQL not MariaDB. Should be safe. Verify after Phase 4. |
+| TLS cert reissuance race during Ingress swap                                                            | Low                     | brief 5xx                                               | Pre-stage TLS secret in v2 namespace (Phase 5 step 6)                                                                                    |
+| Ingress controller picks the wrong Ingress momentarily                                                  | Low                     | momentary 5xx                                           | Delete old Ingress immediately after creating new                                                                                        |
+| ConfigMap > 1 MiB                                                                                       | Low (small site)        | Restore path change                                     | Phase 1 reports the size; fall back to init-container restore from hostPath if exceeded                                                  |
+| Salts mismatched (login cookies invalidated)                                                            | Low                     | Users logged out (this is Micah only — he can re-login) | Acceptable; not a true risk                                                                                                              |
 
 ## Out of scope, on the list for later
 
