@@ -1,7 +1,6 @@
 resources:
   - namespace.yaml
   - ../../../base/photoprism
-  - certificate.yaml
 
 secretGenerator:
   - name: mariadb-creds

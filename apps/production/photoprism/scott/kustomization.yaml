@@ -1,8 +1,6 @@
 resources:
   - namespace.yaml
   - ../../../base/photoprism
-  # cert-manager-issued photos.scott.willeke.com
-  - certificate-photos-scott-willeke-com.yaml
 
 secretGenerator:
   # this secret configures much of mariadb
