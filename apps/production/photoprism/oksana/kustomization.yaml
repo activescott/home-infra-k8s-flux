@@ -11,9 +11,6 @@ secretGenerator:
 
 patches:
   - path: patch-mariadb-volume.yaml
-  # TEMPORARY: skip system-db backup so mariadb-upgrade can run despite
-  # corrupt mysql.proc index. Remove after upgrade lands. See plan.md.
-  - path: patch-mariadb-env-skip-backup.yaml
   - path: patch-photoprism-statefulset.yaml
   - path: patch-photoprism-ingress.yaml
 
