@@ -11,12 +11,6 @@ secretGenerator:
 
 patches:
   - path: patch-mariadb-volume.yaml
-  # TEMPORARY: stop crashloop caused by duplicate-user mariadb-upgrade
-  # failure. Remove after deleting the dup row in mysql.user.
-  - path: patch-mariadb-skip-upgrade.yaml
-  # EMERGENCY: REPAIR TABLE dropped valid user rows; need skip-grant-tables
-  # to recreate them. Remove ASAP after recreation.
-  - path: patch-mariadb-skip-grant.yaml
   - path: patch-photoprism-statefulset.yaml
   - path: patch-photoprism-ingress.yaml
 
