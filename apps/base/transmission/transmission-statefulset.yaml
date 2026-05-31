@@ -21,7 +21,7 @@ spec:
       containers:
       # image docs: https://github.com/linuxserver/docker-transmission
       - name: transmission
-        image: lscr.io/linuxserver/transmission:4.0.6-r4-ls321
+        image: lscr.io/linuxserver/transmission:4.1.1-r1-ls345
         
         resources:
           limits:
