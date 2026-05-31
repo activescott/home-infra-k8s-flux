@@ -34,6 +34,12 @@ spec:
               name: mariadb-port
 
           env:
+            # Run mariadb-upgrade automatically on first start after a server
+            # version change. Idempotent: the entrypoint only invokes it when
+            # the datadir's stamped version differs from the binary.
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
+
             - name: MARIADB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
