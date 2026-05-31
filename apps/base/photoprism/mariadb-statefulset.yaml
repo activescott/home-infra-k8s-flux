@@ -21,7 +21,7 @@ spec:
       containers:
         # documentation: https://hub.docker.com/_/mariadb
         - name: mariadb
-          image: mariadb:10.8
+          image: mariadb:10.11
 
           resources:
             limits:
