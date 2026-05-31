@@ -1,0 +1,27 @@
+# EMERGENCY recovery patch. Remove ASAP after recreating dropped users.
+#
+# Background: REPAIR TABLE mysql.global_priv during the 10.11 upgrade
+# recovery dropped 3 valid user rows (root@localhost, root@%,
+# photoprism@%) along with the index-corrupted duplicates. Pod is now
+# locked out — no account can authenticate.
+#
+# This adds --skip-grant-tables to mariadbd, bypassing authentication
+# entirely. Operator then execs into the pod and recreates the lost
+# accounts via SQL using the in-pod env vars (MARIADB_ROOT_PASSWORD,
+# MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE) — no credentials
+# leave the pod.
+#
+# IMPORTANT: remove this patch immediately after recreating users.
+# --skip-grant-tables means anyone who can reach port 3306 in the
+# pod's network namespace can do anything.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb
+spec:
+  template:
+    spec:
+      containers:
+        - name: mariadb
+          args:
+            - "--skip-grant-tables"
