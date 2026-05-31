@@ -1,0 +1,28 @@
+# TEMPORARY recovery patch. Remove after mariadb-upgrade succeeds.
+#
+# Background: oksana's mariadb-0 hit CrashLoopBackOff during the
+# 10.8 -> 10.11 bump (commit ee289f6 / af6e453). Root cause: the
+# pre-existing mysql.proc Aria table has a corrupt index; the 10.11
+# entrypoint's pre-upgrade backup step (mariadb-dump of the system
+# DB) fails when it hits that table and the entrypoint exits 1.
+#
+# This env var tells the official mariadb image entrypoint to skip
+# the system DB backup step. mariadb-upgrade then runs and is
+# expected to repair the corrupt Aria index in mysql.proc as part of
+# its CHECK/REPAIR sweep.
+#
+# Once `mariadb-upgrade` reports success and the pod settles 1/1
+# Ready, delete this file and remove its reference from
+# kustomization.yaml.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb
+spec:
+  template:
+    spec:
+      containers:
+        - name: mariadb
+          env:
+            - name: MARIADB_DISABLE_UPGRADE_BACKUP
+              value: "1"
