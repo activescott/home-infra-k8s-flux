@@ -107,6 +107,28 @@ spec:
             - name: PHOTOPRISM_GID
               value: "1000"
 
+            # Skip the recursive chown of /photoprism/storage and /photoprism/originals
+            # that the entrypoint otherwise runs on every pod start. With the storage
+            # dir at hundreds of GB (thumbnails, sidecars, cache) and millions of
+            # small files, the chown blocks startup for 10-15+ minutes on this NAS,
+            # and is wasted work after the first run because the FS is already owned
+            # by PHOTOPRISM_UID/GID. Observed during the 2026-05-31 MariaDB upgrade —
+            # see docs/specs/photoprism-mariadb-10.11-upgrade/.
+            #
+            # Re-enable (delete this env var, or set to "false") if you ever see
+            # photoprism log lines like:
+            #   - "permission denied" on /photoprism/{originals,storage,import}/...
+            #   - "operation not permitted"
+            #   - "open <path>: permission denied"
+            #   - "failed to create/write" with a path under /photoprism
+            # Those usually indicate someone changed file ownership on the nas host
+            # (manual chown, restore from backup with different UIDs, new tenant
+            # subdir created as root) and the entrypoint chown is needed once to
+            # heal it. After the heal completes, set this back to "true" and
+            # restart the pod.
+            - name: PHOTOPRISM_DISABLE_CHOWN
+              value: "true"
+
           # working dir set in the docker-compose file
           workingDir: "/photoprism"
 
