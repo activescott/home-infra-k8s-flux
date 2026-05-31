@@ -15,14 +15,20 @@ resources:
   - ../../base/wordpress-upstream
   - pv.yaml
   - pvc.yaml
-  # ingress.yaml is intentionally NOT in this list until cutover
-  # (Phase 5 of the migration plan). Until then the live ingress
-  # serving mmm.willeke.com stays in the old namespace.
+  - ingress.yaml
 
 secretGenerator:
   - name: wordpress-creds
     envs:
       - .env.secret.wordpress-creds.encrypted
+
+patches:
+  # Override the WP site URL via wp-config.php constants. Needed because
+  # wp_options.{home,siteurl} in the migrated DB still carry the default
+  # `https://127.0.0.1` placeholder from initial install; the legacy
+  # Bitnami chart hard-coded WP_HOME/WP_SITEURL in its generated
+  # wp-config.php to mask that, and the upstream image doesn't.
+  - path: patch-wordpress-config-extra.yaml
 
 labels:
   - pairs:

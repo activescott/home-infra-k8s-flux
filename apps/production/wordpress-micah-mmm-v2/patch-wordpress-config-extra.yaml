@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  template:
+    spec:
+      containers:
+        - name: wordpress
+          env:
+            # Override the WP site URL via wp-config.php constants. Needed
+            # because:
+            #   - wp_options.{home,siteurl} in the migrated DB carry the
+            #     default placeholder `https://127.0.0.1` (Bitnami's
+            #     initial-install seed value that was never updated).
+            #   - The legacy Bitnami stack worked anyway because its
+            #     chart-generated wp-config.php hard-coded WP_HOME and
+            #     WP_SITEURL to the right value, overriding the DB.
+            #   - The upstream wordpress image generates a vanilla
+            #     wp-config.php from env vars and does NOT set these.
+            # WORDPRESS_CONFIG_EXTRA gets appended into the generated
+            # wp-config.php verbatim by the image's entrypoint.
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: |
+                define('WP_HOME',    'https://mmm.willeke.com');
+                define('WP_SITEURL', 'https://mmm.willeke.com');

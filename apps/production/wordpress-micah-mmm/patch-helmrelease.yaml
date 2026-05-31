@@ -12,16 +12,13 @@ spec:
     service:
       type: ClusterIP
 
+    # Ingress turned off — the v2 upstream-image stack at
+    # apps/production/wordpress-micah-mmm-v2/ now owns mmm.willeke.com.
+    # This namespace stays running (DB + WP pod up, no traffic) as a
+    # rollback safety net for the migration. See
+    # docs/specs/wordpress-micah-mmm-migrate-off-bitnami/ for the plan.
     ingress:
-      enabled: true
-      hostname: mmm.willeke.com
-      tls: true
-      extraTls:
-        - hosts:
-            - mmm.willeke.com
-          secretName: mmm-willeke-com-tls
-      annotations:
-        cert-manager.io/cluster-issuer: letsencrypt-production
+      enabled: false
 
     persistence:
       existingClaim: wordpress-micah-mmm-wp-pvc
