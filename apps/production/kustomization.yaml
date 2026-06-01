@@ -15,7 +15,11 @@ resources:
   - ./ramblefeed
   - ./oksana-willeke-redirect
   - ./tinkerbell
-  - ./wordpress-micah-mmm
+  # `./wordpress-micah-mmm` (legacy Bitnami stack) decommissioned 2026-05-31
+  # — see docs/specs/wordpress-micah-mmm-migrate-off-bitnami/summary.md.
+  # PVs were Retain policy so hostPath data at
+  # /mnt/thedatapool/app-data/wordpress-micah-mmm/ remains on disk as
+  # the final rollback artifact.
   - ./wordpress-micah-mmm-v2
   - ./arize-phoenix
   - ./github-runners
