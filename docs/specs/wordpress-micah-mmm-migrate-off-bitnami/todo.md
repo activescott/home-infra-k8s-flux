@@ -95,7 +95,7 @@ meant to preserve is still present even without the wait.
 - [x] Commit + push
 - [x] Verify Flux removes the namespace + its resources
 - [x] hostPath data `/mnt/thedatapool/app-data/wordpress-micah-mmm/` retained (PV reclaim policy = Retain)
-- [ ] **Outstanding:** delete the retained hostPath data on `nas` after ~1 week of stable v2 operation.
+- [x] Delete the retained hostPath data on `nas` (user did this manually 2026-05-31 — `sudo rm -rf /mnt/thedatapool/app-data/wordpress-micah-mmm/`).
 
 ## Phase 8 — Docs cleanup (after Phase 7)
 
