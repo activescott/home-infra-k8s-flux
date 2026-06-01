@@ -6,63 +6,47 @@ This is my Kubernetes [Flux](https://fluxcd.io/) repository. It contains everyth
 
 See [apps/production](apps/production).
 
-## Image source caveats
+## Image source rule: no Bitnami
 
-### Bitnami images are not durable here — plan to migrate
+**Do not add `bitnami/*` runtime images** to this repo, and don't
+reach for `bitnamicharts/*` Helm charts either. There are currently
+zero Bitnami workloads here — keep it that way.
 
-Workloads using a `bitnami/*` runtime image are operating on borrowed
-time and any digest pin against the free `docker.io/bitnami/*`
-namespace is **not a durable strategy**. Treat any such pin as a
-"good for weeks, maybe months" lock-in, not a long-term solution.
+**Why:** in Aug-Sep 2025 Broadcom split the Bitnami catalog (see
+<https://github.com/bitnami/containers/issues/83267>). The public
+`docker.io/bitnami/<image>` namespace now publishes **only
+`:latest`** — no version tags, no historical digests. Concretely:
 
-**Why:** In Aug-Sep 2025 Broadcom split the Bitnami container catalog
-(see <https://github.com/bitnami/containers/issues/83267> and
-<https://news.broadcom.com/app-dev/broadcom-introduces-bitnami-secure-images-for-production-ready-containerized-applications>).
-The practical effect on this repo:
-
-- The public `docker.io/bitnami/<image>` namespace now publishes
-  **only `:latest`** (plus a `:latest-metadata` OCI artifact). All
-  prior version tags — `6.9.1`, `12.2.2-debian-12-r0`, etc. — were
-  removed. Verified directly against the registry API: only `latest`
-  and `latest-metadata` are listable.
-- Historical Debian-based images were moved to
-  <https://hub.docker.com/u/bitnamilegacy>, a **frozen archive that
-  does not receive security patches** and is described as a
-  temporary mirror.
+- Pinning by digest is sand. When Bitnami rebuilds `:latest`, the
+  prior `amd64` sub-digest stops resolving from the public registry
+  within weeks. Pods survive only on the node's local image cache;
+  one node rebuild or image GC turns the pinned pod into
+  `ImagePullBackOff`.
+- Pinning by tag isn't a thing — only `:latest` exists. Using it
+  invites silent major-version rolls. Concrete example we hit:
+  `bitnami/wordpress:latest` flipped from WordPress 6.9.1 to 7.0.0
+  on day-of-release; a node restart at the wrong moment would have
+  rolled production from 6.x to a 7.x same-day release with zero
+  GitOps diff.
 - Hardened, version-pinned images are in the paid
   [Bitnami Secure Images](https://hub.docker.com/u/bitnamisecure)
-  catalog. Contact: <https://go-vmware.broadcom.com/contact-us>.
-- **Digest pins die quietly.** When Bitnami rebuilds `:latest`, the
-  old `amd64` sub-digest stops resolving from the public registry —
-  observed firsthand in this repo: the digest the wordpress-micah-mmm
-  cluster was running on 2026-02-24 already 404s from Docker Hub
-  by 2026-05-31. Pods keep running only while containerd has the
-  bytes cached locally; one node rebuild or image GC turns the
-  pinned pod into `ImagePullBackOff`.
-- Bitnami **charts** (`oci://registry-1.docker.io/bitnamicharts/*`)
-  are under a different rule today and still publish named version
-  tags publicly. That is the only Bitnami pin that currently
-  behaves like a normal pin — but that policy could change too,
-  so don't depend on it long-term.
+  catalog. Historical Debian images live in the unpatched, frozen
+  <https://hub.docker.com/u/bitnamilegacy> mirror.
 
-**Affected workloads in this repo:**
+**Use upstream official images instead** — `library/wordpress`,
+`library/mariadb`, `library/postgres`, etc. These have stable named
+version tags going back years and are maintained by the Docker
+official-images team plus the upstream project. The same goes for
+charts: prefer hand-written manifests (this repo's stated
+preference, see below) or upstream community charts over
+`bitnamicharts/*`.
 
-| Path | What's pinned | Status |
-|---|---|---|
-| `apps/production/wordpress-micah-mmm/` | `bitnami/wordpress` + `bitnami/mariadb` images by digest; chart `bitnamicharts/wordpress:29.1.1` | Digests are sand — see [`docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md`](docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md) |
-
-**Recommended exit path:** migrate off `bitnami/*` runtime images
-toward upstream `library/wordpress` and `library/mariadb` (which
-have stable named tags). The chart can be replaced with hand-written
-manifests for a 1-replica site. Full migration sketch is in
+**Full backstory and references:**
 [`docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md`](docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/summary.md)
-under "Option D".
-
-**Do not add new `bitnami/*` runtime images** to this repo without
-accepting the same fragility. The source-licensed alternative (build
-images yourself from <https://github.com/bitnami/containers>, Apache
-2.0) is viable but requires standing up and maintaining a build
-pipeline; it does not come for free.
+(the empirical evidence) and
+[`docs/specs/wordpress-micah-mmm-migrate-off-bitnami/summary.md`](docs/specs/wordpress-micah-mmm-migrate-off-bitnami/summary.md)
+(how the last Bitnami workload was migrated off and what was learned
+along the way).
 
 ## Usage
 

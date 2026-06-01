@@ -13,3 +13,22 @@ helmreleases -A` directly.
 ## Observability
 
 See `apps/production/monitoring/README.md` for full architecture, chart versions, storage paths, and log collection details.
+
+## Image sources: no Bitnami
+
+Do not introduce `bitnami/*` runtime images or `bitnamicharts/*`
+Helm charts. The public Bitnami catalog became `:latest`-only in
+Aug-Sep 2025 (Broadcom moved everything else to a paid product) —
+no version tags, no stable digests, silent major-version rolls.
+A concrete example we hit: `bitnami/wordpress:latest` flipped from
+WP 6.9.1 → 7.0.0 on the day of WP 7.0.0's release, with zero
+GitOps diff. Pin by digest and you're betting on the node's local
+image cache — one image GC and the pod won't restart.
+
+Use upstream `library/*` images instead (`wordpress`, `mariadb`,
+`postgres`, etc.); they have stable named version tags going back
+years. Reference base for WordPress is `apps/base/wordpress-upstream/`.
+
+Full context: see the top-level `README.md` "Image source rule"
+section and `docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/`
++ `docs/specs/wordpress-micah-mmm-migrate-off-bitnami/`.

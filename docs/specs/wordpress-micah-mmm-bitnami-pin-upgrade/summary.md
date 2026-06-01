@@ -1,5 +1,14 @@
 # wordpress-micah-mmm: Bitnami image pin + upgrade — summary
 
+> **Migration completed 2026-05-31** — mmm.willeke.com is no
+> longer on Bitnami at all. See
+> [`../wordpress-micah-mmm-migrate-off-bitnami/summary.md`](../wordpress-micah-mmm-migrate-off-bitnami/summary.md)
+> for how the migration to upstream `library/wordpress` +
+> `library/mariadb` was executed. The pin and the upgrade that
+> this spec documents were the bridge to that migration — they
+> bought the cluster time while the migration was planned and
+> built. They're no longer load-bearing.
+
 > **⚠️ Digest-pinning against Bitnami's free tier is not a durable
 > strategy.** The pin we landed in `f82ab7a` and `ec350b5` works
 > *for now* because containerd has the layers cached locally on the
