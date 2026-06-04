@@ -72,14 +72,3 @@ replacements:
 
 # NOTE: adding `managedByLabel` here causes a label like `app.kubernetes.io/managed-by: kustomize-(devel)` to be added and `kustomize-(devel)` gets rejected by k8s server side.
 buildMetadata: [originAnnotations, transformerAnnotations]
-
-labels:
-  # Migrated from the deprecated `commonLabels`. includeSelectors: true
-  # preserves the original behavior of stamping these labels onto
-  # selectors. We can't drop the labels outright because the base
-  # `redirect-sleeper` Deployment's spec.selector.matchLabels already
-  # contains them in the live cluster, and Deployment selectors are
-  # immutable post-create.
-  - pairs:
-      app.activescott.com/name: activescott-redirect
-    includeSelectors: true

@@ -13,7 +13,3 @@ patches:
   - path: patch-photoprism-ingress.yaml
 
 namespace: photoprism-micah
-
-labels:
-  - pairs:
-      app.activescott.com/tenant: micah

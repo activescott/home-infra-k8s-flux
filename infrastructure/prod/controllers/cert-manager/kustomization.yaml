@@ -12,17 +12,3 @@ resources:
 # namespace: cert-manager
 
 buildMetadata: [originAnnotations, transformerAnnotations]
-
-labels:
-  # Migrated from the deprecated `commonLabels` field. includeSelectors:
-  # true preserves the original behavior of stamping these labels onto
-  # Deployment matchLabels / Service selectors. We cannot drop the labels
-  # outright (as we did for loki/alloy/redirects) because the upstream
-  # cert-manager.yaml manifest applied here contains Deployments, and
-  # Deployment.spec.selector.matchLabels is immutable post-create — a
-  # change in rendered labels would fail to apply against the live
-  # Deployments.
-  - pairs:
-      app.activescott.com/name: cert-manager
-      app.activescott.com/tenant: anyone
-    includeSelectors: true

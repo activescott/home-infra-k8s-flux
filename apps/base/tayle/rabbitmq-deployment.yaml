@@ -12,7 +12,6 @@ spec:
     metadata:
       labels:
         app: rabbitmq
-        app.activescott.com/component: rabbitmq
     spec:
       containers:
         - name: rabbitmq

@@ -14,8 +14,3 @@ patches:
   - path: patch-helmrelease.yaml
 
 namespace: wordpress-micah-mmm
-
-labels:
-  - pairs:
-      app.activescott.com/name: wordpress
-      app.activescott.com/tenant: micah

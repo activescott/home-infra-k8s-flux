@@ -17,13 +17,4 @@ spec:
     # An empty 'selector' means that this solver matches all domains
     - selector: {}
       http01:
-        ingress:
-          # podTemplate & ingressTemplate are optional just so i can identify these odd pods if I spot them
-          podTemplate:
-            metadata:
-              labels:
-                app.activescott.com/name: cert-manager
-          ingressTemplate:
-            metadata:
-              labels:
-                app.activescott.com/name: cert-manager
+        ingress: {}

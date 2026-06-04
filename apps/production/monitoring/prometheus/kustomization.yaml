@@ -16,7 +16,3 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.prometheus-basic-auth.encrypted
-
-labels:
-  - pairs:
-      app.activescott.com/name: prometheus

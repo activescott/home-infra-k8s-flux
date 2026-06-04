@@ -100,9 +100,6 @@ replacements:
           - spec.tls.0.secretName
 
 buildMetadata: [originAnnotations, transformerAnnotations]
-
-commonLabels:
-  app.activescott.com/name: example-redirect
 ```
 
 ### Variables

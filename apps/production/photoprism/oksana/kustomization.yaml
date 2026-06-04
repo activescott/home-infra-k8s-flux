@@ -15,7 +15,3 @@ patches:
   - path: patch-photoprism-ingress.yaml
 
 namespace: photoprism-oksana
-
-labels:
-  - pairs:
-      app.activescott.com/tenant: oksana
