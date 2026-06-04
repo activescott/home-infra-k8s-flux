@@ -5,6 +5,3 @@ resources:
 namespace: monitoring
 
 buildMetadata: [originAnnotations, transformerAnnotations]
-
-commonLabels:
-  app.activescott.com/name: loki

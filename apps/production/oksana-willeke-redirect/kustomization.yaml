@@ -72,5 +72,13 @@ replacements:
 
 buildMetadata: [originAnnotations, transformerAnnotations]
 
-commonLabels:
-  app.activescott.com/name: oksana-willeke-redirect
+labels:
+  # Migrated from the deprecated `commonLabels`. includeSelectors: true
+  # preserves the original behavior of stamping these labels onto
+  # selectors. We can't drop the labels outright because the base
+  # `redirect-sleeper` Deployment's spec.selector.matchLabels already
+  # contains them in the live cluster, and Deployment selectors are
+  # immutable post-create.
+  - pairs:
+      app.activescott.com/name: oksana-willeke-redirect
+    includeSelectors: true
