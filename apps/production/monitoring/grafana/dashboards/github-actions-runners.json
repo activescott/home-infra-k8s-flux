@@ -333,6 +333,56 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Jobs assigned to a scale set but not yet executing on a runner pod (gha_assigned_jobs - gha_running_jobs). Sustained non-zero values mean jobs are queued waiting for a runner to come up — if it hits maxRunners, raise the cap.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisColorMode": "text",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "stepAfter",
+            "lineWidth": 1,
+            "pointSize": 4,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "orange", "value": null }]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 13 },
+      "id": 56,
+      "options": {
+        "legend": { "calcs": ["max", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "hideZeros": false, "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "clamp_min(sum by (name) (gha_assigned_jobs) - sum by (name) (gha_running_jobs), 0)",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Jobs waiting for runner",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "description": "Time from job assignment to runner starting work. p50 + p95 across all repos.",
       "fieldConfig": {
         "defaults": {
@@ -359,7 +409,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 13 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 19 },
       "id": 54,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -412,7 +462,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 13 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 19 },
       "id": 55,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -439,7 +489,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
       "id": 10,
       "panels": [],
       "title": "Runner activity",
@@ -479,7 +529,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 27 },
       "id": 11,
       "options": {
         "legend": { "calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -499,7 +549,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "id": 20,
       "panels": [],
       "title": "Resource usage",
@@ -537,7 +587,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
       "id": 21,
       "options": {
         "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -587,7 +637,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
       "id": 22,
       "options": {
         "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -607,7 +657,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
       "id": 30,
       "panels": [],
       "title": "Logs",
@@ -617,7 +667,7 @@
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "description": "Warnings and errors from the ARC controller and listeners.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 45 },
       "id": 31,
       "options": {
         "dedupStrategy": "none",
@@ -647,7 +697,7 @@
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "description": "All log lines from runner pods (runner + dind containers).",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 49 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 55 },
       "id": 32,
       "options": {
         "dedupStrategy": "none",
