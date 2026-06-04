@@ -14,6 +14,8 @@ helmreleases -A` directly.
 
 See `apps/production/monitoring/README.md` for full architecture, chart versions, storage paths, and log collection details.
 
+Grafana dashboards under `apps/production/monitoring/grafana/dashboards/*.json` are provisioned by Flux — edits via the Grafana UI or API (including the Grafana MCP `update_dashboard` tool) get reverted on the next reconcile. To change a provisioned dashboard, edit its JSON file in this repo and commit. The Grafana API exposes `meta.provisioned: true` on these dashboards if you want to confirm before editing; the MCP `get_dashboard_by_uid` response does not currently surface that field, so when in doubt grep this repo for the dashboard UID first.
+
 ## Image sources: no Bitnami
 
 Do not introduce `bitnami/*` runtime images or `bitnamicharts/*`

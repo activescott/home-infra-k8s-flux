@@ -206,7 +206,7 @@
           }
         ]
       },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 6 },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 6 },
       "id": 51,
       "options": {
         "colorMode": "value",
@@ -263,7 +263,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 9, "x": 6, "y": 6 },
+      "gridPos": { "h": 7, "w": 9, "x": 6, "y": 6 },
       "id": 52,
       "options": {
         "legend": { "calcs": ["max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -313,7 +313,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 9, "x": 15, "y": 6 },
+      "gridPos": { "h": 7, "w": 9, "x": 15, "y": 6 },
       "id": 53,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -359,7 +359,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 11 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 13 },
       "id": 54,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -412,7 +412,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 11 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 13 },
       "id": 55,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -439,7 +439,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
       "id": 10,
       "panels": [],
       "title": "Runner activity",
@@ -479,7 +479,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
       "id": 11,
       "options": {
         "legend": { "calcs": ["max"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -499,7 +499,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
       "id": 20,
       "panels": [],
       "title": "Resource usage",
@@ -537,7 +537,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
       "id": 21,
       "options": {
         "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -587,7 +587,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
       "id": 22,
       "options": {
         "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -607,7 +607,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
       "id": 30,
       "panels": [],
       "title": "Logs",
@@ -617,7 +617,7 @@
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "description": "Warnings and errors from the ARC controller and listeners.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 37 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
       "id": 31,
       "options": {
         "dedupStrategy": "none",
@@ -647,7 +647,7 @@
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "description": "All log lines from runner pods (runner + dind containers).",
       "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 47 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 49 },
       "id": 32,
       "options": {
         "dedupStrategy": "none",
