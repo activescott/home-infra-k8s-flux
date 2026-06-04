@@ -22,7 +22,19 @@ spec:
     githubConfigSecret: tinkerbell-github-token
     runnerScaleSetName: tinkerbell-runners
     minRunners: 0
-    maxRunners: 2
+    # Sized against the single nas node (20 CPU / 125 GiB) with a target of
+    # keeping runner load under ~50% of node capacity during bursts.
+    # Per-runner requests are 500m CPU / 1Gi mem; burst limits are 4 CPU /
+    # 6Gi (see template.spec.containers.runner.resources below). At
+    # maxRunners: 6 per scale set:
+    #   - requests if one scale set is saturated: 3 CPU (15%) / 6 GiB (~5%)
+    #   - requests if both scale sets saturated:  6 CPU (30%) / 12 GiB (~10%)
+    #   - worst-case burst (one set, all pods at 4 CPU limit): 24 CPU,
+    #     which would saturate the node but only briefly and only if every
+    #     job pegs its CPU limit — CI jobs are spiky, not sustained.
+    # Steady-state node usage observed in Grafana is <10% CPU / <17% mem
+    # over 7d, so there is ample headroom for this concurrency.
+    maxRunners: 6
     containerMode:
       type: dind
     # Annotations on the listener pod so the existing kubernetes-pods
