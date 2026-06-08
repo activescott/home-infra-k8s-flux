@@ -71,11 +71,12 @@ spec:
               memory: 384Mi
             limits:
               cpu: 500m
-              # Steady state sits ~210-357Mi but cold start (Playwright
-              # Chromium launch + git pull + initial scrape buffers) briefly
-              # crosses 512Mi and gets OOMKilled — observed during the
-              # v202605180624 rollout. 1Gi gives ~3x headroom on the peak.
-              memory: 1Gi
+              # Bumped 1Gi -> 2Gi on 2026-06-08 after repeated mid-iteration
+              # OOMKills (exit 137) ~halfway through the ~5000-ID FurMark
+              # walk, leading to a 13-day stall in successful git pushes.
+              # Mid-iteration peak now exceeds the cold-start peak the prior
+              # 1Gi sizing was based on.
+              memory: 2Gi
       volumes:
         - name: data
           persistentVolumeClaim:
