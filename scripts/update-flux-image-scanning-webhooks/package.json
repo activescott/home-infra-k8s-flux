@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@octokit/rest": "^20.0.2",
-    "tsx": "^4.7.1"
+    "tsx": "^4.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.11.19",
