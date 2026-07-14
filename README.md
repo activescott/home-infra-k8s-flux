@@ -274,7 +274,7 @@ Should see output lines like `Namespace/activescott-redirect created` for each f
 
 ### YAML+Kustomize
 
-I prefer plain "kubectl yaml" and Kustomize over helm. Helm is great for packaging up an app into an opaque package and provide it to others, but IMHO not for managing a cluster directly. When consuming apps, I prefer consuming yaml if provided, but don't mind consuming Helm.
+I prefer plain "kubectl yaml" and Kustomize over helm for resources authored in this repo — Helm is for packaging an app into an opaque package to provide to others, not for managing a cluster directly. Consuming upstream Helm charts is a different matter: it's perfectly fine (via Flux `HelmRelease`) when the chart is well maintained and clearly documented, and often better than hand-porting a complex app, since the chart encodes the app's env/volume/probe contracts that hand-rolled manifests have to rediscover. Prefer upstream kustomize/yaml when the app provides it; reach for the chart when it doesn't or when the app has many moving parts.
 
 ## Posterity / Done
 
