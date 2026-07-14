@@ -22,3 +22,6 @@ data:
   CVAT_ANALYTICS: "0"
   ALLOWED_HOSTS: cvat.activescott.com
   CVAT_BASE_URL: https://cvat.activescott.com
+  # must EXIST (may be empty): supervisord's smokescreen.conf references
+  # %(ENV_SMOKESCREEN_OPTS)s and aborts every backend container if it's unset
+  SMOKESCREEN_OPTS: ""
