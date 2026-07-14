@@ -22,6 +22,8 @@ data:
   CVAT_ANALYTICS: "0"
   ALLOWED_HOSTS: cvat.activescott.com
   CVAT_BASE_URL: https://cvat.activescott.com
-  # must EXIST (may be empty): supervisord's smokescreen.conf references
-  # %(ENV_SMOKESCREEN_OPTS)s and aborts every backend container if it's unset
+  # must EXIST (may be empty): supervisord configs reference %(ENV_...)s and abort
+  # the container when the var is unset — smokescreen.conf needs SMOKESCREEN_OPTS
+  # (all backends), rqscheduler.conf needs CVAT_REDIS_INMEM_PASSWORD (utils/webhooks)
   SMOKESCREEN_OPTS: ""
+  CVAT_REDIS_INMEM_PASSWORD: ""
