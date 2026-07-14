@@ -29,6 +29,11 @@ spec:
   values:
     cvat:
       backend:
+        # the chart's chmod -R 777 init container fails on the read-only originals
+        # share mounted under /home/django, and would get slower as the chunk cache
+        # grows anyway. data/keys/logs on the PV must be writable by uid 1000.
+        permissionFix:
+          enabled: false
         defaultStorage:
           enabled: true
           # no provisioner for this class; binds statically to the pre-created
