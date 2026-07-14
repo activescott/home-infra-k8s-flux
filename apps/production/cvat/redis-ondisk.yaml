@@ -24,9 +24,15 @@ spec:
           # container runs as uid/gid 999 (kvrocks); the hostPath below must be
           # chown'd 999:999 (see docs/specs/cvat-hosting/summary.md)
           image: apache/kvrocks:2.15.0
+          # data goes to a SUBDIR of /var/lib/kvrocks: the image bakes kvrocks.conf
+          # into /var/lib/kvrocks itself, and a hostPath mounted there shadows it
+          # (docker named volumes copy image contents on first use; hostPath doesn't).
+          # The appended --dir overrides the entrypoint's earlier --dir (last wins).
           args:
             - --compact-cron
             - "0 3 * * *"
+            - --dir
+            - /var/lib/kvrocks/data
           ports:
             - name: kvrocks
               containerPort: 6666
@@ -36,7 +42,7 @@ spec:
             limits:
               memory: "1Gi"
           volumeMounts:
-            - mountPath: /var/lib/kvrocks
+            - mountPath: /var/lib/kvrocks/data
               name: kvrocks-data
       volumes:
         - name: kvrocks-data
