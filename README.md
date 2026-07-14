@@ -50,6 +50,30 @@ along the way).
 
 ## Usage
 
+### New hostname checklist
+
+To give an app a new public URL like `myapp.activescott.com`:
+
+1. **Public DNS (Cloudflare):** add `myapp.activescott.com` as a CNAME to
+   `k8s.activescott.com` (which resolves to the cluster's public IP). Match the
+   proxy on/off setting of an existing app record (e.g. `phoenix.activescott.com`).
+2. **Local DNS (optional but recommended for high-bandwidth apps):** the LAN's DNS
+   server carries A-record overrides pointing some hostnames (e.g.
+   `grafana.activescott.com`) at the cluster's LAN IP `10.1.111.20`, so LAN clients
+   skip the NAT-hairpin through the router. Hairpin does work — apps without an
+   override are still reachable from the LAN via the public IP — so this is a
+   performance nicety, not a requirement. Add the override on the local DNS server
+   (10.1.111.1).
+3. **Certificate + Ingress:** add a cert-manager `Certificate` (issuer
+   `letsencrypt-production`, HTTP-01) and an `Ingress` with matching
+   `tls.secretName` — copy `apps/production/arize-phoenix/app-ingress*.yaml`.
+   Issuance needs step 1 live first.
+
+Gotcha: if a hostname was queried before its record existed, resolvers hold a
+negative cache for several minutes — an empty `dig` answer right after adding the
+record usually just means wait, not that the record is wrong. Check what's actually
+published with `dig +short myapp.activescott.com @1.1.1.1`.
+
 ### Handy CLI Commands working with Flux
 
 See [Flux Troubleshooting Cheatsheet](https://fluxcd.io/flux/cheatsheets/troubleshooting/).
