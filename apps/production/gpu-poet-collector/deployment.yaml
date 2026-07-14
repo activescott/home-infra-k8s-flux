@@ -24,7 +24,7 @@ spec:
         - name: github-container-registry-secret
       containers:
         - name: collector
-          image: ghcr.io/activescott/gpu-poet-data/collector:v202606091607 # {"$imagepolicy": "gpupoet-prod:policy-gpu-poet-collector"}
+          image: ghcr.io/activescott/gpu-poet-data/collector:v202607140756 # {"$imagepolicy": "gpupoet-prod:policy-gpu-poet-collector"}
           ports:
             - name: metrics
               containerPort: 9100
