@@ -2,8 +2,9 @@
 
 Status 2026-07-14: DEPLOYED AND HEALTHY on the upstream Helm chart — HelmRelease
 UpgradeSucceeded (chart 0.15.1 @ v2.44.3), 17/17 pods Running, certificate issued,
-`https://cvat.activescott.com/api/server/about` serving over TLS. Remaining: Scott
-creates the superuser + accounts + API token (step 5), then task-1 migration (step 6).
+`https://cvat.activescott.com/api/server/about` serving over TLS. Superuser created;
+Scott logged in. Remaining: per-person accounts + a steward tooling account (step 5),
+then task-1 migration from the laptop (step 6).
 
 Background: switched from hand-rolled manifests (Scott's call — easier to maintain;
 the hand-rolled iteration burned an evening rediscovering env/volume contracts the
@@ -56,29 +57,25 @@ chmod -R a+rX /mnt/thedatapool/photos/steward/originals
 
 ## 2. Secrets
 
-Only ONE secret file, already created as a placeholder (CHANGEME) at
-`apps/production/cvat/.env.secret.cvat` (gitignored; only `.encrypted` is committed):
+Only ONE secret file: `apps/production/cvat/.env.secret.cvat-postgres` (gitignored;
+only `.encrypted` is committed; plaintext in 1Password). Keys match the CVAT helm
+chart's postgres-secret contract and double as the postgres container's init config:
 
-- `POSTGRES_PASSWORD` — initializes the postgres container
-- `CVAT_POSTGRES_PASSWORD` — what Django connects with; MUST be the same value
+- `username=root`, `database=cvat`, `password=<generated>`
 
-Steps (do BEFORE the first push — postgres initializes its data dir with whatever
-password ships first, and changing it afterward means manual `ALTER USER`):
+To rotate/recreate (NOTE: postgres bakes the password into its data dir on first
+init — changing it after that means manual `ALTER USER` inside postgres):
 
 ```sh
 cd ~/src/activescott/home-infra-k8s-flux
-# 1. generate + insert password (both lines get the same value):
-pw=$(openssl rand -base64 24)
-sed -i '' "s|CHANGEME|$pw|g" apps/production/cvat/.env.secret.cvat
-# 2. save the plaintext file's contents to 1Password (repo convention)
-# 3. re-encrypt (overwrites the placeholder .encrypted that was staged):
+# edit apps/production/cvat/.env.secret.cvat-postgres, then:
 ./scripts/encrypt-env-files.sh apps/production/cvat
-git add apps/production/cvat/.env.secret.cvat.encrypted
+git add apps/production/cvat/.env.secret.cvat-postgres.encrypted
 ```
 
 NOT in any .env: the CVAT superuser (created interactively post-boot, step 5) and
-Django's secret keys (self-generated on first boot into the persisted
-`/mnt/thedatapool/app-data/cvat/keys`).
+Django's secret keys (self-generated on first boot into the persisted `keys/` subdir
+of the backend-data PV).
 
 ## 3. DNS
 
@@ -90,14 +87,18 @@ Required before the cert issues (HTTP-01) and before the UI works.
 Push to main; the GitHub webhook triggers Flux (no manual `flux reconcile`).
 
 ```sh
+kubectl --context nas get helmrelease -n cvat
 kubectl --context nas get pods -n cvat -w
 kubectl --context nas get certificate -n cvat
-kubectl --context nas logs -n cvat deploy/cvat-server -f
+kubectl --context nas logs -n cvat deploy/cvat-backend-server -f
 curl -s https://cvat.activescott.com/api/server/about
 ```
 
-First boot is slow: cvat-server's `init` runs all Django migrations; workers crash-loop
-until migrations finish — that's normal, they settle.
+First install is slow: the GitRepository clones the whole CVAT repo, the chart build
+downloads 7 subchart tarballs, and the initializer job runs all Django migrations.
+A failed helm install/upgrade retries with a 15m timeout per attempt — and each
+attempt uses the values snapshot from when it STARTED, so a values fix can take one
+extra full cycle to land.
 
 ## 5. First-boot accounts
 
@@ -117,18 +118,26 @@ verify with `steward-check-labels` against the new URL.
 
 ## Gotchas / non-obvious
 
-- **Share on every worker:** the originals share is mounted on cvat-server AND all 7
-  workers. Chunks are built lazily by `cvat-worker-chunks`; missing mount there = 500 /
+- **Share on every worker:** the originals share is mounted on the server AND every
+  worker via `cvat.backend.additionalVolumeMounts` (chart applies it backend-wide).
+  Chunks are built lazily by the chunks worker; missing mount there = 500 /
   FileNotFoundError on frames past the first chunk. Learned the hard way on the local
   compose setup (`steward/labeling/docker-compose.override.yml`).
-- **hostPath ownership:** kubernetes never chowns hostPath volumes; wrong ownership
-  shows up as CrashLoopBackOff with "permission denied" in `kubectl logs`.
-- **No Helm on purpose:** the official CVAT chart depends on Bitnami postgres/redis
-  charts (banned in this repo, see README "Image source rule").
-- **Consensus worker omitted:** if consensus features are ever used in the UI, jobs
-  will queue forever until a `cvat-worker-consensus` deployment is added (copy any
-  worker in `workers.yaml`, args `[run, worker, consensus]`).
+- **hostPath/PV ownership:** kubernetes never chowns hostPath volumes, and the chart's
+  `permissionFix` chmod is disabled (it dies on the read-only share and would slow pod
+  starts as the cache grows). "permission denied" in backend logs → fix ownership on
+  the NAS (`data/`, `keys/`, `logs/` under the PV path must be writable by uid 1000).
+- **Bitnami subcharts disabled, but still DOWNLOADED:** the chart build fetches all 7
+  subchart tarballs (3 from charts.bitnami.com) even though they're disabled. If the
+  legacy Bitnami chart repo ever goes away, the chart build breaks — the fix would be
+  vendoring the chart or stripping deps in a fork.
+- **Old hand-rolled iteration:** first deployment was hand-rolled manifests (git
+  history around 06bdaab..311156e, 2026-07-13); switched to the chart after repeated
+  env/volume contract bugs. `db.yaml`/`redis-inmem.yaml`/`redis-ondisk.yaml` survive
+  from it as the chart's external services.
 - **Validation:** `kubectl kustomize apps/production/cvat | kubectl --context nas apply
   --dry-run=client --validate=true -f -`. Server-side dry-run reports "namespaces cvat
   not found" for every object until the namespace actually exists — not an error in the
-  manifests.
+  manifests. The HelmRelease values can be render-tested locally: worktree the CVAT
+  repo at the pinned tag, copy it WITHOUT symlinks (mirrors Flux's artifact), `helm
+  dependency build`, `helm template` with the values from `helm.yaml`.
