@@ -1,13 +1,21 @@
 # CVAT hosting — summary / runbook
 
-Status 2026-07-14: SWITCHED TO THE UPSTREAM HELM CHART (Scott's call — easier to
-maintain; the hand-rolled iteration burned an evening rediscovering env/volume
-contracts the chart encodes). `apps/production/cvat/` now = HelmRelease (server,
-workers, ui, opa, ingress, migrations job) + our own postgres/redis/kvrocks as the
-chart's "external" services + static PV + certificate. NAS dirs, password, and DNS
-were completed against the first iteration and carry over; secret file was renamed
-`.env.secret.cvat` → `.env.secret.cvat-postgres` (chart-shaped keys
-username/database/password, same password value, re-encrypted).
+Status 2026-07-14: DEPLOYED AND HEALTHY on the upstream Helm chart — HelmRelease
+UpgradeSucceeded (chart 0.15.1 @ v2.44.3), 17/17 pods Running, certificate issued,
+`https://cvat.activescott.com/api/server/about` serving over TLS. Remaining: Scott
+creates the superuser + accounts + API token (step 5), then task-1 migration (step 6).
+
+Background: switched from hand-rolled manifests (Scott's call — easier to maintain;
+the hand-rolled iteration burned an evening rediscovering env/volume contracts the
+chart encodes). `apps/production/cvat/` = HelmRelease (server, workers, ui, opa,
+ingress, migrations job) + our own postgres/redis/kvrocks as the chart's "external"
+services + static PV + certificate. NAS dirs, password, and DNS carried over from the
+first iteration; secret file renamed `.env.secret.cvat` → `.env.secret.cvat-postgres`
+(chart-shaped keys username/database/password, same password value, re-encrypted).
+Chart-era gotchas hit during rollout: permissionFix chmod vs the read-only share
+(disabled — see README), and a failed helm install retries with the values snapshot
+from when the attempt started, so a values fix can take one extra 15m install cycle
+to land.
 
 Steps 1-3 below are DONE (kept for the record / rebuild-from-scratch case).
 
