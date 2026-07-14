@@ -6,6 +6,12 @@ set -euo pipefail
 this_dir=$(cd $(dirname "$0"); pwd)
 repo_dir=$(git rev-parse --show-toplevel)
 
+# git exports GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE to hooks. kustomize shells out to
+# git when a kustomization references a remote base (e.g. arize-phoenix), and with
+# these vars inherited that git operates on THIS repo instead of kustomize's temp
+# clone — its checkout then aborts with "Your local changes ... would be overwritten".
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 kubectl_context=nas
 
 # the goal here is just to make sure at minimum kubectl kustomize processes all the yaml
