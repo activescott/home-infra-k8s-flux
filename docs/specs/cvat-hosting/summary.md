@@ -102,7 +102,7 @@ until migrations finish — that's normal, they settle.
 ## 5. First-boot accounts
 
 ```sh
-kubectl --context nas -n cvat exec -it deploy/cvat-backend-server -- python3 ~/manage.py createsuperuser
+kubectl --context nas -n cvat exec -it deploy/cvat-backend-server -- python3 /home/django/manage.py createsuperuser
 ```
 
 Then in the UI: create per-person accounts; create an API token for steward tooling

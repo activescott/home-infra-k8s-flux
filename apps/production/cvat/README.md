@@ -59,7 +59,7 @@ apps/production/cvat`.
   chart):
 
 ```sh
-kubectl --context nas -n cvat exec -it deploy/cvat-backend-server -- python3 ~/manage.py createsuperuser
+kubectl --context nas -n cvat exec -it deploy/cvat-backend-server -- python3 /home/django/manage.py createsuperuser
 ```
 
 Then create per-person accounts and API tokens in the UI; steward tooling uses those,
