@@ -10,6 +10,9 @@ spec:
   interval: 1h
   url: https://github.com/cvat-ai/cvat
   ref:
+    # Upgrades: bump this tag (chart + app versions move together in the CVAT repo).
+    # Versions + release notes: https://github.com/cvat-ai/cvat/releases
+    # Chart source: https://github.com/cvat-ai/cvat/tree/develop/helm-chart
     tag: v2.44.3
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
