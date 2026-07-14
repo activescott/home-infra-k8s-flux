@@ -1,21 +1,23 @@
 resources:
   - namespace.yaml
-  - backend-config.yaml
+  # own postgres/redis/kvrocks — the chart's Bitnami subcharts are banned/disabled
   - db.yaml
   - redis-inmem.yaml
   - redis-ondisk.yaml
-  - opa.yaml
-  - server.yaml
-  - workers.yaml
-  - ui.yaml
-  - ingress.yaml
+  - backend-data-pv.yaml
+  - cache-auth-secret.yaml
   - certificate.yaml
+  # everything else (server, workers, ui, opa, ingress) comes from the CVAT chart
+  - helm.yaml
 
 secretGenerator:
-  # POSTGRES_PASSWORD (db pod) + CVAT_POSTGRES_PASSWORD (backends), same value.
-  # Plaintext .env.secret.cvat is in 1Password; see README.md for the encrypt step.
-  - name: cvat-secrets
+  # username/database/password for both the postgres pod and the chart's backends.
+  # Fixed name (no hash suffix): the HelmRelease values reference it by name.
+  # Plaintext .env.secret.cvat-postgres is in 1Password.
+  - name: cvat-postgres-secret
     envs:
-      - .env.secret.cvat.encrypted
+      - .env.secret.cvat-postgres.encrypted
+    options:
+      disableNameSuffixHash: true
 
 namespace: cvat

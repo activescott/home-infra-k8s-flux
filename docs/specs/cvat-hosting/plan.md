@@ -7,10 +7,15 @@ home-infra-side implementation plan.
 
 - **Hostname:** `cvat.activescott.com`, public ingress + TLS via `letsencrypt-production`
   ClusterIssuer (HTTP-01), same as arize-phoenix.
-- **Approach:** hand-rolled kustomize manifests in `apps/production/cvat/` (no base/
-  overlay split — single instance, following the arize-phoenix pattern). NOT the CVAT
-  Helm chart: it depends on Bitnami postgres/redis charts (banned in this repo) and the
-  repo prefers plain yaml anyway.
+- **Approach (REVISED 2026-07-14):** the upstream CVAT Helm chart via Flux
+  `HelmRelease`, built from the CVAT git repo at the pinned tag (chart isn't published
+  to a registry); Bitnami postgres/redis subcharts disabled, with our own postgres/
+  redis/kvrocks wired in as the chart's "external" services. The first iteration was
+  hand-rolled kustomize; it hit three boot failures in one evening (kvrocks config
+  shadowed by the data mount, unset `SMOKESCREEN_OPTS`, unset
+  `CVAT_REDIS_INMEM_PASSWORD` — all env/volume contracts the chart's templates encode)
+  plus a `--with-scheduler` flag that didn't exist in v2.44.3, and Scott chose the
+  chart as easier to maintain long-term.
 - **Version:** `cvat/server:v2.44.3` + `cvat/ui:v2.44.3` — matches the local
   Docker-Compose instance being migrated from (`/Users/scott/src/cvat-ai/cvat` checkout).
 - **Storage (hostPath, cluster runs on the NAS):**

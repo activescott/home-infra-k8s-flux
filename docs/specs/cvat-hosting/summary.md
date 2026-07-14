@@ -1,8 +1,15 @@
 # CVAT hosting — summary / runbook
 
-Status 2026-07-13: manifests written and staged (not committed). Validated with
-`kubectl kustomize apps/production` and client-side `kubectl apply --dry-run`.
-Remaining steps below are Scott's (NAS dirs, real password, DNS), then push.
+Status 2026-07-14: SWITCHED TO THE UPSTREAM HELM CHART (Scott's call — easier to
+maintain; the hand-rolled iteration burned an evening rediscovering env/volume
+contracts the chart encodes). `apps/production/cvat/` now = HelmRelease (server,
+workers, ui, opa, ingress, migrations job) + our own postgres/redis/kvrocks as the
+chart's "external" services + static PV + certificate. NAS dirs, password, and DNS
+were completed against the first iteration and carry over; secret file was renamed
+`.env.secret.cvat` → `.env.secret.cvat-postgres` (chart-shaped keys
+username/database/password, same password value, re-encrypted).
+
+Steps 1-3 below are DONE (kept for the record / rebuild-from-scratch case).
 
 ## 1. Directories to create on the NAS (run as root on nas1)
 
@@ -30,10 +37,12 @@ mkdir -p /mnt/thedatapool/photos/steward/cvat \
 chown 1000:1000 /mnt/thedatapool/photos/steward/cvat
 chmod 770 /mnt/thedatapool/photos/steward/cvat
 
-# originals is written from the Mac over SMB/NFS and only READ by CVAT (uid 1000).
-# Simplest: make the tree world-readable; check that files created later via SMB
-# inherit readable permissions (TrueNAS dataset ACL/aclmode) — if CVAT can't see new
-# files in the share, this is the first thing to check.
+# originals is written by user scott (rsync/SMB) and only READ by CVAT (uid 1000).
+# scott owns it; world-readable so uid 1000 can read. Files rsync'd with default
+# umask 022 land 644/755 — fine. Do NOT rsync with -p/-a from a source with 600
+# perms or CVAT loses read; -rtv is right. If CVAT can't see new files in the
+# share, ownership/umask here is the first thing to check.
+chown -R scott /mnt/thedatapool/photos/steward/originals
 chmod -R a+rX /mnt/thedatapool/photos/steward/originals
 ```
 
@@ -85,7 +94,7 @@ until migrations finish — that's normal, they settle.
 ## 5. First-boot accounts
 
 ```sh
-kubectl --context nas -n cvat exec -it deploy/cvat-server -- python3 ~/manage.py createsuperuser
+kubectl --context nas -n cvat exec -it deploy/cvat-backend-server -- python3 ~/manage.py createsuperuser
 ```
 
 Then in the UI: create per-person accounts; create an API token for steward tooling

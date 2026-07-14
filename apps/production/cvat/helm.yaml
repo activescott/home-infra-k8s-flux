@@ -1,0 +1,96 @@
+# CVAT via the upstream Helm chart, built from the CVAT git repo at the pinned tag
+# (the chart is not published to a chart registry). The chart's bundled Bitnami
+# postgres/redis subcharts are disabled; this app's own postgres, redis, and kvrocks
+# (db.yaml, redis-inmem.yaml, redis-ondisk.yaml) are wired in as "external" services.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: cvat
+spec:
+  interval: 1h
+  url: https://github.com/cvat-ai/cvat
+  ref:
+    tag: v2.44.3
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cvat
+spec:
+  interval: 30m
+  timeout: 15m
+  chart:
+    spec:
+      chart: helm-chart
+      sourceRef:
+        kind: GitRepository
+        name: cvat
+      reconcileStrategy: Revision
+  values:
+    cvat:
+      backend:
+        defaultStorage:
+          enabled: true
+          # no provisioner for this class; binds statically to the pre-created
+          # hostPath PV in backend-data-pv.yaml
+          storageClassName: cvat-backend-manual
+          size: 200Gi
+        # the steward originals share, mounted read-only on the server AND every
+        # worker (chunks are built lazily; a media worker without the mount 500s
+        # with FileNotFoundError on frames past the first chunk)
+        additionalVolumes:
+          - name: steward-share
+            hostPath:
+              path: /mnt/thedatapool/photos/steward/originals
+        additionalVolumeMounts:
+          - name: steward-share
+            mountPath: /home/django/share/originals
+            readOnly: true
+        server:
+          additionalEnv:
+            - name: CVAT_BASE_URL
+              value: "https://cvat.activescott.com"
+            # one proxy in front of Django (the k3s traefik ingress)
+            - name: CVAT_NUM_PROXIES
+              value: "1"
+      kvrocks:
+        # chart's kvrocks disabled; redis-ondisk.yaml provides it (no auth, so the
+        # referenced secret carries an empty password — see cache-auth-secret.yaml)
+        enabled: false
+        external:
+          host: cvat-redis-ondisk
+        secret:
+          create: false
+          name: cvat-cache-auth
+    postgresql:
+      # Bitnami subchart disabled (banned; see README "Image source rule");
+      # db.yaml provides postgres. Secret keys: username/database/password.
+      enabled: false
+      external:
+        host: cvat-db
+      secret:
+        create: false
+        name: cvat-postgres-secret
+    redis:
+      # Bitnami subchart disabled; redis-inmem.yaml provides it (no auth)
+      enabled: false
+      external:
+        host: cvat-redis-inmem
+      secret:
+        create: false
+        name: cvat-cache-auth
+    analytics:
+      enabled: false
+    clickhouse:
+      enabled: false
+    nuclio:
+      enabled: false
+    traefik:
+      enabled: false
+    ingress:
+      enabled: true
+      hostname: cvat.activescott.com
+      className: traefik
+      tls: true
+      # issued by certificate.yaml (cert-manager)
+      tlsSecretName: cvat-activescott-com-tls

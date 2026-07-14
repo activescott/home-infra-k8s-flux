@@ -30,8 +30,8 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: cvat-secrets
-                  key: POSTGRES_PASSWORD
+                  name: cvat-postgres-secret
+                  key: password
           ports:
             - name: postgres
               containerPort: 5432

@@ -1,0 +1,16 @@
+# Static PV for the chart's cvat-backend-data PVC (CVAT media/data, Django keys,
+# logs as subPaths). The cvat-backend-manual class has no provisioner, so the PVC
+# binds to this hostPath.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cvat-backend-data-pv
+spec:
+  capacity:
+    storage: 200Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: cvat-backend-manual
+  hostPath:
+    path: /mnt/thedatapool/photos/steward/cvat
