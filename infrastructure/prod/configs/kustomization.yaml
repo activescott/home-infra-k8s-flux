@@ -4,3 +4,6 @@ resources:
   - ../controllers/cert-manager
   # k3s bundles Traefik; customize it via HelmChartConfig instead of a separate HelmRelease
   - traefik-config.yaml
+  # k3s bundles CoreDNS as a static Addon (no HelmChart CR), so override its
+  # ConfigMap directly instead — see comments in the file for why.
+  - coredns-config.yaml

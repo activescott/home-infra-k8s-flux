@@ -1,0 +1,56 @@
+# Overrides k3s's bundled CoreDNS ConfigMap (kube-system/coredns).
+#
+# Why: CoreDNS forwards external queries to whatever's in the node's
+# /etc/resolv.conf, which is our OPNsense router (10.1.111.1, a trusted
+# full recursive resolver). That router's WAN link intermittently flaps
+# (observed 9x in 7min on 2026-07-11, 3x in 5min on 2026-07-14) and each
+# flap triggers OPNsense to flush/restart its Unbound resolver, dropping
+# any DNS query in flight at that moment. This caused gpu-poet-collector's
+# `git push` to github.com to fail with "Could not resolve host" — see
+# gpu-poet-data repo TODO.md for the investigation.
+#
+# Fix: forward directly to 10.1.111.1 with an explicit Cloudflare
+# fallback pair, `policy sequential` so 10.1.111.1 is always preferred
+# and Cloudflare is only used while 10.1.111.1 fails health checks.
+#
+# Caveat: unlike CoreDNS deployed via a HelmChart CR (e.g. Traefik, see
+# traefik-config.yaml), CoreDNS here is a static k3s "Addon" (not a
+# HelmChart), so there's no HelmChartConfig override point for it. This
+# ConfigMap directly replaces k3s's version. A k3s upgrade that touches
+# the bundled coredns addon could reset it — Flux's next reconcile will
+# reapply this file automatically.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+          pods insecure
+          fallthrough in-addr.arpa ip6.arpa
+        }
+        hosts /etc/coredns/NodeHosts {
+          ttl 60
+          reload 15s
+          fallthrough
+        }
+        prometheus :9153
+        forward . 10.1.111.1 1.1.1.1 1.0.0.1 {
+          policy sequential
+          max_fails 2
+          health_check 5s
+        }
+        cache 30
+        loop
+        reload
+        loadbalance
+        import /etc/coredns/custom/*.override
+    }
+    import /etc/coredns/custom/*.server
+  NodeHosts: |
+    10.1.111.20 nas
