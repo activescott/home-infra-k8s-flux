@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cvat-db
+  labels:
+    app: cvat
+    role: db
+spec:
+  serviceName: cvat-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cvat
+      role: db
+  template:
+    metadata:
+      labels:
+        app: cvat
+        role: db
+    spec:
+      containers:
+        - name: postgres
+          # same major version as the upstream docker-compose.yml this migrates from
+          image: postgres:15-alpine
+          env:
+            - name: POSTGRES_USER
+              value: root
+            - name: POSTGRES_DB
+              value: cvat
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cvat-secrets
+                  key: POSTGRES_PASSWORD
+          ports:
+            - name: postgres
+              containerPort: 5432
+          resources:
+            requests:
+              memory: "256Mi"
+            limits:
+              memory: "1Gi"
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: db-data
+      volumes:
+        - name: db-data
+          hostPath:
+            path: /mnt/thedatapool/app-data/cvat/db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cvat-db
+  labels:
+    app: cvat
+    role: db
+spec:
+  selector:
+    app: cvat
+    role: db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

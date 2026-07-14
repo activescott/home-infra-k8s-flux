@@ -1,0 +1,60 @@
+# kvrocks: redis-protocol on-disk store CVAT uses for the segment/chunk cache.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cvat-redis-ondisk
+  labels:
+    app: cvat
+    role: redis-ondisk
+spec:
+  serviceName: cvat-redis-ondisk
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cvat
+      role: redis-ondisk
+  template:
+    metadata:
+      labels:
+        app: cvat
+        role: redis-ondisk
+    spec:
+      containers:
+        - name: kvrocks
+          # container runs as uid/gid 999 (kvrocks); the hostPath below must be
+          # chown'd 999:999 (see docs/specs/cvat-hosting/summary.md)
+          image: apache/kvrocks:2.15.0
+          args:
+            - --compact-cron
+            - "0 3 * * *"
+          ports:
+            - name: kvrocks
+              containerPort: 6666
+          resources:
+            requests:
+              memory: "128Mi"
+            limits:
+              memory: "1Gi"
+          volumeMounts:
+            - mountPath: /var/lib/kvrocks
+              name: kvrocks-data
+      volumes:
+        - name: kvrocks-data
+          hostPath:
+            path: /mnt/thedatapool/app-data/cvat/kvrocks-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cvat-redis-ondisk
+  labels:
+    app: cvat
+    role: redis-ondisk
+spec:
+  selector:
+    app: cvat
+    role: redis-ondisk
+  ports:
+    - name: kvrocks
+      port: 6666
+      targetPort: kvrocks

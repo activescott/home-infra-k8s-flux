@@ -1,0 +1,24 @@
+# Shared env for cvat-server and all cvat-worker-* pods (mirrors the x-backend-env
+# anchor in upstream docker-compose.yml). Values that differ per workload (NUMPROCS,
+# ADAPTIVE_AUTO_ANNOTATION, ...) are set on the individual deployments.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cvat-backend-config
+data:
+  CVAT_POSTGRES_HOST: cvat-db
+  CVAT_POSTGRES_USER: root
+  CVAT_POSTGRES_DBNAME: cvat
+  CVAT_REDIS_INMEM_HOST: cvat-redis-inmem
+  CVAT_REDIS_INMEM_PORT: "6379"
+  CVAT_REDIS_ONDISK_HOST: cvat-redis-ondisk
+  CVAT_REDIS_ONDISK_PORT: "6666"
+  CVAT_OPA_URL: http://cvat-opa:8181
+  CVAT_LOG_IMPORT_ERRORS: "true"
+  CVAT_ALLOW_STATIC_CACHE: "no"
+  # one proxy in front of Django (the k3s ingress) so client IPs resolve correctly
+  CVAT_NUM_PROXIES: "1"
+  # no clickhouse/vector/grafana deployed
+  CVAT_ANALYTICS: "0"
+  ALLOWED_HOSTS: cvat.activescott.com
+  CVAT_BASE_URL: https://cvat.activescott.com

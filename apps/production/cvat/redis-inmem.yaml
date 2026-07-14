@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cvat-redis-inmem
+  labels:
+    app: cvat
+    role: redis-inmem
+spec:
+  serviceName: cvat-redis-inmem
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cvat
+      role: redis-inmem
+  template:
+    metadata:
+      labels:
+        app: cvat
+        role: redis-inmem
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2.11-alpine
+          args:
+            - redis-server
+            - --save
+            - "60"
+            - "100"
+            - --appendonly
+            - "yes"
+          ports:
+            - name: redis
+              containerPort: 6379
+          resources:
+            requests:
+              memory: "128Mi"
+            limits:
+              memory: "1Gi"
+          volumeMounts:
+            - mountPath: /data
+              name: redis-data
+      volumes:
+        - name: redis-data
+          hostPath:
+            path: /mnt/thedatapool/app-data/cvat/redis-inmem-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cvat-redis-inmem
+  labels:
+    app: cvat
+    role: redis-inmem
+spec:
+  selector:
+    app: cvat
+    role: redis-inmem
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis

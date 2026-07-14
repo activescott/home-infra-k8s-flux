@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cvat-ui
+  labels:
+    app: cvat
+    role: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cvat
+      role: ui
+  template:
+    metadata:
+      labels:
+        app: cvat
+        role: ui
+    spec:
+      containers:
+        - name: cvat-ui
+          image: cvat/ui:v2.44.3
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              memory: "64Mi"
+            limits:
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cvat-ui
+  labels:
+    app: cvat
+    role: ui
+spec:
+  selector:
+    app: cvat
+    role: ui
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

@@ -1,0 +1,21 @@
+resources:
+  - namespace.yaml
+  - backend-config.yaml
+  - db.yaml
+  - redis-inmem.yaml
+  - redis-ondisk.yaml
+  - opa.yaml
+  - server.yaml
+  - workers.yaml
+  - ui.yaml
+  - ingress.yaml
+  - certificate.yaml
+
+secretGenerator:
+  # POSTGRES_PASSWORD (db pod) + CVAT_POSTGRES_PASSWORD (backends), same value.
+  # Plaintext .env.secret.cvat is in 1Password; see README.md for the encrypt step.
+  - name: cvat-secrets
+    envs:
+      - .env.secret.cvat.encrypted
+
+namespace: cvat

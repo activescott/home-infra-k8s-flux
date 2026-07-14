@@ -1,0 +1,50 @@
+# Mirrors the traefik routing rules in upstream docker-compose.yml:
+# /api, /static, /admin, /django-rq go to the Django server; everything else to the UI.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cvat-ingress
+spec:
+  tls:
+    - hosts:
+        - cvat.activescott.com
+      secretName: cvat-activescott-com-tls
+  rules:
+    - host: cvat.activescott.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: cvat-server
+                port:
+                  name: http
+          - path: /static
+            pathType: Prefix
+            backend:
+              service:
+                name: cvat-server
+                port:
+                  name: http
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: cvat-server
+                port:
+                  name: http
+          - path: /django-rq
+            pathType: Prefix
+            backend:
+              service:
+                name: cvat-server
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cvat-ui
+                port:
+                  name: http
