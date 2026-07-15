@@ -10,7 +10,7 @@ Design/decisions: `docs/specs/cvat-hosting/plan.md`. Server-side setup commands
 ## Architecture
 
 The upstream [CVAT Helm chart](https://docs.cvat.ai/docs/administration/community/advanced/k8s_deployment_with_helm/)
-via Flux `HelmRelease`, built from the CVAT git repo at tag `v2.44.3` (`helm.yaml` —
+via Flux `HelmRelease`, built from the CVAT git repo at tag `v2.69.0` (`helm.yaml` —
 the chart isn't published to a registry). The chart deploys the server, 8 workers,
 frontend, opa, the migrations initializer job, and the ingress.
 
@@ -85,4 +85,4 @@ notes and the chart's values diff (`git -C <cvat checkout> diff vOLD..vNEW -- he
 - Official k8s/Helm deployment guide: <https://docs.cvat.ai/docs/administration/community/advanced/k8s_deployment_with_helm/>
 - Chart source (lives inside the CVAT repo, not a chart registry): <https://github.com/cvat-ai/cvat/tree/develop/helm-chart>
 - Versions + release notes: <https://github.com/cvat-ai/cvat/releases>
-- Chart default values (at our pinned tag): <https://github.com/cvat-ai/cvat/blob/v2.44.3/helm-chart/values.yaml>
+- Chart default values (at our pinned tag): <https://github.com/cvat-ai/cvat/blob/v2.69.0/helm-chart/values.yaml>
