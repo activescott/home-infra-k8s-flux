@@ -1,0 +1,1 @@
+- [ ] Install https://pre-commit.com in this repo to manage the commit hooks
