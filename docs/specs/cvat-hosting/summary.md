@@ -100,6 +100,12 @@ A failed helm install/upgrade retries with a 15m timeout per attempt — and eac
 attempt uses the values snapshot from when it STARTED, so a values fix can take one
 extra full cycle to land.
 
+Later tag bumps (e.g. v2.44.3 -> v2.69.0, 2026-07-14) are NOT this slow — GitRepository
+picks up the new tag within seconds of the webhook, and the whole rollout (new images
+pulled, backend pods Running, initializer job Completed, `/api/server/about` reporting
+the new version) finished in ~4 minutes. Don't assume a routine tag bump needs the
+15-30min budget above; that estimate is for the first install.
+
 ## 5. First-boot accounts
 
 ```sh
