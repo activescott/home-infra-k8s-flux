@@ -87,7 +87,7 @@ spec:
       spec:
         containers:
           - name: runner
-            image: ghcr.io/actions/actions-runner:2.335.1 # {"$imagepolicy": "arc-runners:policy-actions-runner"}
+            image: ghcr.io/actions/actions-runner:2.336.0 # {"$imagepolicy": "arc-runners:policy-actions-runner"}
             command: ["/home/runner/run.sh"]
             resources:
               requests:
