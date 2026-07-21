@@ -2,6 +2,19 @@
 
 Kubernetes GitOps repository managed by Flux for the `nas1` cluster.
 
+## Private companion repo
+
+This repo is **public**. Security-sensitive material — infrastructure access
+details, network topology, ISP/account identifiers, edge-firewall runbooks,
+and agent skills that operate on real hosts — lives in a separate **private**
+repo, `home-infra-private`, cloned side-by-side at `../home-infra-private`.
+
+For anything about the OPNsense edge firewall (SSH access, WAN/ISP details,
+log investigation, operations), see `../home-infra-private/AGENTS.md` and its
+`.claude/skills/firewall-investigate/` skill. Do NOT put raw identifiers
+(public IPs, MACs, PTR hostnames, credentials) in this public repo — redacted
+case studies only.
+
 ## Flux reconciliation
 
 Do NOT run `flux reconcile` manually after committing. GitHub webhooks
