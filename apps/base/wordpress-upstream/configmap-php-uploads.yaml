@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-php-uploads
+data:
+  # Mounted into /usr/local/etc/php/conf.d/ where the official
+  # wordpress image's PHP scans for extra ini files. Image defaults
+  # (upload_max_filesize=2M, post_max_size=8M) reject iPhone photos
+  # and videos.
+  uploads.ini: |
+    upload_max_filesize = 2G
+    post_max_size = 2G
+    max_execution_time = 600
+    max_input_time = 600

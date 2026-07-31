@@ -101,6 +101,9 @@ spec:
           volumeMounts:
             - mountPath: /var/www/html/wp-content
               name: wp-content
+            - mountPath: /usr/local/etc/php/conf.d/uploads.ini
+              subPath: uploads.ini
+              name: php-uploads
           resources:
             limits:
               memory: "1Gi"
@@ -128,3 +131,6 @@ spec:
         - name: wp-content
           persistentVolumeClaim:
             claimName: wordpress-wp-content
+        - name: php-uploads
+          configMap:
+            name: wordpress-php-uploads

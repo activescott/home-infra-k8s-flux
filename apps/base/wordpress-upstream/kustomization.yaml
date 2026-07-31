@@ -26,5 +26,6 @@ kind: Kustomization
 resources:
   - statefulset-mariadb.yaml
   - service-mariadb.yaml
+  - configmap-php-uploads.yaml
   - deployment-wordpress.yaml
   - service-wordpress.yaml
