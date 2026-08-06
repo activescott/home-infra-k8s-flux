@@ -1,0 +1,30 @@
+# Publishes Alloy's syslog listener (TCP 1514) to the LAN so the edge
+# firewall can ship its logs here.
+#
+# This is a separate Service rather than switching the chart's own Service to
+# type LoadBalancer: that Service also carries Alloy's UI/metrics port 12345,
+# which should stay in-cluster.
+#
+# k3s ServiceLB (klipper) assigns the node address, so the firewall targets
+# that address on 1514. externalTrafficPolicy Local preserves the client
+# source IP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy-syslog
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/instance: alloy
+    app.kubernetes.io/component: syslog
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/instance: alloy
+  ports:
+    - name: syslog
+      port: 1514
+      targetPort: 1514
+      protocol: TCP

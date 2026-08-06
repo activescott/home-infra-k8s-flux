@@ -21,6 +21,17 @@ spec:
           - name: plex-logs
             mountPath: /mnt/plex-logs
             readOnly: true
+
+      # Syslog listener for the edge firewall.
+      # Reached from the LAN via the separate `alloy-syslog` LoadBalancer
+      # Service (syslog-service.yaml). The chart's own Service stays ClusterIP
+      # so Alloy's UI on 12345 is not published to the network.
+      extraPorts:
+        - name: syslog
+          port: 1514
+          targetPort: 1514
+          protocol: TCP
+
       # Alloy log collection pipeline:
       #
       # 1. discovery.kubernetes - Queries the K8s API to find all running pods.
@@ -205,6 +216,96 @@ spec:
             }
           }
 
+          // ── Edge firewall remote syslog ──────────────────────────────────
+          // The firewall ships every facility to this listener over
+          // TCP/1514 in RFC5424.
+          //
+          // TCP rather than UDP: the WAN link-flap bursts this exists to
+          // catch are precisely when UDP datagrams get dropped.
+          // RFC5424 rather than RFC3164: RFC3164 timestamps carry neither
+          // year nor timezone, and these lines are correlated against an
+          // ISP's optical-line logs where exact times are the evidence.
+
+          // Promote a bounded subset of syslog header fields to labels. The
+          // component's __syslog_message_* labels are internal and dropped
+          // unless mapped here. hostname is omitted (constant — already the
+          // static `host` label) and so is facility (largely redundant with
+          // app_name); both would only add stream cardinality.
+          loki.relabel "syslog" {
+            forward_to = []
+
+            rule {
+              action = "labelmap"
+              regex  = "__syslog_message_(app_name|severity)"
+            }
+          }
+
+          loki.source.syslog "firewall" {
+            listener {
+              address       = "0.0.0.0:1514"
+              protocol      = "tcp"
+              syslog_format = "rfc5424"
+
+              // Keep the firewall's own timestamp rather than stamping on
+              // arrival — drop times are the whole point of this feed.
+              use_incoming_timestamp = true
+
+              // pf filter lines are long; the 8192 default truncates some.
+              max_message_length = 16384
+
+              labels = {
+                job          = "syslog",
+                host         = "theshield",
+                namespace    = "network",
+                service_name = "network/theshield",
+              }
+            }
+
+            relabel_rules = loki.relabel.syslog.rules
+            forward_to    = [loki.process.firewall.receiver]
+          }
+
+          loki.process "firewall" {
+            // Count WAN carrier drops so Prometheus can alert on them. The
+            // kernel line looks like:
+            //   <6>[1164263] igb0: link state changed to DOWN
+            // A named capture is required — metric.counter matches on an
+            // extracted key, not on the raw line.
+            stage.regex {
+              expression = "(?P<wan_link_down>igb0: link state changed to DOWN)"
+            }
+
+            stage.metrics {
+              metric.counter {
+                name        = "wan_link_down_total"
+                description = "WAN (igb0) carrier drops observed on theshield"
+                source      = "wan_link_down"
+                value       = "igb0: link state changed to DOWN"
+                action      = "inc"
+
+                // Default is 5m, which would delete the series between
+                // drops and leave increase() with nothing to measure.
+                max_idle_duration = "168h"
+              }
+
+              // Watchdog. Carrier drops are rare, so the counter above sits
+              // flat for days and cannot distinguish "no drops" from "feed
+              // broken". The firewall emits syslog continuously, so this one
+              // going flat is unambiguous — it backs the
+              // FirewallSyslogFeedDown alert.
+              metric.counter {
+                name        = "firewall_syslog_lines_total"
+                description = "All syslog lines received from theshield"
+                match_all   = true
+                action      = "inc"
+
+                max_idle_duration = "168h"
+              }
+            }
+
+            forward_to = [loki.write.default.receiver]
+          }
+
           // ── Plex file-based log collection ──────────────────────────────
           // Plex writes logs to files rather than stdout. The host directory
           // is mounted into Alloy at /mnt/plex-logs via a hostPath volume.
@@ -272,6 +373,17 @@ spec:
 
     controller:
       type: daemonset
+
+      # Let Prometheus scrape Alloy's /metrics so the stage.metrics counter
+      # (loki_process_custom_wan_link_down_total) reaches the alerting rules
+      # in prometheus/helmrelease.yaml. Uses the pod-annotation method — see
+      # "Adding a scrape target" in ../README.md. Do NOT also add a static
+      # extraScrapeConfigs entry for Alloy or every series is duplicated.
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "12345"
+        prometheus.io/path: "/metrics"
+
       volumes:
         extra:
           - name: plex-logs

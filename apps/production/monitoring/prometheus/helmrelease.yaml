@@ -286,6 +286,45 @@ spec:
                 annotations:
                   summary: 'Cannot scrape /metrics from tinkerbell app pod.'
                   description: 'Prometheus has been unable to scrape app.tinkerbell-prod.svc.cluster.local:3100/metrics for 10 minutes. Without this, LLM and proxy alerts will not fire. Check pod health and the /metrics route.'
+          - name: edge-firewall
+            # Fed by Alloy's stage.metrics counters over the edge firewall's
+            # syslog feed — see alloy/helmrelease.yaml, loki.process "firewall".
+            rules:
+              # WAN carrier drops on the firewall's igb0. Chronic and under
+              # active investigation with the ISP. Drops previously went
+              # unnoticed for days because nothing was watching — this rule
+              # exists to close that gap.
+              - alert: WanLinkFlapping
+                expr: 'increase(loki_process_custom_wan_link_down_total[10m]) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'WAN link (igb0) dropped carrier on the edge firewall.'
+                  description: 'One or more igb0 carrier drops in the last 10 minutes; each is a ~5-9s internet outage. Pull exact times in Grafana Explore with {host="theshield"} |= "igb0: link state changed".'
+              - alert: WanLinkFlappingBurst
+                expr: 'increase(loki_process_custom_wan_link_down_total[1h]) > 3'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'WAN link (igb0) flapping in bursts on the edge firewall.'
+                  description: 'More than 3 igb0 carrier drops in the last hour, matching the dense-burst signature seen during the ongoing ISP investigation. Capture the timestamps for the ticket.'
+              # Meta-alert: if the firewall stops shipping syslog, the two
+              # alerts above go silent instead of firing. The firewall logs
+              # continuously, so a 15m gap means the feed is broken (Alloy
+              # listener, alloy-syslog Service, or the firewall's syslog
+              # destination), not that the network went quiet. The absent()
+              # arm covers the series vanishing entirely, which a bare == 0
+              # would miss.
+              - alert: FirewallSyslogFeedDown
+                expr: 'increase(loki_process_custom_firewall_syslog_lines_total[15m]) == 0 or absent(loki_process_custom_firewall_syslog_lines_total)'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'No syslog received from the edge firewall for 15 minutes.'
+                  description: 'The edge firewall log feed has stopped, so WAN flap alerting is blind until restored. Check the alloy-syslog Service, the Alloy pod, and the firewall''s Logging / Targets settings.'
 
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |
