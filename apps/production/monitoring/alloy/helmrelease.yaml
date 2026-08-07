@@ -253,11 +253,18 @@ spec:
               // pf filter lines are long; the 8192 default truncates some.
               max_message_length = 16384
 
+              // `app` and `service_name` both carry "firewall" so these
+              // streams are findable by that word in Grafana's Drilldown
+              // service picker and label filters — "theshield" alone is not
+              // an obvious search term. service_name follows the
+              // namespace/app convention used by the Kubernetes pipeline
+              // above.
               labels = {
                 job          = "syslog",
                 host         = "theshield",
                 namespace    = "network",
-                service_name = "network/theshield",
+                app          = "firewall",
+                service_name = "network/firewall",
               }
             }
 

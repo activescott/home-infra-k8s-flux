@@ -24,3 +24,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-firewall
+    namespace: monitoring
+    files:
+      - dashboards/firewall.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
