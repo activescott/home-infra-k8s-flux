@@ -188,17 +188,21 @@ firewall syslog-ng --TCP/1514 RFC5424--> alloy-syslog Service --> loki.source.sy
 - **TCP, not UDP** — the WAN link-flap bursts this was built to catch are exactly when UDP datagrams get dropped.
 - **RFC5424, not RFC3164** — RFC3164 timestamps carry neither year nor timezone, and these lines are correlated against ISP optical-line logs where exact times are the evidence. `use_incoming_timestamp` keeps the firewall's own timestamp rather than stamping on arrival.
 
-Labels: `host`, `job="syslog"`, `namespace="network"`, `service_name`, plus `app_name` and `severity` promoted from the RFC5424 header by a `labelmap` rule. The component's other `__syslog_message_*` fields are deliberately not mapped — `hostname` is constant and `facility` is largely redundant with `app_name`; both would only add stream cardinality.
+Labels: `host`, `job="syslog"`, `namespace="network"`, `app="firewall"`, `service_name="network/firewall"`, plus `app_name` and `severity` promoted from the RFC5424 header by a `labelmap` rule. The component's other `__syslog_message_*` fields are deliberately not mapped — `hostname` is constant and `facility` is largely redundant with `app_name`; both would only add stream cardinality.
 
-Volume is ~368 MB/day, dominated by `filterlog` (pf) and `unbound` (DNS). If query performance ever suffers, add a `retention_stream` override for those app_names — the same pattern Plex uses.
+`app` and `service_name` both carry the word "firewall" on purpose: the `host` value alone is not a term anyone thinks to search for, so these make the stream findable in Drilldown's service picker and in label filters.
+
+Volume is ~368 MB/day, dominated by `filterlog` (pf) and `unbound` (DNS) — together ~99% of lines. If query performance ever suffers, add a `retention_stream` override for those app_names — the same pattern Plex uses.
 
 Query examples:
 
 ```logql
-{host="theshield"}                                   # everything
-{host="theshield", app_name="filterlog"}             # pf blocks
-{host="theshield"} |= "igb0: link state changed"     # WAN link events
+{app="firewall"}                                   # everything
+{app="firewall", app_name="filterlog"}             # pf blocks
+{app="firewall"} |= "igb0: link state changed"     # WAN link events
 ```
+
+A **Firewall** dashboard (`grafana/dashboards/firewall.json`, uid `firewall-overview`) presents these: WAN drop counts over 1h/24h/7d, a drop-events bar chart, a WAN link-state log panel, log volume by application, and a filterable all-logs panel. It is logs-only, because logs are currently all we collect from the firewall — see below.
 
 **Firewall-side config** lives in the OPNsense UI at _System > Settings > Logging / Targets_: Transport `TCP(4)`, Hostname `10.1.111.20`, Port `1514`, RFC5424 checked, Applications/Levels/Facilities left empty (= all).
 
@@ -219,6 +223,17 @@ Two gotchas worth preserving:
 - **`max_idle_duration` is set to `168h`** on both counters. The 5m default deletes the series between drops, leaving `increase()` nothing to measure.
 
 Alloy is scraped via the pod-annotation method (`controller.podAnnotations`, port 12345) — do **not** also add a static `extraScrapeConfigs` entry for it, per the duplicate-series warning in "Adding a scrape target" above.
+
+#### Firewall metrics (not yet collected)
+
+OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are available in its repo (verified present, neither installed):
+
+| Plugin | What it gives |
+| ------ | ------------- |
+| `os-node_exporter` | Prometheus node_exporter — scrape it with an `extraScrapeConfigs` entry |
+| `os-telegraf` | Telegraf agent, incl. pf-specific inputs; push-based |
+
+Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
 ### Notes
 
