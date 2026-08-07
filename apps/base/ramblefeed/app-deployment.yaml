@@ -110,15 +110,29 @@ spec:
             requests:
               cpu: "0.1"
               memory: "256Mi"
+          # Boot waits for Postgres, runs Prisma migrations, and seeds
+          # release notes over the GitHub API before binding :3200. That has
+          # taken anywhere from ~20s to 30s+ depending on the GitHub API
+          # response time, which can exceed the liveness probe's old
+          # initialDelaySeconds(10)+3*periodSeconds(10)=40s budget and get
+          # the container SIGTERM'd mid-boot before it ever binds the port
+          # (seen in prod on pod app-6db5474b8f-mqfpz, 2026-08-07). The
+          # startupProbe gives boot its own budget (30 x 5s = 150s) and
+          # suspends liveness/readiness until it succeeds, so they only ever
+          # judge an app that has already come up.
+          startupProbe:
+            httpGet:
+              path: /health/liveness
+              port: 3200
+            periodSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health/readiness
               port: 3200
-            initialDelaySeconds: 30
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/liveness
               port: 3200
-            initialDelaySeconds: 10
             periodSeconds: 10
