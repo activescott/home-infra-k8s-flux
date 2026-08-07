@@ -93,6 +93,16 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: GITHUB_RELEASE_NOTES_TOKEN
+            - name: TURNSTILE_SITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TURNSTILE_SITE_KEY
+            - name: TURNSTILE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TURNSTILE_SECRET_KEY
           resources:
             limits:
               cpu: "2"
