@@ -294,8 +294,13 @@ spec:
               # active investigation with the ISP. Drops previously went
               # unnoticed for days because nothing was watching — this rule
               # exists to close that gap.
+              # sum() matters on all three rules below: stage.metrics counters
+              # inherit each log line's labels (app_name, severity, pod, ...),
+              # so these are many series rather than one. Evaluating per-series
+              # would let a single sporadically-logging application go flat and
+              # fire the feed-down alert on its own.
               - alert: WanLinkFlapping
-                expr: 'increase(loki_process_custom_wan_link_down_total[10m]) > 0'
+                expr: 'sum(increase(loki_process_custom_wan_link_down_total[10m])) > 0'
                 for: 0m
                 labels:
                   severity: warning
@@ -303,7 +308,7 @@ spec:
                   summary: 'WAN link (igb0) dropped carrier on the edge firewall.'
                   description: 'One or more igb0 carrier drops in the last 10 minutes; each is a ~5-9s internet outage. Pull exact times in Grafana Explore with {host="theshield"} |= "igb0: link state changed".'
               - alert: WanLinkFlappingBurst
-                expr: 'increase(loki_process_custom_wan_link_down_total[1h]) > 3'
+                expr: 'sum(increase(loki_process_custom_wan_link_down_total[1h])) > 3'
                 for: 0m
                 labels:
                   severity: critical
@@ -318,7 +323,7 @@ spec:
               # arm covers the series vanishing entirely, which a bare == 0
               # would miss.
               - alert: FirewallSyslogFeedDown
-                expr: 'increase(loki_process_custom_firewall_syslog_lines_total[15m]) == 0 or absent(loki_process_custom_firewall_syslog_lines_total)'
+                expr: 'sum(increase(loki_process_custom_firewall_syslog_lines_total[15m])) == 0 or absent(loki_process_custom_firewall_syslog_lines_total)'
                 for: 15m
                 labels:
                   severity: warning
