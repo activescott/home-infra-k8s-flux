@@ -176,6 +176,50 @@ Query example: `{namespace="plex", source="file"} | filename =~ ".*Plex Media Se
 
 Plex file logs have a **30-day retention** (vs 180d default) configured via `retention_stream` in the Loki HelmRelease.
 
+### Edge Firewall Syslog
+
+The edge firewall ships **all** syslog facilities to Alloy over TCP, so its logs outlive the firewall's own local rotation (90 files) and become queryable in Grafana.
+
+```
+firewall syslog-ng --TCP/1514 RFC5424--> alloy-syslog Service --> loki.source.syslog --> Loki (180d)
+```
+
+- **`alloy-syslog`** (`alloy/syslog-service.yaml`) is a `LoadBalancer` Service exposing **only** port 1514. The chart's own Service stays `ClusterIP` so Alloy's UI/metrics port 12345 is not published to the LAN. k3s ServiceLB assigns the node address, so the firewall targets `10.1.111.20:1514`.
+- **TCP, not UDP** — the WAN link-flap bursts this was built to catch are exactly when UDP datagrams get dropped.
+- **RFC5424, not RFC3164** — RFC3164 timestamps carry neither year nor timezone, and these lines are correlated against ISP optical-line logs where exact times are the evidence. `use_incoming_timestamp` keeps the firewall's own timestamp rather than stamping on arrival.
+
+Labels: `host`, `job="syslog"`, `namespace="network"`, `service_name`, plus `app_name` and `severity` promoted from the RFC5424 header by a `labelmap` rule. The component's other `__syslog_message_*` fields are deliberately not mapped — `hostname` is constant and `facility` is largely redundant with `app_name`; both would only add stream cardinality.
+
+Volume is ~368 MB/day, dominated by `filterlog` (pf) and `unbound` (DNS). If query performance ever suffers, add a `retention_stream` override for those app_names — the same pattern Plex uses.
+
+Query examples:
+
+```logql
+{host="theshield"}                                   # everything
+{host="theshield", app_name="filterlog"}             # pf blocks
+{host="theshield"} |= "igb0: link state changed"     # WAN link events
+```
+
+**Firewall-side config** lives in the OPNsense UI at _System > Settings > Logging / Targets_: Transport `TCP(4)`, Hostname `10.1.111.20`, Port `1514`, RFC5424 checked, Applications/Levels/Facilities left empty (= all).
+
+#### WAN link alerting
+
+Two `stage.metrics` counters in `loki.process "firewall"` feed the `edge-firewall` alert group in `prometheus/helmrelease.yaml`:
+
+| Metric                                           | Alert                                     | Meaning                            |
+| ------------------------------------------------ | ----------------------------------------- | ---------------------------------- |
+| `loki_process_custom_wan_link_down_total`         | `WanLinkFlapping`, `WanLinkFlappingBurst` | WAN (`igb0`) carrier drops         |
+| `loki_process_custom_firewall_syslog_lines_total` | `FirewallSyslogFeedDown`                  | Watchdog — the feed itself stopped |
+
+The watchdog exists because carrier drops are rare: a flat drop counter cannot by itself distinguish "no drops" from "no data". The firewall logs continuously, so that second counter going flat is unambiguous.
+
+Two gotchas worth preserving:
+
+- **Alert expressions must aggregate with `sum()`.** `stage.metrics` counters inherit each log line's labels (`app_name`, `severity`, `pod`, ...), so they are many series, not one. Evaluated per-series, the feed-down alert fires whenever any single sporadically-logging application goes quiet.
+- **`max_idle_duration` is set to `168h`** on both counters. The 5m default deletes the series between drops, leaving `increase()` nothing to measure.
+
+Alloy is scraped via the pod-annotation method (`controller.podAnnotations`, port 12345) — do **not** also add a static `extraScrapeConfigs` entry for it, per the duplicate-series warning in "Adding a scrape target" above.
+
 ### Notes
 
 - Loki has `auth_enabled: false`, so it can also be queried directly via port-forward: `kubectl --context nas port-forward -n monitoring svc/loki 3100:3100`
