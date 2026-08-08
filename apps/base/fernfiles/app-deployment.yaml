@@ -109,6 +109,27 @@ spec:
                   name: app-creds
                   key: TURNSTILE_SECRET_KEY
                   optional: true
+            # optional: dev/e2e send no real SMS (the sms provider uses the
+            # console/capture transport there); prod app-creds has all three
+            # and the app refuses to start in production without them.
+            - name: TWILIO_ACCOUNT_SID
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TWILIO_ACCOUNT_SID
+                  optional: true
+            - name: TWILIO_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TWILIO_AUTH_TOKEN
+                  optional: true
+            - name: TWILIO_VERIFY_SERVICE_SID
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TWILIO_VERIFY_SERVICE_SID
+                  optional: true
             # optional: the logger falls back to its own default level.
             - name: LOG_LEVEL
               valueFrom:
