@@ -1,0 +1,13 @@
+# Certificate for fernfiles.com
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fernfiles-com-tls
+  namespace: fernfiles-prod
+spec:
+  secretName: fernfiles-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - fernfiles.com

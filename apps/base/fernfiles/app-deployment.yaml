@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        app.activescott.com/component: app
+    spec:
+      containers:
+        - name: app
+          image: fernfiles-image-app
+          ports:
+            - containerPort: 3200
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: NODE_ENV
+            - name: APP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: APP_URL
+            # optional until Phase 3 lands the database client; the env is
+            # plumbed now so enabling prisma is a code-only change.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: DATABASE_URL
+                  optional: true
+            # optional: no email is sent before Phase 3.
+            - name: FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: FROM_EMAIL
+                  optional: true
+            # optional: the logger falls back to its own default level.
+            - name: LOG_LEVEL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: LOG_LEVEL
+                  optional: true
+          resources:
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+            requests:
+              cpu: "0.1"
+              memory: "256Mi"
+          # Boot work before binding :3200 (Phase 3 adds waiting for Postgres
+          # and running Prisma migrations) can exceed a liveness probe's
+          # initialDelaySeconds(10)+3*periodSeconds(10)=40s budget and get
+          # the container SIGTERM'd mid-boot before it ever binds the port
+          # (seen in ramblefeed prod on pod app-6db5474b8f-mqfpz,
+          # 2026-08-07). The startupProbe gives boot its own budget
+          # (30 x 5s = 150s) and suspends liveness/readiness until it
+          # succeeds, so they only ever judge an app that has already come
+          # up.
+          startupProbe:
+            httpGet:
+              path: /health/liveness
+              port: 3200
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 3200
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/liveness
+              port: 3200
+            periodSeconds: 10

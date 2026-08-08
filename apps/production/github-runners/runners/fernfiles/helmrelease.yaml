@@ -1,0 +1,117 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: fernfiles-runners
+  namespace: arc-runners
+spec:
+  interval: 1h
+  dependsOn:
+    - name: arc-controller
+      namespace: arc-systems
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: ">=0.14.0 <0.15.0"
+      sourceRef:
+        kind: HelmRepository
+        name: actions-runner-controller
+        namespace: arc-systems
+      interval: 24h
+  values:
+    githubConfigUrl: https://github.com/activescott/fernfiles
+    githubConfigSecret: fernfiles-github-token
+    runnerScaleSetName: fernfiles-runners
+    minRunners: 0
+    # Sized against the single nas node (20 CPU / 125 GiB) with a target of
+    # keeping runner load under ~50% of node capacity during bursts.
+    # Per-runner requests are 500m CPU / 1Gi mem; burst limits are 4 CPU /
+    # 6Gi (see template.spec.containers.runner.resources below). At
+    # maxRunners: 6 per scale set:
+    #   - requests if one scale set is saturated: 3 CPU (15%) / 6 GiB (~5%)
+    #   - requests if both scale sets saturated:  6 CPU (30%) / 12 GiB (~10%)
+    #   - worst-case burst (one set, all pods at 4 CPU limit): 24 CPU,
+    #     which would saturate the node but only briefly and only if every
+    #     job pegs its CPU limit — CI jobs are spiky, not sustained.
+    # Steady-state node usage observed in Grafana is <10% CPU / <17% mem
+    # over 7d, so there is ample headroom for this concurrency.
+    maxRunners: 6
+    containerMode:
+      type: dind
+    # Annotations on the listener pod so the existing kubernetes-pods
+    # Prometheus scrape config picks up gha_* metrics from :8080/metrics
+    # (also requires the controller chart's `metrics:` block to be enabled
+    # — see controller/helmrelease.yaml — and listenerMetrics below to
+    # define which metrics this listener emits).
+    # When providing listenerTemplate, spec.containers is required by the
+    # chart's AutoscalingListener CRD validation. A container named
+    # "listener" is appended onto the chart-generated default; an empty
+    # block keeps the defaults while letting us add metadata.annotations.
+    listenerTemplate:
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+      spec:
+        containers:
+          - name: listener
+    listenerMetrics:
+      counters:
+        gha_started_jobs_total:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+        gha_completed_jobs_total:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+      gauges:
+        gha_assigned_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_running_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_registered_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_busy_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_min_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_max_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_desired_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_idle_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+      histograms:
+        gha_job_startup_duration_seconds:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+        gha_job_execution_duration_seconds:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+    template:
+      spec:
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.336.0 # {"$imagepolicy": "arc-runners:policy-actions-runner"}
+            command: ["/home/runner/run.sh"]
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "4"
+                memory: "6Gi"
+          # Override the chart-injected dind sidecar so dockerd uses the
+          # systemd cgroup driver. Without this, kind clusters created
+          # inside this dind cannot reach kubelet=Ready (cgroup-delegation
+          # mismatch between dockerd's default cgroupfs and the kind
+          # node's systemd PID 1). See ramblefeed
+          # specs/migrate-dev-to-kind/plan.md "Phase B execution detail"
+          # and this repo's docs/specs/gha-runner-self-hosted/summary.md
+          # "What would actually break the deadlock".
+          #
+          # Args here REPLACE the chart default; defaults come from the
+          # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
+          # and `--group` flags the chart relied on.
+          - name: dind
+            args:
+              - dockerd
+              - --host=unix:///run/docker/docker.sock
+              - --group=$(DOCKER_GROUP_GID)
+              - --exec-opt
+              - native.cgroupdriver=systemd

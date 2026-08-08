@@ -103,6 +103,9 @@ spec:
     - kind: ImageRepository
       name: repo-gpu-poet-collector
       namespace: gpupoet-prod
+    - kind: ImageRepository
+      name: repo-fernfiles-app
+      namespace: fernfiles-prod
     # ARC (Actions Runner Controller) — public images on ghcr.io/actions/*
     # GitHub does not send webhooks for these (they live in another user's repo),
     # so the receiver entry is only here to satisfy the validate-webhook-receiver

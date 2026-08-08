@@ -1,0 +1,11 @@
+# The base has no ingressClassName/nginx annotations to remove; Traefik
+# (k3s default) handles the ingress in production.
+- op: replace
+  path: /spec/rules/0/host
+  value: fernfiles.com
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - fernfiles.com
+      secretName: fernfiles-com-tls
