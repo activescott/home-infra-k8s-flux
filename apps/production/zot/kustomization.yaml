@@ -3,8 +3,16 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - helmrepository.yaml
-  - zot-pv.yaml
-  - helmrelease.yaml
+  - zot-writable-pv.yaml
+  - zot-writable-helmrelease.yaml
+  - zot-docker-pv.yaml
+  - zot-docker-helmrelease.yaml
+  - zot-ghcr-pv.yaml
+  - zot-ghcr-helmrelease.yaml
+  - zot-registryk8s-pv.yaml
+  - zot-registryk8s-helmrelease.yaml
+  - zot-mcr-pv.yaml
+  - zot-mcr-helmrelease.yaml
 
 secretGenerator:
   # Fixed names (no hash suffix): helmrelease.yaml references them by name

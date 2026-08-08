@@ -13,6 +13,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Running pods across all 5 zot instances (zot-writable-0, zot-docker-0, zot-ghcr-0, zot-registryk8s-0, zot-mcr-0). Expect 5/5.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -21,7 +22,8 @@
             "mode": "absolute",
             "steps": [
               { "color": "red", "value": 0 },
-              { "color": "green", "value": 1 }
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 5 }
             ]
           },
           "unit": "none"
@@ -43,14 +45,14 @@
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
           "editorMode": "code",
-          "expr": "count(kube_pod_status_phase{namespace=\"zot-oci-registry\", pod=\"zot-0\", phase=\"Running\"} == 1) or vector(0)",
+          "expr": "count(kube_pod_status_phase{namespace=\"zot-oci-registry\", pod=~\"zot-.*-0\", phase=\"Running\"} == 1) or vector(0)",
           "instant": true,
           "legendFormat": "up",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Registry Up",
+      "title": "Registries Up",
       "type": "stat"
     },
     {

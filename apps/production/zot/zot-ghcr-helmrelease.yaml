@@ -1,0 +1,137 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: zot-ghcr
+  namespace: zot-oci-registry
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: zot
+      # See "Upgrading" in README.md.
+      version: "0.1.122" # appVersion v2.1.18
+      sourceRef:
+        kind: HelmRepository
+        name: zot
+        namespace: zot-oci-registry
+      interval: 24h
+  values:
+    replicaCount: 1
+
+    # See zot-writable-helmrelease.yaml for why persistence/pvc are set this
+    # way and why no chown step is needed.
+    persistence: true
+    pvc:
+      create: false
+      name: zot-ghcr-storage-pvc
+
+    serviceHeadless:
+      enabled: true
+      port: 5000
+
+    service:
+      type: ClusterIP
+      port: 5000
+
+    ingress:
+      enabled: true
+      className: traefik
+      pathtype: Prefix
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-production
+      hosts:
+        - host: ghcr.oci-registry.activescott.com
+          paths:
+            - path: /
+      tls:
+        - hosts:
+            - ghcr.oci-registry.activescott.com
+          secretName: ghcr-oci-registry-activescott-com-tls
+
+    mountConfig: true
+    configFiles:
+      # Dedicated mirror-only instance for ghcr.io. See zot-docker-helmrelease.yaml
+      # for why destination "/" (no path prefix) and the mirror-read-only auth model.
+      # No sync credentialsFile - anonymous pulls from ghcr.io are fine at this scale.
+      config.json: |-
+        {
+          "distSpecVersion": "1.1.1",
+          "storage": {
+            "rootDirectory": "/var/lib/registry",
+            "dedupe": true,
+            "gc": true,
+            "gcDelay": "1h",
+            "gcInterval": "24h",
+            "retention": {
+              "dryRun": false,
+              "delay": "24h",
+              "policies": [
+                {
+                  "repositories": ["**"],
+                  "deleteReferrers": true,
+                  "deleteUntagged": true,
+                  "keepTags": [{ "pulledWithin": "720h" }]
+                }
+              ]
+            }
+          },
+          "http": {
+            "address": "0.0.0.0",
+            "port": "5000",
+            "realm": "zot",
+            "compat": ["docker2s2"],
+            "auth": {
+              "htpasswd": { "path": "/secrets/auth/htpasswd" }
+            },
+            "accessControl": {
+              "repositories": {
+                "**": {
+                  "policies": [{ "users": ["mirror"], "actions": ["read"] }],
+                  "defaultPolicy": []
+                }
+              },
+              "metrics": {
+                "anonymousPolicy": ["read"]
+              }
+            }
+          },
+          "log": { "level": "info" },
+          "extensions": {
+            "metrics": {
+              "enable": true,
+              "prometheus": { "path": "/metrics" }
+            },
+            "sync": {
+              "enable": true,
+              "registries": [
+                {
+                  "urls": ["https://ghcr.io"],
+                  "onDemand": true,
+                  "tlsVerify": true,
+                  "preserveDigest": true,
+                  "maxRetries": 3,
+                  "retryDelay": "5s",
+                  "syncTimeout": "15m",
+                  "content": [{ "prefix": "**", "destination": "/" }]
+                }
+              ]
+            }
+          }
+        }
+
+    externalSecrets:
+      - secretName: zot-htpasswd
+        mountPath: /secrets/auth # -> /secrets/auth/htpasswd
+
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "5000"
+      prometheus.io/path: "/metrics"
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"

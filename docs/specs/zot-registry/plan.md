@@ -63,11 +63,57 @@ Other facts baked into the config below:
   `https://zotregistry.dev/helm-charts` — confirmed against the chart's own
   `index.yaml` as of 2026-08-07.
 
-## URL layout (resolves the issue's `<mirror-path-for>` placeholder)
+## Redesign (2026-08-08): one zot instance per upstream
 
+The single-instance, path-prefixed design below (kept for the record) shipped
+and worked for direct `docker pull`/`curl` usage, but broke when actually
+wiring it into CI: standard container-runtime "registry mirror" mechanisms —
+Docker's `daemon.json` `registry-mirrors`, containerd's
+`hosts.toml`/`containerdConfigPatches` — assume the mirror is a byte-for-byte
+drop-in replacement for the origin, preserving the exact same
+`/v2/<repo>/manifests/<ref>` path and just swapping the host. Neither
+mechanism prepends anything like `/docker.io/` to the path, and containerd's
+own docs confirm the actual behavior: a request through a configured mirror
+host resolves to `https://<mirror>/v2/<repo>/manifests/<ref>?ns=<origin-host>`
+— the original registry is passed as a **query parameter**, not folded into
+the path. zot's `sync`/`content` routing has no concept of that `ns=`
+parameter; it only understands the local path prefix from `content[].destination`,
+which its own `content.go` (`getRepoSource`/`getRepoDestination`) uses to
+map local↔remote repo names. So a client using standard mirror config against
+the old single shared hostname would ask zot for `/v2/library/postgres/...`
+with no `docker.io` anywhere in the request zot could see — no `content` rule
+would ever match.
+
+Fix: split into **one zot instance per upstream**, each its own hostname,
+each `sync.registries[].content[].destination: "/"` (root — confirmed via
+`content.go`: `strings.Trim("/", "/")` and `strings.Trim("", "/")` both yield
+`""`, so omitting `destination` and setting it to `"/"` are identical, and
+both mean "local repo path == remote repo path", i.e. a pure passthrough).
+Each instance is now a genuine drop-in mirror target — standard tooling works
+unmodified, no `ns=` parameter needed anywhere, no per-pull-site image
+reference rewrites needed either. See `apps/production/zot/README.md` for the
+current 5-instance/5-hostname layout, and its "Client recipes" section for
+the resulting (now much simpler) kind/dind mirror config.
+
+DNS got a wildcard record (`*.oci-registry.activescott.com`) so N upstream
+subdomains don't each need their own manual DNS entry — but that's a DNS-only
+concern. Certs stayed on the simple, already-proven path: each instance's
+Ingress carries the standard `cert-manager.io/cluster-issuer:
+letsencrypt-production` annotation and gets its own HTTP-01 cert
+automatically (HTTP-01 works fine per-hostname once the wildcard DNS record
+makes it resolve — no DNS-01/wildcard *cert*, no Cloudflare credential, no
+new ClusterIssuer needed). A wildcard cert was considered and discarded: it
+would have needed a DNS-01 solver purely to save creating N trivial
+annotation-driven certs, not worth the new credential/ClusterIssuer surface
+for that.
+
+## URL layout — SUPERSEDED, see "Redesign" above
+
+Kept for the historical record of the original (broken-for-CI) design.
 Path-namespaced by upstream hostname — one `sync.registries[]` entry per
 upstream, `content: [{prefix: "**", destination: "/<upstream-host>"}]`. This
-is zot's own recommended shape (`examples/config-popular-registries.json`).
+is zot's own recommended shape (`examples/config-popular-registries.json`)
+and works fine for direct pulls; it just isn't mirror-tool-compatible.
 
 | Client pulls | zot fetches from |
 |---|---|
@@ -132,27 +178,38 @@ regardless of whether search is enabled.
 
 ## Manifest layout
 
-No `apps/base/` split — single instance, matches `loki`/`cvat`/
-`arize-phoenix` precedent. Everything under `apps/production/zot/`:
+No `apps/base/` split. Everything under `apps/production/zot/`, one
+`{pv,helmrelease}.yaml` pair per instance (post-redesign — see above):
 
-- `namespace.yaml` — `Namespace: zot-oci-registry`
+- `namespace.yaml` — `Namespace: zot-oci-registry` (shared)
 - `helmrepository.yaml` — `HelmRepository` `zot` →
-  `https://zotregistry.dev/helm-charts`
-- `zot-pv.yaml` — hand-written PV+PVC (50Gi, RWO, `Retain`,
-  `storageClassName: ""`, hostPath `/mnt/thedatapool/no-backup/app-data/zot`)
-  — same tier as `loki`'s cache: large, ephemeral, fully reproducible, not
-  worth backing up.
-- `helmrelease.yaml` — the StatefulSet-selecting persistence combo, Traefik
-  ingress class (chart defaults to `nginx`), annotation-driven cert (per
-  `docs/specs/cert-management-standardization/plan.md` — no standalone
-  `Certificate` for the same secretName, that combination caused
-  `IncorrectCertificate` errors before), `externalSecrets` for both Secrets.
-- `kustomization.yaml` — the `secretGenerator` with the exact keys
-  `credentials.json` / `htpasswd` (renaming breaks SOPS format detection).
-- `README.md` — client-facing: reserved-prefix table, both accounts, client
-  recipes for the ramblefeed follow-up, retention-tuning pointers.
+  `https://zotregistry.dev/helm-charts` (shared, all 5 instances pin the
+  same chart version)
+- `zot-writable-pv.yaml` + `zot-writable-helmrelease.yaml` — the read/write
+  instance (buildcache, local images), no `sync` block
+- `zot-docker-pv.yaml` + `zot-docker-helmrelease.yaml` — docker.io mirror,
+  the only one with a `credentialsFile` mount (Docker Hub creds)
+- `zot-ghcr-pv.yaml` + `zot-ghcr-helmrelease.yaml` — ghcr.io mirror
+- `zot-registryk8s-pv.yaml` + `zot-registryk8s-helmrelease.yaml` —
+  registry.k8s.io mirror
+- `zot-mcr-pv.yaml` + `zot-mcr-helmrelease.yaml` — mcr.microsoft.com mirror
+- `kustomization.yaml` — lists all of the above, plus the `secretGenerator`
+  with the exact keys `credentials.json` / `htpasswd` (renaming breaks SOPS
+  format detection) — both Secrets are mounted into multiple instances via
+  `externalSecrets`
+- `README.md` — client-facing: instance/hostname table, accounts, client
+  recipes for the ramblefeed follow-up, retention-tuning pointers
 
-`apps/production/kustomization.yaml` gains `- ./zot`.
+Each PV/PVC pair is hand-provisioned hostPath, `RWO`, `Retain`,
+`storageClassName: ""`, under `/mnt/thedatapool/no-backup/app-data/zot-<name>/`
+— same tier as `loki`'s cache: large, ephemeral, fully reproducible, not
+worth backing up. Sized 20Gi (writable, docker) / 10Gi (ghcr, mcr) / 5Gi
+(registryk8s) rather than one shared 50Gi PVC, since each instance is now
+its own StatefulSet/chart release (the chart's `pvc.name` value is
+per-release, not something 5 releases can share cleanly).
+
+`apps/production/kustomization.yaml` gains `- ./zot` (unchanged by the
+redesign — still one entry, the instance count is internal to this dir).
 
 ## Credential scripts
 
@@ -166,19 +223,28 @@ credential *identifiers* being tracked there
 
 ## DNS / cert sequencing
 
-HTTP-01 requires the hostname to already resolve publicly before the
-challenge can succeed — order matters:
+Post-redesign, still plain HTTP-01 via the shared `letsencrypt-production`
+issuer, unchanged from the original design — the wildcard is DNS-only, no
+new cert-manager credential/issuer needed. Order still matters because
+HTTP-01 requires the hostname to already resolve publicly:
 
-1. User creates `oci-registry.activescott.com` DNS record, **grey-cloud /
-   DNS-only, not proxied** (Cloudflare's proxy caps request body size and
-   disallows proxying bulk binary content — a 2GB Playwright layer would
-   fail through it). Confirms with `dig +short oci-registry.activescott.com @1.1.1.1`.
-2. Commit + push the Phase-2 ciphertext and manifests **together** — if
-   manifests land without the secrets, the StatefulSet crash-loops on a
-   missing htpasswd path.
+1. User creates the `oci-registry.activescott.com` (bare, already existed
+   pre-redesign) and `*.oci-registry.activescott.com` (wildcard, new) DNS
+   records, **grey-cloud / DNS-only, not proxied** (Cloudflare's proxy caps
+   request body size and disallows proxying bulk binary content — a 2GB
+   Playwright layer would fail through it). Confirm with
+   `dig +short docker.oci-registry.activescott.com @1.1.1.1` (any subdomain
+   proves the wildcard resolves).
+2. Commit + push the ciphertext and manifests **together** — if manifests
+   land without the secrets, the StatefulSets crash-loop on a missing
+   htpasswd path.
 3. Flux reconciles via webhook (do not run `flux reconcile` manually).
-4. Confirm Certificate `Ready=True` — if `IncorrectCertificate`, something
-   created a second Certificate for the same secretName.
+4. Confirm each instance's Certificate `Ready=True` — `zot-writable` reuses
+   the pre-existing `oci-registry-activescott-com-tls` cert/secret (same
+   hostname as before the redesign) so it needs no reissue; the 4 mirror
+   instances each get a fresh HTTP-01 cert on first reconcile. If any shows
+   `IncorrectCertificate`, something added a standalone `Certificate`
+   resource for a secretName an Ingress annotation already owns.
 
 ## Verification (maps to the issue's three acceptance criteria)
 
