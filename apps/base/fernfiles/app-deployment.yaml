@@ -29,20 +29,85 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: APP_URL
-            # optional until Phase 3 lands the database client; the env is
-            # plumbed now so enabling prisma is a code-only change.
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: app-creds
                   key: DATABASE_URL
-                  optional: true
-            # optional: no email is sent before Phase 3.
             - name: FROM_EMAIL
               valueFrom:
                 secretKeyRef:
                   name: app-creds
                   key: FROM_EMAIL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: JWT_SECRET
+            - name: E2E_MAGIC_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: E2E_MAGIC_LINK_SECRET
+            # The next three are set in dev/e2e env files only; the production
+            # secret omits the keys so they fall back to code defaults there
+            # (E2E_TEST_MODE must never be true in production).
+            - name: E2E_TEST_MODE
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: E2E_TEST_MODE
+                  optional: true
+            - name: ADMIN_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: ADMIN_EMAILS
+                  optional: true
+            - name: AUTO_APPROVE_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: AUTO_APPROVE_EMAILS
+                  optional: true
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_HOST
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PORT
+            - name: SMTP_SECURE
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_SECURE
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_USER
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PASS
+            # optional: the Turnstile bot check is disabled when the keys are
+            # absent (dev/e2e); prod deploys both keys.
+            - name: TURNSTILE_SITE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TURNSTILE_SITE_KEY
+                  optional: true
+            - name: TURNSTILE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: TURNSTILE_SECRET_KEY
                   optional: true
             # optional: the logger falls back to its own default level.
             - name: LOG_LEVEL
