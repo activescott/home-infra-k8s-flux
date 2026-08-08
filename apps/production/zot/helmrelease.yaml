@@ -1,0 +1,200 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: zot
+  namespace: zot-oci-registry
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: zot
+      # Chart version (NOT the same numbering as zot itself, e.g. v2.1.18 -
+      # the "appVersion v..." comment below is the correlated app version).
+      # See "Upgrading" in README.md for how to find new versions/release
+      # notes and what to check before bumping this.
+      version: "0.1.122" # appVersion v2.1.18
+      sourceRef:
+        kind: HelmRepository
+        name: zot
+        namespace: zot-oci-registry
+      interval: 24h
+  values:
+    replicaCount: 1
+
+    # persistence: true is what selects the chart's StatefulSet template;
+    # with persistence: false it renders a Deployment whose data volume is a
+    # hardcoded emptyDir (see charts/zot/templates/deployment.yaml). With
+    # persistence: true, pvc.create: false mounts the hand-provisioned PVC
+    # from zot-pv.yaml by name instead of having the chart create its own.
+    persistence: true
+    pvc:
+      create: false
+      name: zot-storage-pvc
+    # zot's container image runs as root (no USER in its Dockerfile), so the
+    # hostPath PV needs no chown init step, unlike some other stateful apps
+    # in this cluster.
+
+    # Required so the StatefulSet has a governing headless service.
+    serviceHeadless:
+      enabled: true
+      port: 5000
+
+    service:
+      type: ClusterIP # chart default is NodePort; Traefik ingress fronts this
+      port: 5000
+
+    ingress:
+      enabled: true
+      className: traefik # chart default is "nginx" - not served on this cluster
+      pathtype: Prefix
+      annotations:
+        # Annotation-driven cert per docs/specs/cert-management-standardization/plan.md:
+        # ingress-shim auto-creates the Certificate from spec.tls below. Do NOT also
+        # add a standalone Certificate resource for this secretName - mixing both
+        # patterns for the same secretName previously caused IncorrectCertificate
+        # errors (see that spec's plan.md).
+        cert-manager.io/cluster-issuer: letsencrypt-production
+      hosts:
+        - host: oci-registry.activescott.com
+          paths:
+            - path: /
+      tls:
+        - hosts:
+            - oci-registry.activescott.com
+          secretName: oci-registry-activescott-com-tls
+
+    mountConfig: true
+    configFiles:
+      # No secrets in here - only paths/settings. Credentials are mounted
+      # separately via externalSecrets below and referenced by path.
+      config.json: |-
+        {
+          "distSpecVersion": "1.1.1",
+          "storage": {
+            "rootDirectory": "/var/lib/registry",
+            "dedupe": true,
+            "gc": true,
+            "gcDelay": "1h",
+            "gcInterval": "24h",
+            "retention": {
+              "dryRun": false,
+              "delay": "24h",
+              "policies": [
+                {
+                  "repositories": [
+                    "docker.io/**",
+                    "ghcr.io/**",
+                    "registry.k8s.io/**",
+                    "mcr.microsoft.com/**"
+                  ],
+                  "deleteReferrers": true,
+                  "deleteUntagged": true,
+                  "keepTags": [{ "pulledWithin": "720h" }]
+                },
+                {
+                  "repositories": ["**"],
+                  "deleteReferrers": false,
+                  "deleteUntagged": true,
+                  "keepTags": [
+                    {
+                      "mostRecentlyPushedCount": 20,
+                      "pushedWithin": "2160h"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "http": {
+            "address": "0.0.0.0",
+            "port": "5000",
+            "realm": "zot",
+            "compat": ["docker2s2"],
+            "auth": {
+              "htpasswd": { "path": "/secrets/auth/htpasswd" }
+            },
+            "accessControl": {
+              "repositories": {
+                "**": {
+                  "policies": [{ "users": ["mirror"], "actions": ["read"] }],
+                  "defaultPolicy": []
+                }
+              },
+              "adminPolicy": {
+                "users": ["ci"],
+                "actions": ["read", "create", "update", "delete"]
+              }
+            }
+          },
+          "log": { "level": "info" },
+          "extensions": {
+            "sync": {
+              "enable": true,
+              "credentialsFile": "/secrets/sync/credentials.json",
+              "registries": [
+                {
+                  "urls": ["https://index.docker.io"],
+                  "onDemand": true,
+                  "tlsVerify": true,
+                  "preserveDigest": true,
+                  "maxRetries": 3,
+                  "retryDelay": "5s",
+                  "syncTimeout": "15m",
+                  "content": [{ "prefix": "**", "destination": "/docker.io" }]
+                },
+                {
+                  "urls": ["https://ghcr.io"],
+                  "onDemand": true,
+                  "tlsVerify": true,
+                  "preserveDigest": true,
+                  "maxRetries": 3,
+                  "retryDelay": "5s",
+                  "syncTimeout": "15m",
+                  "content": [{ "prefix": "**", "destination": "/ghcr.io" }]
+                },
+                {
+                  "urls": ["https://registry.k8s.io"],
+                  "onDemand": true,
+                  "tlsVerify": true,
+                  "preserveDigest": true,
+                  "maxRetries": 3,
+                  "retryDelay": "5s",
+                  "syncTimeout": "15m",
+                  "content": [
+                    { "prefix": "**", "destination": "/registry.k8s.io" }
+                  ]
+                },
+                {
+                  "urls": ["https://mcr.microsoft.com"],
+                  "onDemand": true,
+                  "tlsVerify": true,
+                  "preserveDigest": true,
+                  "maxRetries": 3,
+                  "retryDelay": "5s",
+                  "syncTimeout": "15m",
+                  "content": [
+                    { "prefix": "**", "destination": "/mcr.microsoft.com" }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+
+    # Do NOT use mountSecret/secretFiles for credentials: charts/zot/templates/secret.yaml
+    # has no existing-secret mode, it always builds a NEW Secret from plaintext content
+    # embedded directly in values (which would land in this committed HelmRelease).
+    # externalSecrets mounts the pre-created, SOPS-encrypted Secrets from kustomization.yaml.
+    externalSecrets:
+      - secretName: zot-sync-credentials
+        mountPath: /secrets/sync # -> /secrets/sync/credentials.json
+      - secretName: zot-htpasswd
+        mountPath: /secrets/auth # -> /secrets/auth/htpasswd
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "2"
+        memory: "2Gi"

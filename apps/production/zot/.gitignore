@@ -1,0 +1,3 @@
+# credential plaintext (*.encrypted counterparts are the real, committed artifacts)
+zot-sync-credentials.json
+zot-htpasswd

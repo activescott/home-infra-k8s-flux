@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: zot-storage-pv
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath:
+    # no-backup: registry blobs are large, ephemeral, and always reproducible
+    # by re-pulling/rebuilding — same tier as loki's cache.
+    path: /mnt/thedatapool/no-backup/app-data/zot
+    type: DirectoryOrCreate
+  claimRef:
+    name: zot-storage-pvc
+    namespace: zot-oci-registry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zot-storage-pvc
+  namespace: zot-oci-registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: zot-storage-pv

@@ -24,3 +24,4 @@ resources:
   - ./arize-phoenix
   - ./github-runners
   - ./cvat
+  - ./zot

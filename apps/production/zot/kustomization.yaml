@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - zot-pv.yaml
+  - helmrelease.yaml
+
+secretGenerator:
+  # Fixed names (no hash suffix): helmrelease.yaml references them by name
+  # via externalSecrets. The generator KEY also selects the SOPS format Flux
+  # uses to decrypt (kustomize-controller derives it from the key, not the
+  # filename) - "credentials.json" -> json, "htpasswd" -> binary. Do not
+  # rename these keys without updating how the corresponding .encrypted file
+  # was produced (see scripts/create-zot-sync-credentials.sh /
+  # create-zot-htpasswd.sh).
+  - name: zot-sync-credentials
+    files:
+      - credentials.json=zot-sync-credentials.json.encrypted
+    options:
+      disableNameSuffixHash: true
+  - name: zot-htpasswd
+    files:
+      - htpasswd=zot-htpasswd.encrypted
+    options:
+      disableNameSuffixHash: true
+
+namespace: zot-oci-registry
+
+buildMetadata: [originAnnotations, transformerAnnotations]
