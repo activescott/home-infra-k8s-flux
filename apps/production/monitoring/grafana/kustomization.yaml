@@ -32,3 +32,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-zot-oci-registry
+    namespace: monitoring
+    files:
+      - dashboards/zot-oci-registry.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true

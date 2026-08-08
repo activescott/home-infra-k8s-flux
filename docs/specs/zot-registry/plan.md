@@ -195,7 +195,13 @@ offline.
   hosts.toml, CI preload steps) — separate follow-up in the app repo.
   `apps/production/zot/README.md` documents the URL layout so that work
   doesn't need to spelunk this repo.
-- In-cluster/LAN DNS shortcut to avoid WAN hairpinning on pulls — would
-  need a firewall change, which requires explicit owner approval per
-  `home-infra-private/AGENTS.md`'s change policy. Flagged, not implemented.
-- Prometheus metrics / Grafana dashboard for cache hit rate.
+- ~~In-cluster/LAN DNS shortcut to avoid WAN hairpinning on pulls~~ — done
+  post-deploy: owner added an OPNsense/Unbound host override
+  (`oci-registry.activescott.com` → the node IP), no Flux changes needed.
+- ~~Prometheus metrics / Grafana dashboard for cache hit rate~~ — done
+  post-deploy: `extensions.metrics` enabled (anonymous-readable `/metrics`,
+  see the comment above `configFiles."config.json"` in helmrelease.yaml for
+  why), `podAnnotations` added for this cluster's pod-annotation scrape
+  convention, dashboard at
+  `apps/production/monitoring/grafana/dashboards/zot-oci-registry.json`
+  (usage, storage by repo, PVC %, GC/scheduler health, resource usage, logs).

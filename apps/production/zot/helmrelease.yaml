@@ -67,6 +67,19 @@ spec:
     configFiles:
       # No secrets in here - only paths/settings. Credentials are mounted
       # separately via externalSecrets below and referenced by path.
+      #
+      # http.accessControl.metrics.anonymousPolicy: zot's /metrics endpoint has
+      # its own separate access-control block (pkg/api/authz.go
+      # MetricsAuthzHandler) - without this it denies EVERYONE, including
+      # "ci"/"mirror", once accessControl is non-nil. Deliberately
+      # anonymous-readable (unlike the registry API): Prometheus's default
+      # kubernetes-pods scrape job has no way to inject per-target credentials,
+      # only usage counts/gauges are exposed (no image content, no
+      # credentials), and it's the same posture every other scraped app in
+      # this cluster already has. Tradeoff: also reachable at
+      # https://oci-registry.../metrics publicly since the Ingress forwards
+      # all paths - acceptable for a homelab; revisit if that becomes a
+      # concern.
       config.json: |-
         {
           "distSpecVersion": "1.1.1",
@@ -123,11 +136,18 @@ spec:
               "adminPolicy": {
                 "users": ["ci"],
                 "actions": ["read", "create", "update", "delete"]
+              },
+              "metrics": {
+                "anonymousPolicy": ["read"]
               }
             }
           },
           "log": { "level": "info" },
           "extensions": {
+            "metrics": {
+              "enable": true,
+              "prometheus": { "path": "/metrics" }
+            },
             "sync": {
               "enable": true,
               "credentialsFile": "/secrets/sync/credentials.json",
@@ -180,6 +200,16 @@ spec:
             }
           }
         }
+
+    # Scraped by this cluster's Prometheus via its default kubernetes-pods
+    # job (no ServiceMonitor CRD in use here) - see
+    # apps/production/monitoring/README.md "Adding a scrape target". Metrics
+    # are served on the same port/router as the registry API (port 5000),
+    # not a separate port.
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "5000"
+      prometheus.io/path: "/metrics"
 
     # Do NOT use mountSecret/secretFiles for credentials: charts/zot/templates/secret.yaml
     # has no existing-secret mode, it always builds a NEW Secret from plaintext content

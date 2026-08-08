@@ -128,6 +128,29 @@ currently 24h).
   retention, tighten the windows above rather than resizing the PV first
   (this is meant to stay a bounded cache).
 
+## Monitoring
+
+Grafana dashboard: **zot OCI Registry**
+(`apps/production/monitoring/grafana/dashboards/zot-oci-registry.json`) —
+usage (request/pull/push rates, top repos by pull rate), storage (by-repo
+breakdown, total, actual PVC % used), and health (GC runs, scheduler queue
+depth, CPU/memory, logs).
+
+Scraped via this cluster's default Prometheus pod-annotation convention
+(`podAnnotations` in `helmrelease.yaml` — see
+`apps/production/monitoring/README.md` "Adding a scrape target"), same port
+as the registry API (5000), path `/metrics`.
+
+**`/metrics` is anonymous-readable**, unlike every other path on this
+registry. zot's metrics endpoint has its own access-control block separate
+from the registry API's, and Prometheus's default scrape job can't inject
+per-target credentials — see the comment above `configFiles."config.json"`
+in `helmrelease.yaml` for the full tradeoff. Only usage counts/gauges are
+exposed (no image content, no credentials), and it's the same posture every
+other scraped app in this cluster has, but it does mean
+`https://oci-registry.activescott.com/metrics` is publicly reachable too,
+since the Ingress forwards all paths to the same backend.
+
 ## Verification (maps to the three acceptance criteria in the issue)
 
 **Mirror + cache (AC-1):**
