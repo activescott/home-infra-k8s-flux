@@ -32,4 +32,4 @@ secretGenerator:
 images:
   - name: fernfiles-image-app
     newName: ghcr.io/activescott/fernfiles/app # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:name"}
-    newTag: v0.3.0 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:tag"}
+    newTag: v0.4.0 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:tag"}
