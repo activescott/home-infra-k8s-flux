@@ -107,6 +107,23 @@ Because each mirror instance is a drop-in target now (no path prefix),
 standard mirror config works unmodified — no image-reference rewriting
 needed anywhere.
 
+**Local desktop (Docker Desktop / Docker Engine):**
+```bash
+docker login docker.oci-registry.activescott.com -u mirror -p "$MIRROR_PW"
+```
+For docker.io specifically, Docker Desktop's registry-mirrors setting
+(Settings → Docker Engine) makes this fully transparent — plain
+`docker pull postgres:16` (or any unqualified/docker.io reference, including
+base images in Dockerfiles built via `docker build`/skaffold) routes through
+the mirror automatically once logged in:
+```json
+{ "registry-mirrors": ["https://docker.oci-registry.activescott.com"] }
+```
+For ghcr.io/registry.k8s.io/mcr.microsoft.com, Docker has no per-registry
+mirror setting (mirrors are docker.io-only) — reference the mirror host
+explicitly, e.g. `docker pull ghcr.oci-registry.activescott.com/owner/image:tag`
+instead of `docker pull ghcr.io/owner/image:tag`.
+
 **Outer dind daemon** (`daemon.json`, only works for docker.io — Docker's
 `registry-mirrors` feature is docker.io-specific):
 ```json
