@@ -261,7 +261,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "description": "zot_repo_downloads_total (pulls, incl. mirror sync fetches) vs zot_repo_uploads_total (pushes, e.g. buildkit cache) across all repos.",
+      "description": "zot_repo_downloads_total (pulls, incl. mirror sync fetches) vs zot_repo_uploads_total (pushes, e.g. buildkit cache) across all repos, as cumulative counts - our usage volume is too low for a rate to read as anything but a tiny decimal.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -284,7 +284,7 @@
           },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "ops"
+          "unit": "short"
         },
         "overrides": [
           {
@@ -303,14 +303,14 @@
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
           "editorMode": "code",
-          "expr": "sum(rate(zot_repo_downloads_total[5m]))",
+          "expr": "sum(zot_repo_downloads_total)",
           "legendFormat": "pulls",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
           "editorMode": "code",
-          "expr": "sum(rate(zot_repo_uploads_total[5m]))",
+          "expr": "sum(zot_repo_uploads_total)",
           "legendFormat": "pushes",
           "refId": "B"
         }
@@ -320,7 +320,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
-      "description": "Top 10 repos by pull rate - distinguishes which mirror upstream (docker.io/ghcr.io/registry.k8s.io/mcr.microsoft.com) or local repo (e.g. ramblefeed/buildcache) is driving traffic.",
+      "description": "Top 10 repos by cumulative pulls - distinguishes which mirror upstream (docker.io/ghcr.io/registry.k8s.io/mcr.microsoft.com) or local repo (e.g. ramblefeed/buildcache) is driving traffic.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -343,7 +343,7 @@
           },
           "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "ops"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -357,12 +357,12 @@
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
           "editorMode": "code",
-          "expr": "topk(10, sum by (repo) (rate(zot_repo_downloads_total[5m])))",
+          "expr": "topk(10, sum by (repo) (zot_repo_downloads_total))",
           "legendFormat": "{{repo}}",
           "refId": "A"
         }
       ],
-      "title": "Top Repos by Pull Rate",
+      "title": "Top Repos by Pulls",
       "type": "timeseries"
     },
     {
