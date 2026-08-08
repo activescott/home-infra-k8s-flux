@@ -1,0 +1,6 @@
+- op: replace
+  path: /spec/storageClassName
+  value: local-path
+- op: add
+  path: /spec/volumeName
+  value: fernfiles-prod-app-pv-data

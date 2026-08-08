@@ -137,6 +137,17 @@ spec:
                   name: app-creds
                   key: LOG_LEVEL
                   optional: true
+            # optional: the code default (/data/storage) matches the app-data
+            # volume mount below, so prod needs no secret entry.
+            - name: STORAGE_DIR
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: STORAGE_DIR
+                  optional: true
+          volumeMounts:
+            - name: app-data
+              mountPath: /data/storage
           resources:
             limits:
               cpu: "2"
@@ -169,3 +180,7 @@ spec:
               path: /health/liveness
               port: 3200
             periodSeconds: 10
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: app-data

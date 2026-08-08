@@ -1,6 +1,7 @@
 resources:
   - namespace.yaml
   - db-pv.yaml
+  - app-pv.yaml
   - ../../base/fernfiles/
   - app-ingress-certificate.yaml
   - image-scanning/
@@ -18,6 +19,10 @@ patches:
     target:
       kind: StatefulSet
       name: db
+  - path: patch-app-data-pvc.yaml
+    target:
+      kind: PersistentVolumeClaim
+      name: app-data
 namespace: fernfiles-prod
 secretGenerator:
   # db
