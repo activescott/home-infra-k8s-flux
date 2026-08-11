@@ -17,7 +17,7 @@ spec:
         - name: app
           image: fernfiles-image-app
           ports:
-            - containerPort: 3200
+            - containerPort: 3300
           env:
             - name: NODE_ENV
               valueFrom:
@@ -147,7 +147,7 @@ spec:
             requests:
               cpu: "0.1"
               memory: "256Mi"
-          # Boot work before binding :3200 (Phase 3 adds waiting for Postgres
+          # Boot work before binding :3300 (Phase 3 adds waiting for Postgres
           # and running Prisma migrations) can exceed a liveness probe's
           # initialDelaySeconds(10)+3*periodSeconds(10)=40s budget and get
           # the container SIGTERM'd mid-boot before it ever binds the port
@@ -159,18 +159,18 @@ spec:
           startupProbe:
             httpGet:
               path: /health/liveness
-              port: 3200
+              port: 3300
             periodSeconds: 5
             failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health/readiness
-              port: 3200
+              port: 3300
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/liveness
-              port: 3200
+              port: 3300
             periodSeconds: 10
       volumes:
         - name: app-data

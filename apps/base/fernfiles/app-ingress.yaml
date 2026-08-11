@@ -13,4 +13,4 @@ spec:
               service:
                 name: app
                 port:
-                  number: 3200
+                  number: 3300
