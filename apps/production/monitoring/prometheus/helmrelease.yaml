@@ -315,6 +315,27 @@ spec:
                 annotations:
                   summary: 'WAN link (igb0) flapping in bursts on the edge firewall.'
                   description: 'More than 3 igb0 carrier drops in the last hour, matching the dense-burst signature seen during the ongoing ISP investigation. Capture the timestamps for the ticket.'
+              # Gateway-monitor (dpinger) alarm transitions. Since 2026-08-11
+              # an inline switch holds igb0's carrier up, so upstream WAN
+              # outages no longer produce link-state lines and the two rules
+              # above stay silent — these two are their replacement signal.
+              # Thresholds on the firewall: loss 5%/8%, latency 200/500ms.
+              - alert: WanGatewayDegraded
+                expr: 'sum(increase(loki_process_custom_wan_gateway_alarm_total[10m])) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'WAN gateway monitor alarmed (loss/latency/down) on the edge firewall.'
+                  description: 'One or more gateway-monitor alarm transitions in the last 10 minutes — upstream packet loss or outage even though igb0 carrier held. Pull details in Grafana Explore with {host="theshield"} |= "MONITOR:".'
+              - alert: WanGatewayDegradedBurst
+                expr: 'sum(increase(loki_process_custom_wan_gateway_alarm_total[1h])) > 3'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'WAN gateway monitor alarming repeatedly on the edge firewall.'
+                  description: 'More than 3 gateway-monitor alarm transitions in the last hour, matching the dense-burst outage signature from the ongoing ISP investigation. Capture the timestamps for the ticket.'
               # Meta-alert: if the firewall stops shipping syslog, the two
               # alerts above go silent instead of firing. The firewall logs
               # continuously, so a 15m gap means the feed is broken (Alloy

@@ -278,20 +278,47 @@ spec:
             //   <6>[1164263] igb0: link state changed to DOWN
             // A named capture is required — metric.counter matches on an
             // extracted key, not on the raw line.
+            // Anchored to the kernel MSG prefix: sudo audit lines echo
+            // investigation greps containing this phrase into the same
+            // syslog stream, and an unanchored substring match counts them
+            // as drops (observed 2026-08-11).
             stage.regex {
-              expression = "(?P<wan_link_down>igb0: link state changed to DOWN)"
+              expression = "(?P<wan_link_down>^<\\d+>\\[\\d+\\] igb0: link state changed to DOWN)"
+            }
+
+            // Count gateway-monitor (dpinger) alarm transitions into a bad
+            // state. Since 2026-08-11 an inline switch holds igb0's carrier
+            // up, so upstream outages no longer produce link-state lines —
+            // these alarm lines are the WAN outage signal instead:
+            //   MONITOR: WAN_DHCP (Addr: ... Alarm: none -> loss RTT: ... Loss: 12.0 %)
+            // Recovery transitions (-> none) are deliberately not counted.
+            stage.regex {
+              expression = "(?P<wan_gw_alarm>Alarm: [a-z]+ -> (?:loss|delay|down))"
             }
 
             stage.metrics {
               metric.counter {
+                // No `value` filter: the capture includes the kernel
+                // sequence prefix, which varies per line. Presence of the
+                // capture is the match.
                 name        = "wan_link_down_total"
                 description = "WAN (igb0) carrier drops observed on theshield"
                 source      = "wan_link_down"
-                value       = "igb0: link state changed to DOWN"
                 action      = "inc"
 
                 // Default is 5m, which would delete the series between
                 // drops and leave increase() with nothing to measure.
+                max_idle_duration = "168h"
+              }
+
+              // No `value` filter: increments on any captured transition
+              // (none -> loss, loss -> down, none -> down, ...).
+              metric.counter {
+                name        = "wan_gateway_alarm_total"
+                description = "Gateway monitor alarm transitions (loss/delay/down) on theshield"
+                source      = "wan_gw_alarm"
+                action      = "inc"
+
                 max_idle_duration = "168h"
               }
 
