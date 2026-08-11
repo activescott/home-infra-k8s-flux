@@ -4,7 +4,7 @@ metadata:
   name: fernfiles-prod-app-pv-data
 spec:
   capacity:
-    storage: 10Gi
+    storage: 500Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
