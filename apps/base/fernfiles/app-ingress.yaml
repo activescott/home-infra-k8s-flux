@@ -2,6 +2,12 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: app-ingress
+  annotations:
+    # The app enforces its own editor cap (1 MiB) with a friendly error; the
+    # ingress limit sits above it so oversized saves reach that check instead
+    # of dying here as a bare 413. Url-encoded form bodies inflate up to 3x
+    # the content size, hence 4m.
+    nginx.ingress.kubernetes.io/proxy-body-size: 4m
 spec:
   rules:
     - host: fernfiles.local
