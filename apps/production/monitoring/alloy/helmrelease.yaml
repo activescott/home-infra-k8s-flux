@@ -296,6 +296,14 @@ spec:
               expression = "(?P<wan_gw_alarm>Alarm: [a-z]+ -> (?:loss|delay|down))"
             }
 
+            // pf verdicts. filterlog MSG is CSV:
+            //   rule,subrule,anchor,rid,interface,reason,action,dir,...
+            // Anchored field-wise so nothing else can match; kernel and
+            // sudo lines fail the six-comma prefix.
+            stage.regex {
+              expression = "^(?:[^,]*,){6}(?P<fw_action>block|pass),"
+            }
+
             stage.metrics {
               metric.counter {
                 // No `value` filter: the capture includes the kernel
@@ -317,6 +325,26 @@ spec:
                 name        = "wan_gateway_alarm_total"
                 description = "Gateway monitor alarm transitions (loss/delay/down) on theshield"
                 source      = "wan_gw_alarm"
+                action      = "inc"
+
+                max_idle_duration = "168h"
+              }
+
+              metric.counter {
+                name        = "fw_block_total"
+                description = "pf blocked packets logged by filterlog on theshield"
+                source      = "fw_action"
+                value       = "block"
+                action      = "inc"
+
+                max_idle_duration = "168h"
+              }
+
+              metric.counter {
+                name        = "fw_pass_total"
+                description = "pf passed packets logged by filterlog on theshield"
+                source      = "fw_action"
+                value       = "pass"
                 action      = "inc"
 
                 max_idle_duration = "168h"

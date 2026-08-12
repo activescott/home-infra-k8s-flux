@@ -1,0 +1,45 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: blackbox-exporter
+  namespace: monitoring
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: prometheus-blackbox-exporter
+      version: "9.x"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: monitoring
+      interval: 24h
+  values:
+    # Keeps the Service name at blackbox-exporter.monitoring.svc — the
+    # Prometheus scrape job in prometheus/helmrelease.yaml addresses it.
+    fullnameOverride: blackbox-exporter
+
+    config:
+      modules:
+        icmp:
+          prober: icmp
+          timeout: 5s
+          icmp:
+            preferred_ip_protocol: ip4
+
+    # The ICMP prober sends raw packets, which requires NET_RAW.
+    securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        add: ["NET_RAW"]
+
+    resources:
+      limits:
+        cpu: 100m
+        memory: 64Mi
+      requests:
+        cpu: 10m
+        memory: 16Mi

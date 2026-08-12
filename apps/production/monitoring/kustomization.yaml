@@ -5,6 +5,7 @@ resources:
   - ./alloy
   - ./prometheus
   - ./grafana
+  - ./blackbox
 
 namespace: monitoring
 

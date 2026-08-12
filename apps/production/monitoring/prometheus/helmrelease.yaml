@@ -354,6 +354,32 @@ spec:
 
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |
+      # WAN reachability/latency probed from inside the LAN via
+      # blackbox-exporter (see blackbox/helmrelease.yaml). External anchors
+      # only: the first hop is monitored by the firewall's own gateway
+      # monitor (which follows DHCP gateway changes automatically), and its
+      # address does not belong in this public repo.
+      - job_name: "blackbox_icmp"
+        metrics_path: /probe
+        params:
+          module: [icmp]
+        scrape_interval: 15s
+        static_configs:
+          - targets: ["1.1.1.1", "8.8.8.8"]
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+      # Edge firewall host metrics (node_exporter plugin). CPU, memory,
+      # per-interface traffic and error counters — correlation context for
+      # the WAN investigation.
+      - job_name: "firewall_node"
+        scrape_interval: 30s
+        static_configs:
+          - targets: ["10.1.111.1:9100"]
       - job_name: "gpupoet_cache_metrics"
         scrape_interval: 10s
         scrape_timeout: 10s
