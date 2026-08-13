@@ -137,6 +137,21 @@ spec:
                   name: app-creds
                   key: LOG_LEVEL
                   optional: true
+            # optional: upload caps default in-app (10 GiB/file, 100
+            # files/request); dev/e2e lowers the file cap to test the
+            # too-large path.
+            - name: UPLOAD_MAX_FILE_BYTES
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: UPLOAD_MAX_FILE_BYTES
+                  optional: true
+            - name: UPLOAD_MAX_FILES_PER_REQUEST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: UPLOAD_MAX_FILES_PER_REQUEST
+                  optional: true
           volumeMounts:
             - name: app-data
               mountPath: /data/storage
