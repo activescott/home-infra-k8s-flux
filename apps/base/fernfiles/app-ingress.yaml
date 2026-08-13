@@ -3,11 +3,18 @@ kind: Ingress
 metadata:
   name: app-ingress
   annotations:
-    # The app enforces its own editor cap (1 MiB) with a friendly error; the
-    # ingress limit sits above it so oversized saves reach that check instead
-    # of dying here as a bare 413. Url-encoded form bodies inflate up to 3x
-    # the content size, hence 4m.
-    nginx.ingress.kubernetes.io/proxy-body-size: 4m
+    # The app owns every body limit with friendly errors: busboy caps for
+    # multipart uploads (10 GiB/file default) and a 4 MiB app-level guard on
+    # urlencoded posts (the bound this annotation used to enforce for editor
+    # saves). "0" disables nginx's check so no request dies here as a bare
+    # 413.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # Required at multi-GiB sizes: default-on buffering would spool the
+    # entire request body to the ingress controller's disk before
+    # forwarding, risking controller ephemeral-storage eviction. Off streams
+    # the body straight through to the app, which streams it to its own
+    # disk atomically.
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
 spec:
   rules:
     - host: fernfiles.local
