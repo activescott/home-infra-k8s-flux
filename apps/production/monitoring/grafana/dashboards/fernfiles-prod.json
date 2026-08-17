@@ -1,7 +1,7 @@
 {
   "uid": "fernfiles-prod",
   "title": "Fernfiles Prod Status",
-  "description": "Health of the fernfiles-prod namespace. Built after the 2026-08-16 outage, where the app crashed and restarted 3 times unnoticed and was only discovered when a user got \"no available server\" from Prague. The Restarts and Last termination reason panels are the ones that would have shown it.",
+  "description": "Health of the fernfiles-prod namespace. Built after the 2026-08-16 outage, where the app crashed and restarted 3 times unnoticed and was only found when a user hit \"no available server\". The Restarts and Last termination reason panels are the ones that would have shown it.",
   "editable": true,
   "schemaVersion": 41,
   "refresh": "30s",
@@ -23,7 +23,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 1,
       "collapsed": false,
@@ -31,14 +31,14 @@
     },
     {
       "type": "stat",
-      "title": "App pods ready",
-      "description": "Single replica by design (k8s/base/app-deployment.yaml), so 0 here means the site is down for everyone, not degraded. Tracked by issue #46 / #143.",
+      "title": "App available replicas",
+      "description": "Replicas actually available in the app Deployment. Pods come and go on every rollout, so pod counts flap for benign reasons; a Deployment's available count should never be 0. Compare against desired on the Deployment availability panel below.",
       "id": 2,
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 4
       },
       "datasource": {
         "type": "prometheus",
@@ -88,9 +88,9 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "count(kube_pod_status_ready{namespace=\"fernfiles-prod\", pod=~\"app-.*\", condition=\"true\"} == 1) or vector(0)",
+          "expr": "max(kube_deployment_status_replicas_available{namespace=\"fernfiles-prod\", deployment=\"app\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "ready",
+          "legendFormat": "available",
           "range": false,
           "refId": "A"
         }
@@ -98,14 +98,14 @@
     },
     {
       "type": "stat",
-      "title": "Database ready",
-      "description": "Postgres StatefulSet. Tenet #1 store — losing this is worse than losing the web pod.",
+      "title": "Database",
+      "description": "Postgres StatefulSet: green Up, red Down. Tenet #1 store — losing this is worse than losing the web pod. The query is wrapped in max() so it always reduces to exactly one value: a bare selector `or vector(0)` returns BOTH series, because `or` unions when the label sets differ, which is why this panel used to show a green 1 and a red 0 at the same time.",
       "id": 3,
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 4
       },
       "datasource": {
         "type": "prometheus",
@@ -116,7 +116,23 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "index": 0,
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "index": 1,
+                  "text": "Up",
+                  "color": "green"
+                }
+              }
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -146,7 +162,7 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value"
       },
       "targets": [
         {
@@ -155,9 +171,9 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "kube_statefulset_status_replicas_ready{namespace=\"fernfiles-prod\", statefulset=\"db\"} or vector(0)",
+          "expr": "max(kube_statefulset_status_replicas_ready{namespace=\"fernfiles-prod\", statefulset=\"db\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "ready",
+          "legendFormat": "database",
           "range": false,
           "refId": "A"
         }
@@ -172,7 +188,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 4
       },
       "datasource": {
         "type": "prometheus",
@@ -240,7 +256,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 4
       },
       "datasource": {
         "type": "prometheus",
@@ -305,10 +321,10 @@
       "description": "Which build is actually serving. Flux image automation updates the deployment tag after a release build publishes, so this lags a GitHub release by a few minutes.",
       "id": 6,
       "gridPos": {
-        "h": 4,
+        "h": 5,
         "w": 8,
         "x": 16,
-        "y": 1
+        "y": 8
       },
       "datasource": {
         "type": "prometheus",
@@ -317,7 +333,10 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "align": "auto"
+            "align": "right",
+            "cellOptions": {
+              "type": "auto"
+            }
           },
           "mappings": []
         },
@@ -392,7 +411,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 13
       },
       "id": 17,
       "collapsed": false,
@@ -407,7 +426,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 14
       },
       "datasource": {
         "type": "prometheus",
@@ -484,7 +503,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 13
+        "y": 21
       },
       "datasource": {
         "type": "prometheus",
@@ -552,7 +571,7 @@
         "h": 4,
         "w": 18,
         "x": 6,
-        "y": 13
+        "y": 21
       },
       "datasource": {
         "type": "prometheus",
@@ -629,7 +648,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 25
       },
       "id": 7,
       "collapsed": false,
@@ -644,7 +663,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 26
       },
       "datasource": {
         "type": "prometheus",
@@ -695,14 +714,14 @@
     },
     {
       "type": "timeseries",
-      "title": "Pod readiness",
-      "description": "1 = ready and taking traffic. A drop to 0 with no corresponding deploy is what the ingress reports to users as \"no available server\".",
+      "title": "Deployment availability",
+      "description": "Available replicas vs desired, per Deployment. Desired is the dashed line; any gap below it means replicas are missing and the site is degraded or down. Deployment-level rather than pod-level on purpose: pods churn on every rollout, so pod readiness flaps for benign reasons, while a Deployment should always have its desired count available.",
       "id": 9,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 26
       },
       "datasource": {
         "type": "prometheus",
@@ -715,10 +734,12 @@
           },
           "custom": {
             "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 1,
-            "showPoints": "auto",
-            "stepAfter": true
+            "fillOpacity": 25,
+            "lineWidth": 2,
+            "showPoints": "always",
+            "pointSize": 5,
+            "stepAfter": true,
+            "spanNulls": true
           },
           "mappings": [],
           "max": 1,
@@ -726,7 +747,37 @@
           "unit": "none",
           "decimals": 0
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*desired.*"
+            },
+            "properties": [
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -746,10 +797,21 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "kube_pod_status_ready{namespace=\"fernfiles-prod\", condition=\"true\"}",
-          "legendFormat": "{{pod}}",
+          "expr": "kube_deployment_status_replicas_available{namespace=\"fernfiles-prod\"}",
+          "legendFormat": "{{deployment}} available",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "kube_deployment_spec_replicas{namespace=\"fernfiles-prod\"}",
+          "legendFormat": "{{deployment}} desired",
+          "range": true,
+          "refId": "B"
         }
       ]
     },
@@ -762,7 +824,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 34
       },
       "datasource": {
         "type": "prometheus",
@@ -839,7 +901,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 40
       },
       "id": 11,
       "collapsed": false,
@@ -854,7 +916,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 33
+        "y": 41
       },
       "datasource": {
         "type": "prometheus",
@@ -911,7 +973,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 41
       },
       "datasource": {
         "type": "prometheus",
@@ -966,7 +1028,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 41
+        "y": 49
       },
       "id": 14,
       "collapsed": false,
@@ -981,7 +1043,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 50
       },
       "datasource": {
         "type": "loki",
@@ -1019,7 +1081,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 52
+        "y": 60
       },
       "datasource": {
         "type": "loki",
@@ -1047,6 +1109,241 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "type": "state-timeline",
+      "title": "Deployed version",
+      "description": "Which image tag the app pods were running, over time. Each band change is a deployment. Line this up against the restart and availability panels to see whether a rollout caused a problem — the 2026-08-16 crash arrived with v0.38.0 and was fixed in v0.38.1.",
+      "id": 21,
+      "gridPos": {
+        "h": 5,
+        "w": 16,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "alignValue": "center",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "count by (version) (label_replace(kube_pod_container_info{namespace=\"fernfiles-prod\", container=\"app\"}, \"version\", \"$1\", \"image_spec\", \".*:(.*)\"))",
+          "legendFormat": "{{version}}",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Site reachable",
+      "description": "blackbox https probe of https://fernfiles.com/health/liveness. Green Up, red Down. Probed from inside the LAN, so a green here does not prove the site is reachable from the internet — but it does traverse the real ingress and TLS, which the Kubernetes-object panels never touch. Empty until the blackbox_https scrape job has run.",
+      "id": 22,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "index": 0,
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "index": 1,
+                  "text": "Up",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "max(probe_success{job=\"blackbox_https\", instance=~\"https://fernfiles.com/.*\"})",
+          "instant": true,
+          "legendFormat": "site",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "TLS cert days left",
+      "description": "Days until the certificate served by fernfiles.com expires. cert-manager renews at 30 days remaining, so a number below that means renewal has not run; the alert fires at 14. Empty until the blackbox_https scrape job has run.",
+      "id": 23,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "orange",
+                "value": 14
+              },
+              {
+                "color": "green",
+                "value": 30
+              }
+            ]
+          },
+          "unit": "d",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "max((probe_ssl_earliest_cert_expiry{job=\"blackbox_https\", instance=~\"https://fernfiles.com/.*\"} - time()) / 86400)",
+          "instant": true,
+          "legendFormat": "days",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "title": "",
+      "description": "Dashboard header. Uses the wordmark from packages/web-app/app/components/top-nav.tsx, because the repo has no logo artwork — favicon.ico and social.png are both solid green with no mark on them. If a real logo lands, inline it here as a base64 data URI rather than hotlinking fernfiles.com: a status dashboard must still render when the site it monitors is down.",
+      "id": 24,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "# 🌿 Fernfiles\n\n**Production status** — [fernfiles.com](https://fernfiles.com) · [activescott/fernfiles](https://github.com/activescott/fernfiles) · alerts go to Telegram via AlertManager"
+      }
     }
   ]
 }

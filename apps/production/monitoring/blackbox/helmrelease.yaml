@@ -26,6 +26,20 @@ spec:
           timeout: 5s
           icmp:
             preferred_ip_protocol: ip4
+        # Probes a public https URL end to end: DNS, TCP, TLS handshake and
+        # certificate, then the HTTP status. Runs from inside the cluster, so
+        # it does NOT prove the site is reachable from the internet — but it
+        # does go through the real ingress, so it catches the failures that
+        # kube-state-metrics cannot see: an ingress misroute, a 502 with pods
+        # that look healthy, and an expiring certificate.
+        http_2xx:
+          prober: http
+          timeout: 10s
+          http:
+            valid_status_codes: [200]
+            method: GET
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
 
     # The ICMP prober sends raw packets, which requires NET_RAW.
     securityContext:

@@ -276,6 +276,42 @@ spec:
                 annotations:
                   summary: >-
                     Fernfiles pod {{ $labels.pod }} not ready for 10m. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+              # The checks above all watch Kubernetes objects. This one asks
+              # the question a user asks: does the URL answer? It goes through
+              # the real ingress and TLS, so it catches a 502-with-healthy-pods
+              # or a bad ingress rule that the object-level checks cannot see.
+              # 5m because a rollout can blip a request or two.
+              - alert: FernfilesSiteProbeFailing
+                expr: 'probe_success{job="blackbox_https",instance=~"https://fernfiles.com/.*"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    fernfiles.com is not answering its health probe. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    The https probe to {{ $labels.instance }} has failed for 5
+                    minutes. Probed from inside the LAN, so this does not rule
+                    out (or in) an ISP or external DNS problem — but the
+                    ingress, TLS and app path are all covered by it.
+              # Certificate expiry is the one failure that is both entirely
+              # predictable and total when it lands. cert-manager renews at
+              # 30 days remaining, so 14 days left means renewal is broken and
+              # there is still time to fix it by hand.
+              - alert: FernfilesCertExpiringSoon
+                expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://fernfiles.com/.*"} - time()) / 86400 < 14'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    fernfiles.com TLS certificate expires in under 14 days — cert-manager renewal is likely broken.
+                  description: >-
+                    {{ $value | printf "%.1f" }} days of validity left on
+                    {{ $labels.instance }}. cert-manager normally renews at 30
+                    days, so reaching 14 means renewal is not happening. Check
+                    the Certificate and CertificateRequest objects in the
+                    fernfiles-prod namespace.
           - name: tinkerbell-llm-providers
             rules:
               # Critical: an LLM provider rejected requests with a payment
@@ -440,6 +476,29 @@ spec:
         scrape_interval: 15s
         static_configs:
           - targets: ["1.1.1.1", "8.8.8.8"]
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+      # End-to-end https probes of the sites this cluster serves. Probed from
+      # inside the LAN, so this is not a substitute for an off-site check —
+      # it cannot see an ISP or external-DNS outage. What it does cover is
+      # everything between the ingress and the app that pod-level metrics
+      # miss: a 502 while pods report healthy, an ingress rule pointing at
+      # the wrong service, and (via probe_ssl_earliest_cert_expiry) a
+      # certificate about to lapse.
+      - job_name: "blackbox_https"
+        metrics_path: /probe
+        params:
+          module: [http_2xx]
+        scrape_interval: 30s
+        scrape_timeout: 15s
+        static_configs:
+          - targets:
+              - "https://fernfiles.com/health/liveness"
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
