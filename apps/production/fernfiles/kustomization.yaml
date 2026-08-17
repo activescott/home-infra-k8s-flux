@@ -11,6 +11,13 @@ patches:
     target:
       kind: Deployment
       name: app
+  # Both ghcr.io/activescott/fernfiles packages are private, so every
+  # Deployment pulling one needs the pull secret. Prod-only: dev and e2e run
+  # images loaded straight into kind.
+  - path: patch-worker-deployment.yaml
+    target:
+      kind: Deployment
+      name: worker
   - path: patch-app-ingress.yaml
     target:
       kind: Ingress
