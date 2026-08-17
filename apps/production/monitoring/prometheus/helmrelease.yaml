@@ -182,26 +182,100 @@ spec:
           - name: tayle
             rules:
               - alert: PodNotReady
-                expr: 'kube_pod_status_ready{exported_namespace="tayle-prod",pod!~"^db-backup-.*",condition="false"} > 0'
+                expr: 'kube_pod_status_ready{namespace="tayle-prod",pod!~"^db-backup-.*",condition="false"} > 0'
                 labels:
                   severity: warning
                 annotations:
                   summary: >-
                     Tayle Pod not ready. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
               - alert: DeploymentNotAvailable
-                expr: 'kube_deployment_status_condition{exported_namespace="tayle-prod",condition="Available",status="false"} > 0'
+                expr: 'kube_deployment_status_condition{namespace="tayle-prod",condition="Available",status="false"} > 0'
                 labels:
                   severity: critical
                 annotations:
                   summary: >-
                     Tayle Deployment not available. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
               - alert: StatefulSetNotReady
-                expr: 'kube_statefulset_status_replicas_ready{exported_namespace="tayle-prod"} == 0'
+                expr: 'kube_statefulset_status_replicas_ready{namespace="tayle-prod"} == 0'
                 labels:
                   severity: critical
                 annotations:
                   summary: >-
                     Tayle StatefulSet has no ready replicas. See https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+          # Alert names here are prefixed "Fernfiles" on purpose. AlertManager
+          # groups by `alertname` alone (see route.group_by above) and the
+          # inhibit_rule matches on it too, so two projects sharing a generic
+          # name like PodNotReady would have their notifications merged and
+          # could inhibit each other. The older groups above predate that
+          # realization; new rules should stay project-qualified.
+          - name: fernfiles
+            rules:
+              # The app deployment runs a single replica
+              # (k8s/base/app-deployment.yaml), so one crash is a full outage
+              # and every restart is worth waking up for. On 2026-08-16 the
+              # pod crashed and restarted 3 times entirely unnoticed; it
+              # surfaced only when Scott hit "no available server" trying to
+              # play a video from Prague. Root cause and timeline:
+              # fernfiles docs/specs/016-stream-abort-crash/summary.md.
+              - alert: FernfilesAppPodRestarted
+                expr: 'increase(kube_pod_container_status_restarts_total{namespace="fernfiles-prod",container="app"}[15m]) > 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Fernfiles app pod restarted. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    The app container restarted in the last 15 minutes. With a
+                    single replica this means the site was down. Check
+                    `kubectl --context nas -n fernfiles-prod logs app-... --previous`
+                    for the fatal error, and the Restarts panel on the dashboard.
+              # The restart alert above catches the first crash; this catches
+              # the state where it has given up and is backing off, which is a
+              # sustained outage rather than a blip.
+              - alert: FernfilesAppCrashLoopBackOff
+                expr: 'kube_pod_container_status_waiting_reason{namespace="fernfiles-prod",reason="CrashLoopBackOff"} > 0'
+                for: 1m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Fernfiles pod in CrashLoopBackOff. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    Pod {{ $labels.pod }} is in CrashLoopBackOff and the site is
+                    down for everyone. Kubernetes will keep retrying with
+                    growing backoff; it will not recover on its own if the crash
+                    is deterministic.
+              # What a user experiences as "no available server" from the
+              # ingress: zero ready endpoints behind the service.
+              - alert: FernfilesAppDeploymentNotAvailable
+                expr: 'kube_deployment_status_condition{namespace="fernfiles-prod",deployment="app",condition="Available",status="false"} > 0'
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Fernfiles app deployment not available. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+              # Postgres. Losing this is worse than losing the web pod: the app
+              # cannot serve anything, and this is the tenet-#1 store.
+              - alert: FernfilesDbStatefulSetNotReady
+                expr: 'kube_statefulset_status_replicas_ready{namespace="fernfiles-prod",statefulset="db"} == 0'
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Fernfiles database has no ready replicas. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+              # Slower burn than the conditions above — catches a pod that is
+              # up but failing its readiness probe. 10m so a normal rollout
+              # (and the terminating old pod) never trips it.
+              - alert: FernfilesPodNotReady
+                expr: 'kube_pod_status_ready{namespace="fernfiles-prod",condition="false"} > 0'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Fernfiles pod {{ $labels.pod }} not ready for 10m. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
           - name: tinkerbell-llm-providers
             rules:
               # Critical: an LLM provider rejected requests with a payment
