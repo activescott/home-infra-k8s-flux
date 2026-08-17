@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../../base/image-scanning/semver
+  - worker-image-scanning.yaml
 
 configurations:
   - secret-name-reference.yaml
