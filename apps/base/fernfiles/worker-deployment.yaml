@@ -1,0 +1,70 @@
+# Transcode worker (issue #140, docs/specs/018-transcode-worker/plan.md).
+# Runs ffmpeg for the HLS video pipeline in its own pod so a multi-minute
+# transcode competes with nothing the app pod is serving. No Service, no
+# ingress, no probes: it listens on no port. Kubernetes restarting the
+# container when the process exits is the whole liveness story.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+        app.activescott.com/component: worker
+    spec:
+      # app-data is ReadWriteOnce, which binds the volume to one NODE (not
+      # one pod). The worker writes the derived HLS output that the app pod's
+      # /hls/* route then serves, so both must see the same filesystem — this
+      # affinity is what makes that a guarantee rather than a coincidence of
+      # today's single-node cluster. Lifting it needs a ReadWriteMany story
+      # for VFS storage generally, which is issue #46.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.activescott.com/component: app
+              topologyKey: kubernetes.io/hostname
+      # Long enough for the SIGTERM handler to release in-flight job rows back
+      # to PENDING (packages/worker/src/main.ts) before the runtime SIGKILLs
+      # ffmpeg.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: fernfiles-image-worker
+          # The whole secret, rather than the app deployment's explicit
+          # per-key list. The worker reads a handful of these (DATABASE_URL,
+          # NODE_ENV, LOG_LEVEL, the video and worker knobs) and ignores the
+          # rest; enumerating them here would mean a manifest edit every time
+          # a key is added, for a process that runs on the same trust boundary
+          # as the app pod and mounts the same user data.
+          envFrom:
+            - secretRef:
+                name: app-creds
+          volumeMounts:
+            - name: app-data
+              mountPath: /data/storage
+          resources:
+            # The prod node has 14 cores and is normally near-idle, so this is
+            # deliberately more than the app pod's 2. With
+            # WORKER_MAX_CONCURRENT_TRANSCODES defaulting to 2, the worker
+            # reads this limit out of its own cgroup and gives each ffmpeg
+            # 6/2 = 3 threads — the limit below is the ONLY place that number
+            # is configured (see packages/server-core/src/cpu.ts). Raising
+            # throughput past this is meant to be replicas.
+            limits:
+              cpu: "6"
+              memory: "4Gi"
+            requests:
+              cpu: "0.1"
+              memory: "256Mi"
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: app-data

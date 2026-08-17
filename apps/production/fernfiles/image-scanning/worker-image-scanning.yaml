@@ -1,0 +1,30 @@
+# Image automation for the fernfiles transcode worker
+# (activescott/fernfiles issue #140).
+#
+# Written out rather than reusing base/image-scanning/semver via a second
+# placeholder-patch pass: that base bundles an ImageUpdateAutomation, and a
+# second one pushing commits to the same branch for the same repository is
+# redundant. The existing update-fernfiles-app automation already rewrites
+# every $imagepolicy marker in this repo, including the worker's.
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: repo-fernfiles-worker
+spec:
+  image: ghcr.io/activescott/fernfiles/worker
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata:
+  name: policy-fernfiles-worker
+spec:
+  imageRepositoryRef:
+    name: repo-fernfiles-worker
+  policy:
+    # Same range as the app: build.yaml tags both images v<version> from the
+    # same release, so the two policies resolve to the same version.
+    semver:
+      range: ">=0.0.0"
