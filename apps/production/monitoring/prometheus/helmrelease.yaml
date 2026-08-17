@@ -409,8 +409,22 @@ spec:
               # so these are many series rather than one. Evaluating per-series
               # would let a single sporadically-logging application go flat and
               # fire the feed-down alert on its own.
+              # The `or` clause covers the first drop after the series has been
+              # away. max_idle_duration (168h, set in alloy/helmrelease.yaml)
+              # deletes a counter that has not been touched for a week, and an
+              # Alloy restart drops it too — as of 2026-08-17 this counter has
+              # been gone since the 2026-08-11 inline-switch change stopped
+              # producing link-state lines. When it comes back it reappears
+              # holding 1, and increase() over a window whose samples are all 1
+              # measures 0, so the drop that resurrected it would go unreported
+              # and only the second one would alert. The clause fires when the
+              # counter exists now and did not 15m ago, which is exactly that
+              # case.
               - alert: WanLinkFlapping
-                expr: 'sum(increase(loki_process_custom_wan_link_down_total[10m])) > 0'
+                expr: >-
+                  sum(increase(loki_process_custom_wan_link_down_total[10m])) > 0
+                  or (sum(loki_process_custom_wan_link_down_total) > 0
+                  and absent(loki_process_custom_wan_link_down_total offset 15m))
                 for: 0m
                 labels:
                   severity: warning
