@@ -106,6 +106,16 @@ spec:
     - kind: ImageRepository
       name: repo-fernfiles-app
       namespace: fernfiles-prod
+    # The worker needs its own entry: build.yaml tags both fernfiles images
+    # v<version> from one release, but a Receiver only reconciles the
+    # ImageRepositories it lists, so without this the worker deploys on the 5h
+    # fallback scan while the app deploys immediately. Missed when the worker
+    # was split out (activescott/fernfiles #140) — it left v0.43.0's worker on
+    # the previous tag until the scan was forced by hand, hours after the app
+    # had rolled. Same shape as repo-tayle-worker above.
+    - kind: ImageRepository
+      name: repo-fernfiles-worker
+      namespace: fernfiles-prod
     # ARC (Actions Runner Controller) — public images on ghcr.io/actions/*
     # GitHub does not send webhooks for these (they live in another user's repo),
     # so the receiver entry is only here to satisfy the validate-webhook-receiver
