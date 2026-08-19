@@ -12,4 +12,70 @@ resources:
   - ./image-scanning-controller
   - ./image-scanning-runner
 
+# =====================================================================
+# TEMPORARY THROTTLE — added 2026-08-19. DELETE THIS WHOLE `patches:`
+# BLOCK WHEN THE nas1 STORAGE MIGRATION LANDS.
+#
+# What it does: serializes self-hosted CI to ONE job at a time across the
+# entire runner fleet — not just per repo. Two mechanisms, both needed:
+#
+#   1. `maxRunners: 1` caps each scale set (fernfiles, ramblefeed,
+#      tinkerbell) at one concurrent job. On its own this still allows 3
+#      concurrent jobs fleet-wide, one per repo.
+#   2. The pod anti-affinity is what makes it fleet-wide. Every runner pod
+#      gets the `ci-concurrency-throttle: serial` label and refuses to
+#      schedule onto a host that already has a pod carrying it. `nas` is a
+#      single-node cluster, so at most one runner pod runs at a time in
+#      the arc-runners namespace regardless of which repo queued it.
+#
+# Why: k3s's data-dir and docker's data-root live on `thedatapool`, a
+# 4-wide RAIDZ1 vdev of 7200rpm SATA disks. RAIDZ does not stripe random
+# writes, so the vdev's random-write IOPS ceiling is roughly one disk's
+# worth (~100 IOPS). The small synchronous metadata writes of a
+# kind/dind cluster boot (overlay2 extraction, cgroupfs, containerd
+# bookkeeping) blow past that ceiling when runs overlap, stalling
+# systemd/dockerd inside the nested containers. Full root cause, disk
+# metrics, and the three corroborating incidents (2026-08-08 ramblefeed,
+# 2026-08-13 and 2026-08-19 fernfiles) are in the private repo at
+# `docs/specs/nas1-storage-migration/summary.md`.
+#
+# This is throttling at the runner layer on purpose, rather than a GitHub
+# Actions `concurrency:` key: `concurrency:` cancels superseded pending
+# runs (which could silently drop a release run) and cannot see across
+# repos, whereas queueing at the runner covers the whole shared fleet.
+#
+# Cost: CI wall-clock is now serialized. Expect PR runs to take roughly
+# the sum of their jobs rather than the max.
+#
+# Remove when: the nas1 storage migration completes — k3s/docker moved to
+# the WD_BLACK SN850X NVMe on ext4 (hardware ETA 2026-08-23..25). Revert
+# is exactly "delete this comment and the `patches:` block below"; that
+# restores `maxRunners: 6` from each runners/*/helmrelease.yaml, whose own
+# sizing rationale is documented inline there.
+# =====================================================================
+patches:
+  - target:
+      kind: HelmRelease
+      namespace: arc-runners
+    patch: |-
+      apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        values:
+          maxRunners: 1
+          template:
+            metadata:
+              labels:
+                home-infra.activescott.com/ci-concurrency-throttle: "serial"
+            spec:
+              affinity:
+                podAntiAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    - topologyKey: kubernetes.io/hostname
+                      labelSelector:
+                        matchLabels:
+                          home-infra.activescott.com/ci-concurrency-throttle: "serial"
+
 buildMetadata: [originAnnotations, transformerAnnotations]
