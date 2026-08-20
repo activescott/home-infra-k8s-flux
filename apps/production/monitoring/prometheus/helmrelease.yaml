@@ -162,14 +162,14 @@ spec:
                 annotations:
                   summary: gpu-poet-collector /metrics endpoint is not reachable.
               - alert: CollectorGitPushStalled
-                # 8 days = 7-day cadence + 1d slack. Only fires after a full
+                # 6 days = 5-day cadence + 1d slack. Only fires after a full
                 # cycle has been missed.
-                expr: '(time() - collector_last_git_push_timestamp_seconds) > 691200'
+                expr: '(time() - collector_last_git_push_timestamp_seconds) > 518400'
                 for: 1h
                 labels:
                   severity: warning
                 annotations:
-                  summary: gpu-poet-collector has not pushed cache updates to git in over 8 days.
+                  summary: gpu-poet-collector has not pushed cache updates to git in over 6 days.
               - alert: CollectorHighErrorRate
                 # >5% of fetches are landing in the not-found bucket (404/error/unparseable)
                 # over the past hour — gpumagick may be blocking us or the parser is broken.
