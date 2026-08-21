@@ -51,7 +51,7 @@ spec:
               mountPath: /config
       containers:
         - name: searxng
-          image: ghcr.io/searxng/searxng:2026.1.11-cf74e1d9e
+          image: ghcr.io/searxng/searxng:2026.8.5-1689cb1b5
           ports:
             - containerPort: 8080
               name: http

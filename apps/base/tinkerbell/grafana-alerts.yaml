@@ -1,0 +1,42 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tinkerbell-chat-alerts
+  namespace: tinkerbell-prod
+  labels:
+    app: tinkerbell
+spec:
+  groups:
+    - name: tinkerbell-chat
+      rules:
+        - alert: LLMProviderHighErrorRate
+          expr: rate(llm_requests_total{status="error"}[5m]) / rate(llm_requests_total[5m]) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "LLM provider error rate exceeds 10%"
+
+        - alert: WorkflowStepFailureRate
+          expr: rate(workflow_steps_total{status="failed"}[15m]) / rate(workflow_steps_total[15m]) > 0.2
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Workflow step failure rate exceeds 20%"
+
+        - alert: DailySpendingLimitBreach
+          expr: daily_spending_usd > daily_spending_limit_usd
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "User has exceeded daily spending limit"
+
+        - alert: BackgroundJobUnhealthy
+          expr: time() - last_summary_job_run_timestamp > 600
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Summary background job has not run in over 10 minutes"
