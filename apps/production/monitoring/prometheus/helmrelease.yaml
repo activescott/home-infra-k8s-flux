@@ -384,6 +384,26 @@ spec:
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} connection failures elevated.'
                   description: 'Sustained ETIMEDOUT/ECONNREFUSED/ERR_TUNNEL errors against {{ $labels.proxy }} — could be transient network or a hard-down OxyLabs account.'
+          - name: tinkerbell-log-health
+            rules:
+              # General backstop, not tied to any one failure mode: counts
+              # warn/error/fatal log lines from the tinkerbell app regardless
+              # of cause (fed by the loki.process "default" pipeline's
+              # tinkerbell_app_problem_log_lines_total counter, see
+              # alloy/helmrelease.yaml). Exists alongside the specific
+              # LLMProvider*/Proxy* alerts above so a failure mode that
+              # nobody's instrumented yet still surfaces instead of relying
+              # on someone noticing a clean-looking dashboard. Baseline
+              # measured 2026-08-22: 61 info / 1 warn / 0 error over 24h, so
+              # >3 in an hour is already several times normal.
+              - alert: TinkerbellAppErrorVolumeElevated
+                expr: 'increase(loki_process_custom_tinkerbell_app_problem_log_lines_total[1h]) > 3'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Tinkerbell app logging elevated warn/error/fatal volume.'
+                  description: 'More than 3 warn/error/fatal log lines from the tinkerbell app in the last hour, regardless of type. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level=~"warn|error|fatal".'
           - name: tinkerbell-scrape-health
             rules:
               # Meta-alert: catches the case where /metrics is unreachable
