@@ -4,6 +4,10 @@ resources:
   - app-pv.yaml
   - ../../base/fernfiles/
   - app-ingress-certificate.yaml
+  # /ops/* (kubelet probes, Prometheus metrics) denied at the ingress; those
+  # clients reach the app through the Service instead.
+  - app-ops-middleware.yaml
+  - app-ops-ingress.yaml
   - image-scanning/
   - ../shared/ghcr-pull-secret/
 patches:

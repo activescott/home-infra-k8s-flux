@@ -1,0 +1,33 @@
+# Blocks the app's operator surfaces (/ops/health/*, /ops/metrics) at the
+# ingress. They are unauthenticated by design — kubelet probes cannot carry a
+# credential — so the boundary is the network path instead: everything that
+# arrives through fernfiles.com gets a 403, and the only clients that work are
+# in-cluster ones dialing the Service directly
+# (app.fernfiles-prod.svc.cluster.local:3300), which never traverse Traefik.
+#
+# 127.0.0.1/32 is a deliberate no-op allow-list rather than an attempt to
+# enumerate cluster CIDRs: klipper-lb and Traefik between them make the
+# observed client address unreliable to reason about, and an allow-list that
+# accidentally matched SNAT'd external traffic would silently publish
+# /ops/metrics to the internet. Nothing legitimate needs this path through the
+# ingress, so the safe rule is "deny everything" — see
+# activescott/fernfiles docs/specs/027-active-user-metrics/plan.md.
+#
+# gpupoet blocks its own /ops endpoints differently (apps/base/gpupoet/
+# app-ingress.yaml routes three Exact paths to a nonexistent-service so they
+# black-hole). Two reasons this one does not copy that: it is a prod-only
+# overlay, which keeps /ops reachable in dev and e2e where the app's own e2e
+# suite scrapes /ops/metrics through the ingress; and a Prefix rule covers
+# every operator route added later instead of needing one entry each. Note
+# gpupoet's /ops/metrics is NOT blocked at all today — Prometheus scrapes it
+# over the public hostname.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: fernfiles-ops-deny
+  namespace: fernfiles-prod
+spec:
+  # Traefik 3.x. (2.x called this ipWhiteList; the cluster runs 3.3.6.)
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32

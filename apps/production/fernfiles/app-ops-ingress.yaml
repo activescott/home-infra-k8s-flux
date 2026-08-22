@@ -1,0 +1,32 @@
+# A second Ingress for the same host, carrying only /ops. It exists to attach
+# the deny middleware: annotations are per-Ingress, so the app's main Ingress
+# (path /) cannot gate one prefix differently. Traefik merges rules by host and
+# prefers the longer path match, so /ops/* lands here and everything else keeps
+# using app-ingress.
+#
+# Without this object /ops/metrics would be public at https://fernfiles.com,
+# and public scrapeable endpoints attract bots that poll them forever.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ops-ingress
+  namespace: fernfiles-prod
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: fernfiles-prod-fernfiles-ops-deny@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - fernfiles.com
+      secretName: fernfiles-com-tls
+  rules:
+    - host: fernfiles.com
+      http:
+        paths:
+          - path: /ops
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 3300
