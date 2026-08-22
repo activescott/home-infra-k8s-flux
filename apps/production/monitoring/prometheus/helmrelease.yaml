@@ -288,7 +288,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: >-
-                    fernfiles.com is not answering its health probe. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                    fernfiles.com is not answering its https probe. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
                   description: >-
                     The https probe to {{ $labels.instance }} has failed for 5
                     minutes. Probed from inside the LAN, so this does not rule
@@ -532,8 +532,13 @@ spec:
         scrape_interval: 30s
         scrape_timeout: 15s
         static_configs:
+          # The site root, not a health endpoint: fernfiles.com/ops/* is denied
+          # at the ingress on purpose (app-ops-ingress.yaml), so a probe there
+          # would report the site down. The root is a full SSR render through
+          # ingress, TLS, and the app — a stronger end-to-end signal than the
+          # health route was.
           - targets:
-              - "https://fernfiles.com/health/liveness"
+              - "https://fernfiles.com/"
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
@@ -560,6 +565,18 @@ spec:
         metrics_path: "/metrics"
         static_configs:
           - targets: ["gpu-poet-collector.gpupoet-prod.svc.cluster.local:9100"]
+      # Fernfiles app metrics: unique active users over 1/7/30-day rolling
+      # windows (fernfiles_active_users) plus Node process internals. Must go
+      # over the ClusterIP service — the app's operator routes live under /ops,
+      # which app-ops-ingress.yaml answers 403 for through fernfiles.com. That
+      # also means these counts keep arriving when ingress or TLS is the thing
+      # that broke.
+      - job_name: "fernfiles_app"
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        metrics_path: "/ops/metrics"
+        static_configs:
+          - targets: ["app.fernfiles-prod.svc.cluster.local:3300"]
       - job_name: "tinkerbell_app"
         scrape_interval: 30s
         scrape_timeout: 10s
