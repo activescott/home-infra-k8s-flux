@@ -17,24 +17,43 @@ kubectl_context=nas
 # the goal here is just to make sure at minimum kubectl kustomize processes all the yaml
 check_kustomize() {
   local dir=$1
-  local line_count=$(kubectl --context $kubectl_context kustomize "$dir" --enable-helm | wc -l)
+  local output
+  output=$(kubectl --context $kubectl_context kustomize "$dir" --enable-helm)
+  local line_count=$(echo "$output" | wc -l)
 
-  if [ $line_count -eq 0 ]; then
+  if [ -z "$output" ] || [ $line_count -eq 0 ]; then
     echo "Error: kubectl kustomize produced no output for $dir"
     exit 1
   fi
 
-  if [ $? -ne 0 ]; then
-    echo "Error: kubectl kustomize failed for $dir"
-    exit 1
-  else
-    echo "kustomize succeeded for $dir! Final line count: $line_count"
+  echo "kustomize succeeded for $dir! Final line count: $line_count"
+
+  # stash apps/production's resolved output for check-persistent-mounts.mts below,
+  # so it doesn't need to re-resolve kustomize (and re-fetch remote bases) itself
+  if [ "$dir" = "${repo_dir}/apps/production" ]; then
+    APPS_PRODUCTION_YAML="$output"
   fi
 }
 
 # Check both directories
 check_kustomize "${repo_dir}/apps/production"
 check_kustomize "${repo_dir}/infrastructure/prod/configs"
+
+# check-persistent-mounts.mts is TypeScript run via Node's native type
+# stripping — select the pinned version through nvm rather than assuming the
+# caller's shell already has it (git hooks often run with a minimal PATH).
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  . "$NVM_DIR/nvm.sh"
+  nvm use "$(cat "${repo_dir}/scripts/.nvmrc")" >/dev/null
+else
+  echo "Warning: nvm not found at $NVM_DIR; falling back to system node for check-persistent-mounts.mts" >&2
+fi
+
+echo ""
+echo "$APPS_PRODUCTION_YAML" \
+  | yq -o=json ea '[select(.kind == "StatefulSet" or .kind == "Deployment")]' - \
+  | "${repo_dir}/scripts/check-persistent-mounts.mts"
 
 # Validate webhook receiver configuration (non-blocking, just warns)
 echo ""
