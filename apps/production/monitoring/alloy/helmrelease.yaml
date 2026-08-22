@@ -217,7 +217,7 @@ spec:
             // only via its own source/value fields. A cluster-wide version
             // would need one metric.counter per namespace.
             stage.match {
-              selector = "{namespace=\"tinkerbell-prod\"} | level=~\"warn|error|fatal\""
+              selector = "{namespace=\"tinkerbell-prod\", level=~\"warn|error|fatal\"}"
 
               stage.metrics {
                 metric.counter {
