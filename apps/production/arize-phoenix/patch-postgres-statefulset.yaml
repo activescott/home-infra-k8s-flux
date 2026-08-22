@@ -18,3 +18,20 @@
 - op: add
   path: /spec/volumeClaimTemplates/0/spec/volumeName
   value: arize-phoenix-db-pv-data
+# Fix data-loss bug: upstream mounts the postgres-data PVC at /var/lib/postgresql
+# (the PARENT of PGDATA=/var/lib/postgresql/data), not at PGDATA itself. Because
+# postgres:16.7's Dockerfile declares `VOLUME /var/lib/postgresql/data`, the
+# unmounted PGDATA subpath gets silently backfilled by containerd with a fresh
+# anonymous volume on node-local storage every container start, shadowing the
+# real PVC-backed directory underneath. Every restart = full DB wipe. Confirmed
+# live 2026-08-22 via `kubectl exec postgres-0 -- cat /proc/self/mountinfo`
+# (stacked mounts at /var/lib/postgresql{,/data}, only the parent sourced from
+# the real PV) and empty ZFS snapshots of db-data/data since first deploy.
+# Same safe pattern (mountPath == PGDATA exactly) already used in
+# apps/base/{tinkerbell,fernfiles,ramblefeed}/db-statefulset.yaml, and the
+# kvrocks --dir redirect in apps/production/cvat/redis-ondisk.yaml avoids the
+# identical class of bug. See ../../../docs/specs/arize-phoenix/plan.md and
+# home-infra-private/docs/specs/arize-phoenix-postgres-data-loss/plan.md.
+- op: replace
+  path: /spec/template/spec/containers/0/volumeMounts/0/mountPath
+  value: /var/lib/postgresql/data
