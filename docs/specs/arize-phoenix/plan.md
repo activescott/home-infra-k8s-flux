@@ -250,3 +250,16 @@ Add `- ./arize-phoenix` to the resources list.
      -H "Authorization: Bearer <api-key>"
    ```
 7. **Grafana MCP**: Use `mcp__grafana__query_prometheus` to check Phoenix metrics if Prometheus is scraping it
+
+## Known issues
+
+- **2026-08-22 — postgres data-loss bug, found and fixed.** The upstream
+  `postgres` StatefulSet mounted its PVC at the parent of `PGDATA` instead of
+  at `PGDATA` itself, so the database never actually persisted data since
+  first deploy (every restart silently wiped it). Fixed via a patch in
+  `apps/production/arize-phoenix/patch-postgres-statefulset.yaml`; a
+  repo-wide detector (`scripts/check-persistent-mounts.mts`, wired into the
+  pre-commit hook) now catches this bug class going forward. Full technical
+  writeup, including how it was diagnosed and the private
+  hostnames/paths/timestamps involved, lives in the private companion repo:
+  `home-infra-private/docs/specs/arize-phoenix-postgres-data-loss/plan.md`.

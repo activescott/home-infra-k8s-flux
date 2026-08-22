@@ -206,6 +206,34 @@ spec:
             // pino fields (module, noteId, url, err, etc.) remain queryable
             // with | json in LogQL.
 
+            // General error-volume backstop for tinkerbell: counts ANY
+            // warn/error/fatal log line, not just failure modes someone has
+            // specifically instrumented with a Prometheus counter (see
+            // prometheus/helmrelease.yaml's tinkerbell-log-health group).
+            // Scoped to one namespace via stage.match because
+            // metric.counter has no way to attach the current stream's
+            // labels (namespace, level, ...) to the resulting metric — it
+            // is a single flat counter per metric.counter block, matched
+            // only via its own source/value fields. A cluster-wide version
+            // would need one metric.counter per namespace.
+            stage.match {
+              selector = "{namespace=\"tinkerbell-prod\"} | level=~\"warn|error|fatal\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "tinkerbell_app_problem_log_lines_total"
+                  description = "warn/error/fatal log lines from the tinkerbell app, any failure type"
+                  match_all   = true
+                  action      = "inc"
+
+                  // Default is 5m; baseline is ~1 warn/day, so the default
+                  // would delete the series between occurrences and leave
+                  // increase() with nothing to measure most of the time.
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 
