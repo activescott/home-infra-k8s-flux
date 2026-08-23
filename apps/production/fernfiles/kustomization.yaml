@@ -48,7 +48,7 @@ secretGenerator:
 images:
   - name: fernfiles-image-app
     newName: ghcr.io/activescott/fernfiles/app # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:name"}
-    newTag: v0.54.0 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:tag"}
+    newTag: v0.54.1 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:tag"}
   # Transcode worker (activescott/fernfiles issue #140), built and tagged from
   # the same release as the app image, so the two tags move together. v0.41.0
   # is the release that introduced it — no earlier tag of this image exists.
