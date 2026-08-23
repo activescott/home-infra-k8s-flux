@@ -54,4 +54,4 @@ images:
   # is the release that introduced it — no earlier tag of this image exists.
   - name: fernfiles-image-worker
     newName: ghcr.io/activescott/fernfiles/worker # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:name"}
-    newTag: v0.53.0 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:tag"}
+    newTag: v0.54.0 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:tag"}
