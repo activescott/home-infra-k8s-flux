@@ -48,3 +48,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-tinkerbell
+    namespace: monitoring
+    files:
+      - dashboards/tinkerbell.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
