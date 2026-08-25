@@ -387,23 +387,35 @@ spec:
           - name: tinkerbell-log-health
             rules:
               # General backstop, not tied to any one failure mode: counts
-              # warn/error/fatal log lines from the tinkerbell app regardless
-              # of cause (fed by the loki.process "default" pipeline's
-              # tinkerbell_app_problem_log_lines_total counter, see
-              # alloy/helmrelease.yaml). Exists alongside the specific
-              # LLMProvider*/Proxy* alerts above so a failure mode that
+              # warn and error/fatal log lines from the tinkerbell app
+              # separately (fed by the loki.process "default" pipeline's two
+              # counters, see alloy/helmrelease.yaml). Exists alongside the
+              # specific LLMProvider*/Proxy* alerts above so a failure mode
               # nobody's instrumented yet still surfaces instead of relying
-              # on someone noticing a clean-looking dashboard. Baseline
-              # measured 2026-08-22: 61 info / 1 warn / 0 error over 24h, so
-              # >3 in an hour is already several times normal.
-              - alert: TinkerbellAppErrorVolumeElevated
-                expr: 'increase(loki_process_custom_tinkerbell_app_problem_log_lines_total[1h]) > 3'
+              # on someone noticing a clean-looking dashboard.
+              #
+              # Split into two alerts 2026-08-25 after a single combined
+              # warn+error+fatal counter made TinkerbellAppErrorVolumeElevated
+              # fire on routine warn-level noise (anti-bot retries, empty
+              # search-provider results — ~14/hour is normal), indistinguishable
+              # from an actual error spike. Baseline measured 2026-08-22 (pre-split):
+              # 61 info / 1 warn / 0 error over 24h.
+              - alert: TinkerbellAppWarnVolumeElevated
+                expr: 'increase(loki_process_custom_tinkerbell_app_warn_log_lines_total[1h]) > 3'
                 for: 10m
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'Tinkerbell app logging elevated warn/error/fatal volume.'
-                  description: 'More than 3 warn/error/fatal log lines from the tinkerbell app in the last hour, regardless of type. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level=~"warn|error|fatal".'
+                  summary: 'Tinkerbell app logging elevated warn volume.'
+                  description: 'More than 3 warn-level log lines from the tinkerbell app in the last hour. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level="warn".'
+              - alert: TinkerbellAppErrorVolumeElevated
+                expr: 'increase(loki_process_custom_tinkerbell_app_error_log_lines_total[1h]) > 3'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Tinkerbell app logging elevated error/fatal volume.'
+                  description: 'More than 3 error/fatal log lines from the tinkerbell app in the last hour. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level=~"error|fatal".'
           - name: tinkerbell-scrape-health
             rules:
               # Meta-alert: catches the case where /metrics is unreachable

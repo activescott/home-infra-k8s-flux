@@ -206,29 +206,50 @@ spec:
             // pino fields (module, noteId, url, err, etc.) remain queryable
             // with | json in LogQL.
 
-            // General error-volume backstop for tinkerbell: counts ANY
-            // warn/error/fatal log line, not just failure modes someone has
-            // specifically instrumented with a Prometheus counter (see
+            // General log-volume backstop for tinkerbell: counts ANY
+            // warn/fatal-or-error log line, not just failure modes someone
+            // has specifically instrumented with a Prometheus counter (see
             // prometheus/helmrelease.yaml's tinkerbell-log-health group).
-            // Scoped to one namespace via stage.match because
-            // metric.counter has no way to attach the current stream's
-            // labels (namespace, level, ...) to the resulting metric — it
-            // is a single flat counter per metric.counter block, matched
-            // only via its own source/value fields. A cluster-wide version
-            // would need one metric.counter per namespace.
+            // Split into two separate metric.counter blocks (warn vs
+            // error/fatal) so they back two independently-alertable series
+            // (TinkerbellAppWarnVolumeElevated vs
+            // TinkerbellAppErrorVolumeElevated) — a single combined counter
+            // made the "Error" alert fire on routine warn-level noise
+            // (anti-bot retries, empty provider results), indistinguishable
+            // from real errors. Despite each stage.match being scoped to one
+            // selector, metric.counter under match_all still inherits the
+            // ambient stream labels present at this point in the pipeline
+            // (namespace, level, pod, node, ...) — confirmed empirically via
+            // `ALERTS{alertname=...}` showing per-pod/per-level series, not
+            // a single flat counter as originally assumed. A cluster-wide
+            // version would still need one pair of counters per namespace.
             stage.match {
-              selector = "{namespace=\"tinkerbell-prod\", level=~\"warn|error|fatal\"}"
+              selector = "{namespace=\"tinkerbell-prod\", level=\"warn\"}"
 
               stage.metrics {
                 metric.counter {
-                  name        = "tinkerbell_app_problem_log_lines_total"
-                  description = "warn/error/fatal log lines from the tinkerbell app, any failure type"
+                  name        = "tinkerbell_app_warn_log_lines_total"
+                  description = "warn-level log lines from the tinkerbell app"
                   match_all   = true
                   action      = "inc"
 
-                  // Default is 5m; baseline is ~1 warn/day, so the default
+                  // Default is 5m; baseline is low-volume, so the default
                   // would delete the series between occurrences and leave
                   // increase() with nothing to measure most of the time.
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
+            stage.match {
+              selector = "{namespace=\"tinkerbell-prod\", level=~\"error|fatal\"}"
+
+              stage.metrics {
+                metric.counter {
+                  name        = "tinkerbell_app_error_log_lines_total"
+                  description = "error/fatal log lines from the tinkerbell app"
+                  match_all   = true
+                  action      = "inc"
                   max_idle_duration = "24h"
                 }
               }
