@@ -18,8 +18,3 @@ resources:
   - zones/productpoet.com.yaml
   - zones/ramblefeed.com.yaml
   - zones/tinkerbellbot.com.yaml
-  # Email Routing rules, one file per zone. Kept out of zones/ because these are ordinary
-  # managed resources, not records fanned out through the DNSZone composition.
-  - email-routing/fernfiles.com.yaml
-  - email-routing/ramblefeed.com.yaml
-  - email-routing/tinkerbellbot.com.yaml
