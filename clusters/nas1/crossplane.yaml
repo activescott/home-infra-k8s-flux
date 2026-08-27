@@ -64,3 +64,31 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
+---
+# Cloudflare DNS records as Crossplane managed resources. Separate from
+# crossplane-config so a DNS change never waits on, or is blocked by, the
+# provider/credential stage above it.
+#
+# `prune: true` is deliberate and load-bearing: removing a record's manifest from
+# git is how that record gets deleted from Cloudflare. Git history is the recovery
+# path.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-dns
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  dependsOn:
+    - name: crossplane-config
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/prod/dns
+  prune: true
+  # Managed resources carry a standard `Ready` condition, so kstatus can evaluate
+  # them and this wait is meaningful -- unlike the Provider resource in the stage
+  # above, whose Installed/Healthy conditions kstatus cannot read and reports as
+  # healthy regardless.
+  wait: true
+  timeout: 5m0s
