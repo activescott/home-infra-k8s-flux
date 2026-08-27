@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./namespace.yaml
+  - ./providerconfig.yaml
+
+secretGenerator:
+  # Fixed name (no hash suffix): providerconfig.yaml references it by name, and a hash suffix
+  # would break that reference on every rotation.
+  #
+  # The generator KEY selects the SOPS format kustomize-controller uses to decrypt --
+  # "credentials.json" -> json. Do not rename the key without regenerating the .encrypted file
+  # accordingly; see scripts/create-cloudflare-credentials.sh.
+  - name: cloudflare-credentials
+    namespace: cloudflare
+    files:
+      - credentials.json=cloudflare-credentials.json.encrypted
+    options:
+      disableNameSuffixHash: true
+
+buildMetadata: [originAnnotations, transformerAnnotations]

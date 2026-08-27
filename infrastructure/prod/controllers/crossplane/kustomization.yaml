@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Crossplane core only. The Provider CR and the ProviderConfig are deliberately in sibling
+# directories reconciled by separate Flux Kustomizations, because each stage installs the CRDs
+# the next stage needs:
+#   crossplane            -> installs the pkg.crossplane.io CRDs (Provider, etc.)
+#   crossplane-providers  -> the Provider CR installs the cloudflare.m.crossplane.io CRDs
+#   crossplane-config     -> ProviderConfig, which is one of those CRDs
+# Applying them together would fail on first run with "no matches for kind".
+# See clusters/nas1/crossplane.yaml for the dependsOn chain.
+resources:
+  - ./namespace.yaml
+  - ./helmrepository.yaml
+  - ./helmrelease.yaml
+
+buildMetadata: [originAnnotations, transformerAnnotations]

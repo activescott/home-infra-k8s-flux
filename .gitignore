@@ -7,10 +7,16 @@
 # dockeronfigjson files contain secrets (*.dockeronfigjson.encrypted are okay)
 *.dockeronfigjson
 
+# Plaintext JSON credential files produced by scripts/create-*-credentials.sh. The scripts
+# delete them after encrypting, but a failed run would otherwise leave a committable secret
+# behind. Covers zot-sync-credentials.json and cloudflare-credentials.json.
+*credentials.json
+
 # these are encrypted .env secrets encrypted with SOPS+age
 !.env.*.encrypted
 # these are other files encrypted with SOPS+age
 !*.dockeronfigjson.encrypted
+!*credentials.json.encrypted
 
 # age key files cannot be committed:
 *.agekey

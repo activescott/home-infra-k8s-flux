@@ -1,0 +1,29 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: crossplane
+  namespace: crossplane-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: crossplane
+      # v2.x is required for namespaced managed resources (the *.m.crossplane.io API
+      # groups). The cluster-scoped v1-style groups also exist in the provider, but this
+      # repo deliberately uses the namespaced form so Cloudflare resources live in a real
+      # namespace instead of a global bucket.
+      version: "2.4.0"
+      sourceRef:
+        kind: HelmRepository
+        name: crossplane-stable
+        namespace: crossplane-system
+      interval: 24h
+  install:
+    # Provider images are large and this is a single-node cluster on a home connection;
+    # the first pull can take a while.
+    timeout: 15m
+  upgrade:
+    timeout: 15m
+  values:
+    # Single-node cluster - a second replica could never be scheduled anyway.
+    replicas: 1

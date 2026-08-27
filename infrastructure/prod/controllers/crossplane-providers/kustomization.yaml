@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Provider CRs only. Installing a Provider creates a ProviderRevision which in turn installs
+# that provider's CRDs; anything using those CRDs belongs in crossplane-config, one stage later.
+resources:
+  - ./provider-cloudflare.yaml
+
+buildMetadata: [originAnnotations, transformerAnnotations]

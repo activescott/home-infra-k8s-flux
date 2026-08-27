@@ -1,0 +1,66 @@
+# Crossplane gets its own Kustomization chain rather than being folded into infra-configs,
+# for two reasons:
+#
+#  1. Ordering. Each stage installs CRDs the next stage needs (core -> Provider -> ProviderConfig).
+#     A single Kustomization would fail its first apply with "no matches for kind".
+#  2. Timeouts. infra-configs and apps both use `wait: true, timeout: 5m0s`. Pulling the
+#     Crossplane provider image on a single-node home connection can exceed that, and a slow
+#     provider pull should not mark the whole of infra-configs unhealthy.
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  dependsOn:
+    - name: infra-configs
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/prod/controllers/crossplane
+  prune: true
+  wait: true
+  timeout: 15m0s
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-providers
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  dependsOn:
+    - name: crossplane
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/prod/controllers/crossplane-providers
+  prune: true
+  wait: true
+  # Provider images are large and this stage also waits for the ProviderRevision to install
+  # 251 CRDs.
+  timeout: 15m0s
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-config
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  dependsOn:
+    - name: crossplane-providers
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/prod/controllers/crossplane-config
+  prune: true
+  wait: true
+  timeout: 5m0s
+  # https://fluxcd.io/flux/components/kustomize/api/v1/#kustomize.toolkit.fluxcd.io/v1.Decryption
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

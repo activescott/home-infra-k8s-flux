@@ -1,0 +1,16 @@
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-upjet-cloudflare
+spec:
+  # Generated from the Cloudflare Terraform provider via upjet. The package itself is young
+  # (v0.1.0), but the resource handling underneath is the mature Terraform provider.
+  #
+  # Ships 251 CRDs. Relevant here: dnsrecords, zones, zonesettings, and the full email routing
+  # set (emailroutingrules / -addresses / -catchalls / -settings / -dnses).
+  #
+  # NOT covered: Cloudflare Email *Sending*. There is no CRD for it, because the upstream
+  # Terraform provider has no resource for it -- so onboarding a sending domain stays a manual
+  # dashboard step. Verified by enumerating the package; details in the private repo's
+  # docs/specs/email-infrastructure/.
+  package: xpkg.crossplane.io/crossplane-contrib/provider-upjet-cloudflare:v0.1.0
