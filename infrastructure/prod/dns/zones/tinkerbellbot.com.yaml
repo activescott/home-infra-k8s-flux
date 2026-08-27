@@ -1,0 +1,61 @@
+# Generated from the Cloudflare export by scripts/generate-dnszones.sh.
+#
+# Every record carries `adopt`, its existing Cloudflare record ID, so Crossplane
+# takes over the live record instead of creating a duplicate beside it. Once a zone
+# is adopted and stable, `adopt` can be dropped -- Crossplane tracks the ID itself
+# from then on.
+#
+# `key` is this record's identity. Changing one deletes the record and creates a
+# new one; edit `content` to change a record in place. See
+# infrastructure/prod/controllers/crossplane-config/dnszone/README.md.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: tinkerbellbot-com
+  namespace: cloudflare
+spec:
+  zoneId: de97633dfb5edea4c5d5e63d13fd6a84
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: apex-cname
+      name: tinkerbellbot.com
+      type: CNAME
+      adopt: 6e6348061313f7feabbafebc06e43af2
+      ttl: 1
+      proxied: true
+      content: k8s.activescott.com
+    - key: apex-mx-1
+      name: tinkerbellbot.com
+      type: MX
+      adopt: 4f7b6da7f34519d9547d58c0a8beec04
+      ttl: 1
+      priority: 15
+      content: route3.mx.cloudflare.net
+    - key: apex-mx-2
+      name: tinkerbellbot.com
+      type: MX
+      adopt: 64ffeaf2241d171a0ef2470f45dcbc62
+      ttl: 1
+      priority: 26
+      content: route1.mx.cloudflare.net
+    - key: apex-mx-3
+      name: tinkerbellbot.com
+      type: MX
+      adopt: dad16d3cf14362f5c6cc08bc9b70b806
+      ttl: 1
+      priority: 68
+      content: route2.mx.cloudflare.net
+    - key: apex-txt
+      name: tinkerbellbot.com
+      type: TXT
+      adopt: 2084398bda19b8c1854a5f94c335c15d
+      ttl: 1
+      content: '"v=spf1 include:_spf.mx.cloudflare.net ~all"'
+    - key: cf2024-1-domainkey-txt
+      name: cf2024-1._domainkey.tinkerbellbot.com
+      type: TXT
+      adopt: 466cdd7356173f4e3b022262ac81010d
+      ttl: 1
+      content: '"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78k" "m4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB"'

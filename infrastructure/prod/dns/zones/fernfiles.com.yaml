@@ -1,0 +1,60 @@
+# Generated from the Cloudflare export by scripts/generate-dnszones.sh.
+#
+# Every record carries `adopt`, its existing Cloudflare record ID, so Crossplane
+# takes over the live record instead of creating a duplicate beside it. Once a zone
+# is adopted and stable, `adopt` can be dropped -- Crossplane tracks the ID itself
+# from then on.
+#
+# `key` is this record's identity. Changing one deletes the record and creates a
+# new one; edit `content` to change a record in place. See
+# infrastructure/prod/controllers/crossplane-config/dnszone/README.md.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: fernfiles-com
+  namespace: cloudflare
+spec:
+  zoneId: dad431388d3f4e6e76b5bcbeac28d56a
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: apex-cname
+      name: fernfiles.com
+      type: CNAME
+      adopt: 2a1fff0fa09098e4d4526878b4ac58d8
+      ttl: 1
+      content: k8s.activescott.com
+    - key: apex-mx-1
+      name: fernfiles.com
+      type: MX
+      adopt: 2b07f7fddd6e3bcd8cb980cbd5dc0357
+      ttl: 1
+      priority: 22
+      content: route2.mx.cloudflare.net
+    - key: apex-mx-2
+      name: fernfiles.com
+      type: MX
+      adopt: a2233e3b1de7dafe889b756332621ac9
+      ttl: 1
+      priority: 1
+      content: route3.mx.cloudflare.net
+    - key: apex-mx-3
+      name: fernfiles.com
+      type: MX
+      adopt: daee9b4e6948e9f2edbb3882582bfe7e
+      ttl: 1
+      priority: 53
+      content: route1.mx.cloudflare.net
+    - key: apex-txt
+      name: fernfiles.com
+      type: TXT
+      adopt: b520a1ada4b5ed48dd730324854a2dff
+      ttl: 1
+      content: '"v=spf1 include:_spf.mx.cloudflare.net ~all"'
+    - key: cf2024-1-domainkey-txt
+      name: cf2024-1._domainkey.fernfiles.com
+      type: TXT
+      adopt: 2c4c795a95726e12b4aa4adacef505fe
+      ttl: 1
+      content: '"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78k" "m4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB"'
