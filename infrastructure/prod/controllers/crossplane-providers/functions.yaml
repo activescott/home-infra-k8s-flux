@@ -1,0 +1,27 @@
+# Composition functions. Installed like Providers -- Crossplane's package manager
+# pulls the OCI package and runs each as a long-running gRPC Deployment in
+# crossplane-system. Nothing here is code we author: the only thing we write is the
+# Go template, which lives as data inside the Composition.
+#
+# Both are upstream crossplane-contrib packages, pinned rather than floating so a
+# rendering change never arrives unannounced -- these render live DNS.
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-go-templating
+spec:
+  # Fans a DNSZone's record list out into one DNSRecord per entry. Classic
+  # patch-and-transform cannot do this: its resource list is static, with no
+  # iteration.
+  package: xpkg.crossplane.io/crossplane-contrib/function-go-templating:v0.12.4
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-auto-ready
+spec:
+  # Marks the XR Ready once its composed resources are Ready. Without this the
+  # DNSZone's Ready condition never flips, and the crossplane-dns Kustomization's
+  # `wait: true` would time out on every apply even when every record is fine.
+  package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.6.0

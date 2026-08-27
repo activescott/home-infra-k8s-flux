@@ -1,0 +1,87 @@
+# DNSZone: one manifest per Cloudflare zone, listing that zone's records, instead
+# of one file per record. The Composition fans each entry out into a DNSRecord
+# managed resource.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: dnszones.dns.activescott.com
+spec:
+  # Namespaced so a DNSZone sits in the `cloudflare` namespace alongside the
+  # ProviderConfig and credentials, and composes namespaced DNSRecords there.
+  scope: Namespaced
+  group: dns.activescott.com
+  names:
+    kind: DNSZone
+    plural: dnszones
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                zoneId:
+                  type: string
+                  description: Cloudflare zone identifier. Written once per zone rather than repeated on every record.
+                providerConfigName:
+                  type: string
+                  default: default
+                defaults:
+                  type: object
+                  description: Applied to any record that does not set the field itself.
+                  properties:
+                    ttl:
+                      type: integer
+                      default: 300
+                    proxied:
+                      type: boolean
+                      default: false
+                  default: {}
+                records:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      key:
+                        type: string
+                        description: >-
+                          Stable, zone-unique identity for this record. It becomes the
+                          composed resource name, so CHANGING IT DELETES AND RECREATES
+                          THE RECORD. It exists because the obvious alternatives are
+                          unsafe: a list index shifts every record below an insertion,
+                          and name+type is not unique (an apex can hold several TXT
+                          records, a zone several MX). Choose something descriptive and
+                          then leave it alone -- editing `content` is what updates a
+                          record in place.
+                        pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+                      name:
+                        type: string
+                        description: Record name, or "@" for the zone apex.
+                      type:
+                        type: string
+                        enum: [A, AAAA, CNAME, MX, TXT, SRV, CAA, NS, PTR]
+                      content:
+                        type: string
+                      ttl:
+                        type: integer
+                      proxied:
+                        type: boolean
+                      priority:
+                        type: integer
+                        description: Required for MX and SRV.
+                      comment:
+                        type: string
+                      adopt:
+                        type: string
+                        description: >-
+                          Existing Cloudflare record ID, set only when bringing a record
+                          that already exists under management. Becomes
+                          crossplane.io/external-name, so Crossplane adopts the record
+                          instead of creating a duplicate. Remove it once adopted; it is
+                          then redundant, since Crossplane records the ID itself.
+                    required: [key, name, type, content]
+              required: [zoneId, records]

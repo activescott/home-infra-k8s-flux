@@ -3,6 +3,9 @@ kind: Kustomization
 resources:
   - ./namespace.yaml
   - ./providerconfig.yaml
+  # The DNSZone API -- see ./dnszone/README.md. Crossplane creates its CRD from the
+  # XRD, so DNSZone instances belong one stage later, in crossplane-dns.
+  - ./dnszone
 
 secretGenerator:
   # Fixed name (no hash suffix): providerconfig.yaml references it by name, and a hash suffix

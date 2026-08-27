@@ -1,8 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# Provider CRs only. Installing a Provider creates a ProviderRevision which in turn installs
-# that provider's CRDs; anything using those CRDs belongs in crossplane-config, one stage later.
+# Package CRs only -- Providers and Functions. Installing a Provider creates a
+# ProviderRevision which in turn installs that provider's CRDs; anything using those CRDs
+# belongs in crossplane-config, one stage later. Functions live here for the same reason:
+# the Compositions that call them are in the next stage and need them already running.
 resources:
   - ./provider-cloudflare.yaml
+  - ./functions.yaml
 
 buildMetadata: [originAnnotations, transformerAnnotations]

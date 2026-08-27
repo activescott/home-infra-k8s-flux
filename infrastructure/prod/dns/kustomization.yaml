@@ -1,0 +1,12 @@
+# Cloudflare DNS: one file per zone under zones/, each a DNSZone listing that
+# zone's records. The DNSZone API is defined in
+# ../controllers/crossplane-config/dnszone/ -- read its README before editing a
+# zone file, particularly the part about `key` being load-bearing.
+#
+# Kustomize does not expand globs, so each zone file is listed explicitly. That is
+# a feature here: adding a zone to DNS is a visible line in a diff, not a
+# side effect of creating a file.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - zones/productpoet.com.yaml

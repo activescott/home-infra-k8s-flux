@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Order matters on a first apply: the Composition references the composite type the
+# XRD defines. Kustomize preserves this order, and Crossplane retries regardless.
+resources:
+  - xrd.yaml
+  - composition.yaml

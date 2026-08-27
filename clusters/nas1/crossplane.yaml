@@ -64,12 +64,31 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
+---
+# Cloudflare DNS, as DNSZone composite resources. Separate from crossplane-config so
+# a DNS change never waits on, or is blocked by, the provider/credential stage.
 #
-# Phase 3 re-adds a `crossplane-dns` Kustomization here for
-# ./infrastructure/prod/dns, depending on crossplane-config so a DNS change never
-# waits on the provider and credential stage. Verified 2026-08-27 against a
-# throwaway record on productpoet.com: `prune: true` on that stage means removing
-# a manifest from git deletes the real record at Cloudflare, and `wait: true` is
-# meaningful there because managed resources carry a standard `Ready` condition
-# that kstatus can evaluate -- unlike the Provider resource above, whose
-# Installed/Healthy conditions kstatus cannot read and reports green regardless.
+# `prune: true` is deliberate and load-bearing: removing a record from a DNSZone --
+# or removing the DNSZone itself -- is how a record gets deleted from Cloudflare.
+# Git history is the recovery path. Verified end to end 2026-08-27 on productpoet.com.
+#
+# `wait: true` is meaningful here, unlike the Provider resource in the stage above
+# whose Installed/Healthy conditions kstatus cannot read and reports green
+# regardless. A DNSZone carries a standard `Ready` condition, which the
+# Composition's function-auto-ready step flips once every composed record is Ready.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-dns
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  dependsOn:
+    - name: crossplane-config
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/prod/dns
+  prune: true
+  wait: true
+  timeout: 5m0s

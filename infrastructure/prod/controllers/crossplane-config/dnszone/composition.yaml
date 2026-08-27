@@ -1,0 +1,56 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: dnszone-cloudflare
+spec:
+  compositeTypeRef:
+    apiVersion: dns.activescott.com/v1alpha1
+    kind: DNSZone
+  mode: Pipeline
+  pipeline:
+    - step: render-records
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $zone := .observed.composite.resource -}}
+            {{- $defaults := $zone.spec.defaults | default dict -}}
+            {{- range $record := $zone.spec.records }}
+            ---
+            apiVersion: dns.cloudflare.m.cloudflare.com/v1alpha1
+            kind: DNSRecord
+            metadata:
+              annotations:
+                # Identity of this composed resource. Sourced from the record's `key`
+                # rather than the loop index: an index shifts for every record below an
+                # insertion, which Crossplane reads as "these resources were replaced"
+                # and acts on by deleting and recreating the real DNS records.
+                gotemplating.fn.crossplane.io/composition-resource-name: {{ $record.key }}
+                {{- with $record.adopt }}
+                crossplane.io/external-name: {{ . | quote }}
+                {{- end }}
+            spec:
+              providerConfigRef:
+                kind: ProviderConfig
+                name: {{ $zone.spec.providerConfigName | default "default" }}
+              forProvider:
+                zoneId: {{ $zone.spec.zoneId | quote }}
+                name: {{ $record.name | quote }}
+                type: {{ $record.type | quote }}
+                content: {{ $record.content | quote }}
+                ttl: {{ $record.ttl | default $defaults.ttl | default 300 }}
+                proxied: {{ if hasKey $record "proxied" }}{{ $record.proxied }}{{ else }}{{ $defaults.proxied | default false }}{{ end }}
+                {{- with $record.priority }}
+                priority: {{ . }}
+                {{- end }}
+                {{- with $record.comment }}
+                comment: {{ . | quote }}
+                {{- end }}
+            {{- end }}
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready

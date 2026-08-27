@@ -1,0 +1,26 @@
+# productpoet.com is a parked domain used to prove the tooling before it touches a
+# zone anything depends on. Its real apex TXT (a Sedo verification record) is
+# deliberately NOT listed here yet -- adopting it is a later, separate step, so a
+# mistake in this file cannot reach it.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: productpoet-com
+  namespace: cloudflare
+spec:
+  zoneId: 467a5ad3fda60cfde71636fd7447e733
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: composition-probe-one
+      name: probe-one.productpoet.com
+      type: TXT
+      content: composition probe one
+      comment: Phase 3 composition probe; safe to delete
+    - key: composition-probe-two
+      name: probe-two.productpoet.com
+      type: TXT
+      content: composition probe two
+      ttl: 600
+      comment: Phase 3 composition probe; safe to delete
