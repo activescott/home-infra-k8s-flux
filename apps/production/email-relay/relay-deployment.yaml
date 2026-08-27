@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+  namespace: email-relay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: relay
+  strategy:
+    # Recreate, not RollingUpdate: two Postfix instances would briefly share nothing but
+    # would both accept mail, and the outgoing one's queue is an emptyDir that vanishes
+    # with the pod. One at a time keeps the queue's lifetime equal to the pod's.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: relay
+    spec:
+      containers:
+        - name: postfix
+          image: boky/postfix:v5.1.0
+          ports:
+            - name: submission
+              containerPort: 587
+          env:
+            # Cloudflare Email Sending offers submission on 465 with implicit TLS only.
+            # Plaintext, STARTTLS on 587, and unauthenticated relay on 25 are all refused,
+            # so wrappermode is required rather than optional.
+            - name: RELAYHOST
+              value: "[smtp.mx.cloudflare.net]:465"
+            - name: POSTFIX_smtp_tls_wrappermode
+              value: "yes"
+            - name: POSTFIX_smtp_tls_security_level
+              value: encrypt
+            # Cloudflare authenticates the account, not a mailbox: the username is the
+            # literal string api_token and the password is an API token with
+            # Account -> Email Sending -> Edit.
+            - name: RELAYHOST_USERNAME
+              value: api_token
+            - name: RELAYHOST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: relay-creds
+                  key: RELAYHOST_PASSWORD
+
+            # Which domains may appear in a From address at all. Every one is onboarded to
+            # Email Sending; Cloudflare would reject anything else, this just fails it here
+            # with a legible error instead. productpoet.com is the throwaway test domain.
+            - name: ALLOWED_SENDER_DOMAINS
+              value: fernfiles.com ramblefeed.com tinkerbellbot.com productpoet.com
+
+            # Pod IPs come out of 172.16.0.0/16, which sits inside the 172.16.0.0/12 that
+            # this image trusts by default -- that would let every pod in the cluster relay
+            # unauthenticated. Narrowing mynetworks to loopback forces SASL for everything.
+            - name: POSTFIX_mynetworks
+              value: 127.0.0.0/8
+            - name: POSTFIX_smtpd_relay_restrictions
+              value: permit_sasl_authenticated,reject
+
+            # Each app authenticates as itself and may only use its own domain's sender, so
+            # a compromised fernfiles cannot send as ramblefeed. The keys are the `@domain`
+            # form, which postfix documents as the lowest-precedence lookup for a sender
+            # address and is what makes any local part work: `privacy@fernfiles.com` and
+            # `noreply@fernfiles.com` both resolve to the same owner. A bare `fernfiles.com`
+            # key is NOT a form postfix looks up and would reject every message.
+            - name: POSTFIX_smtpd_sender_login_maps
+              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @productpoet.com=test@relay.local}"
+            - name: POSTFIX_smtpd_sender_restrictions
+              value: reject_sender_login_mismatch,reject_unknown_sender_domain
+            - name: SMTPD_SASL_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: relay-creds
+                  key: SMTPD_SASL_USERS
+
+            # No STARTTLS on the submission side, and SASL allowed without it. The
+            # alternative is a self-signed cert, which nodemailer -- what all three apps use
+            # -- would refuse on upgrade unless every app set rejectUnauthorized false, i.e.
+            # a code change in three repos to get encryption that authenticates nothing.
+            # This hop is pod to pod inside one node; the hop that leaves the machine is
+            # relay -> Cloudflare, which is implicit TLS and required, not opportunistic.
+            # Revisit if the relay ever accepts traffic from outside the cluster.
+            - name: POSTFIX_smtpd_tls_security_level
+              value: none
+            - name: POSTFIX_smtpd_tls_auth_only
+              value: "no"
+
+            - name: TZ
+              value: US/Pacific
+          volumeMounts:
+            # Postfix's queue. Deliberately not persisted: Cloudflare accepts or rejects
+            # within the connection, so the queue is empty except during an outage, and a
+            # PV here would outlive the failure it exists for. The cost is that mail
+            # deferred at the moment of a restart is lost -- acceptable for sign-in codes,
+            # which the user simply requests again, and the reason delivery failures are
+            # alerted on rather than silently retried forever.
+            - name: spool
+              mountPath: /var/spool/postfix
+      volumes:
+        - name: spool
+          emptyDir: {}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: relay
+  namespace: email-relay
+spec:
+  selector:
+    app: relay
+  ports:
+    # Submission only. Port 25 is never exposed: nothing here talks to a recipient MX
+    # directly, and Ziply blocks outbound 25 anyway.
+    - name: submission
+      port: 587
+      targetPort: 587
+      protocol: TCP
