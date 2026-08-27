@@ -24,8 +24,3 @@ spec:
       ttl: 1
       comment: for sedo.com
       adopt: ed29a28dd4103a5304cd9c9736e33b36
-    - key: composition-probe-one
-      name: probe-one.productpoet.com
-      type: TXT
-      content: composition probe one
-      comment: Phase 3 composition probe; safe to delete
