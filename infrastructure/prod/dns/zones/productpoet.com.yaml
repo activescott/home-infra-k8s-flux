@@ -24,3 +24,14 @@ spec:
       ttl: 1
       comment: for sedo.com
       adopt: ed29a28dd4103a5304cd9c9736e33b36
+    # Created before this zone is onboarded to Email Sending, deliberately. Onboarding makes
+    # Cloudflare write its own _dmarc record at p=reject, and the records Email Service
+    # manages are locked; only Email Routing's root-domain records can ever be unlocked
+    # (developers.cloudflare.com/email-service/configuration/domains/). Whether an existing
+    # DMARC record survives onboarding decides who can own this record on the real sending
+    # domains, so it is established here first and re-read afterwards.
+    - key: dmarc-txt
+      name: _dmarc.productpoet.com
+      type: TXT
+      content: v=DMARC1; p=none; rua=mailto:dmarc@productpoet.com
+      comment: probe -- does Email Sending onboarding overwrite an existing DMARC record?
