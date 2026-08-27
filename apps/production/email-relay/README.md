@@ -50,28 +50,37 @@ kubectl --context nas -n email-relay exec deploy/relay -- postqueue -p     # que
 kubectl --context nas -n email-relay exec deploy/relay -- postconf -n      # effective config
 ```
 
-**`productpoet.com` cannot be used as a test sender**, despite being onboarded. It is parked
-with no A and no MX at the apex, so `reject_unknown_sender_domain` refuses it before the relay
-ever dials Cloudflare:
+## Testing
+
+`./send-test-email.sh` sends through the relay the way an application does — authenticated
+submission on 587, not a local `sendmail` injection, which would bypass SASL and
+`smtpd_sender_login_maps` and prove nothing about access control. The python it pipes in runs
+inside the pod and reads the SASL passwords from that container's own environment, so no
+credential reaches your shell or its history.
+
+```bash
+./send-test-email.sh you@example.com                  # as noreply@fernfiles.com
+./send-test-email.sh you@example.com ramblefeed       # or tinkerbell
+./send-test-email.sh --access-checks you@example.com  # all three controls, exit 1 on regression
+```
+
+The access-check mode is the useful one after any config change. Two of its three cases must
+be *refused*; an acceptance there is a regression and exits non-zero:
+
+```
+[ok] own domain accepted: accepted
+[ok] other domain refused: 553 5.7.1 <noreply@ramblefeed.com>: Sender address rejected: not owned by user fernfiles@relay.local
+[ok] bad password refused: 535 5.7.8 Error: authentication failed
+```
+
+A delivered message logs `status=sent (250 2.0.0 Ok <...@fernfiles.com>)`. Read the received
+headers at the far end to confirm the auth chain: expect `dkim=pass header.i=@<domain>
+header.s=cf-bounce`, `spf=pass`, and `dmarc=pass`.
+
+**`productpoet.com` cannot be used as a test sender**, despite being onboarded for Email
+Sending. It is parked with no A and no MX at the apex, so `reject_unknown_sender_domain`
+refuses it before the relay ever dials Cloudflare:
 
 ```
 450 4.1.8 <noreply@productpoet.com>: Sender address rejected: Domain not found
 ```
-
-Test with a real sending domain instead. The relay reads its own SASL passwords from its
-environment, so a test needs no credentials on the outside:
-
-```bash
-kubectl --context nas -n email-relay exec -i deploy/relay -- python3 - <<'PY'
-import os, smtplib
-users = dict(p.split(":", 1) for p in os.environ["SMTPD_SASL_USERS"].split(","))
-u = "fernfiles@relay.local"
-with smtplib.SMTP("127.0.0.1", 587, timeout=30) as s:
-    s.login(u, users[u])
-    s.sendmail("noreply@fernfiles.com", ["you@example.com"],
-               "From: noreply@fernfiles.com\r\nTo: you@example.com\r\n"
-               "Subject: relay test\r\n\r\nbody\r\n")
-PY
-```
-
-A successful delivery logs `status=sent (250 2.0.0 Ok <...@fernfiles.com>)`.
