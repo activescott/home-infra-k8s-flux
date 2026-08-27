@@ -47,3 +47,28 @@ years. Reference base for WordPress is `apps/base/wordpress-upstream/`.
 Full context: see the top-level `README.md` "Image source rule"
 section and `docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/`
 + `docs/specs/wordpress-micah-mmm-migrate-off-bitnami/`.
+
+## Declare what git does not own
+
+Some things in Cloudflare have a value that something outside git owns and keeps
+rewriting. Leave them out of git and the repo quietly stops describing reality;
+manage them fully and Crossplane fights the real owner on every reconcile, which
+either flaps the record or wedges the resource in an error loop.
+
+The rule: **when something outside git owns a value, git still declares that the
+record exists and who owns it.** Concretely, in a `DNSZone` under
+`infrastructure/prod/dns/zones/`, that is `managementPolicies: ["Observe"]` with
+`content` omitted, plus a comment naming the real owner and why.
+
+Two cases exist today:
+
+- `wan.activescott.com` — ddclient on OPNsense rewrites it on every WAN IP change.
+- The `cf-bounce` records in each zone onboarded to Cloudflare Email Sending. The
+  API returns them with `meta.read_only: true`, and Cloudflare documents Email
+  Sending records on that subdomain as managed by Email Service for the lifetime
+  of the domain configuration — unlike Email Routing's root-domain records, they
+  can never be unlocked.
+
+`content` is omitted deliberately: Crossplane never writes it, the real owner keeps
+changing it, and a value sitting in git would just go stale and mislead the next
+reader into thinking it is authoritative.
