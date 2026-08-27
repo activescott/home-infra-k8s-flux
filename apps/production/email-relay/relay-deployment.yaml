@@ -103,6 +103,20 @@ spec:
             # "Cannot set timezone" and stayed on UTC.
             - name: TZ
               value: America/Los_Angeles
+
+            # Without this, Postfix names itself after the pod, so every recipient saw
+            # `by relay-848c464cc4-k97dm (Postfix)` -- a value that also changes on every
+            # rollout.
+            - name: POSTFIX_myhostname
+              value: relay.email-relay.svc.cluster.local
+
+            # The Received header this relay adds names the calling pod's IP
+            # (`from [172.16.1.53]`), which reaches every recipient and describes internal
+            # topology to anyone who reads a message. Cloudflare adds its own Received
+            # header downstream, so dropping ours costs no traceability outside the
+            # cluster -- and inside it, the postfix log is the record.
+            - name: POSTFIX_header_checks
+              value: "regexp:{{/^Received:/ IGNORE}{/^X-Originating-IP:/ IGNORE}}"
           volumeMounts:
             # Postfix's queue. Deliberately not persisted: Cloudflare accepts or rejects
             # within the connection, so the queue is empty except during an outage, and a
