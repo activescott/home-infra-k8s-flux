@@ -68,3 +68,35 @@ spec:
       name: _dmarc.fernfiles.com
       type: TXT
       content: v=DMARC1; p=none; rua=mailto:dmarc@fernfiles.com
+    # Created by Cloudflare Email Sending when this zone was onboarded, not by us. All five
+    # come back from the API with `meta.read_only: true`, and Cloudflare documents Email
+    # Sending records on the cf-bounce subdomain as staying managed by Email Service for the
+    # lifetime of the domain configuration -- only Email Routing's root-domain records can
+    # ever be unlocked. Declared Observe so git records that they exist and who owns them,
+    # without Crossplane attempting a write the API will refuse. Content is deliberately
+    # omitted: Cloudflare owns the values, including the DKIM key.
+    - key: cf-bounce-mx-route1
+      name: cf-bounce.fernfiles.com
+      type: MX
+      adopt: 82099b41e9721ac99c61e19df8511d09
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route2
+      name: cf-bounce.fernfiles.com
+      type: MX
+      adopt: 35e30f8d5b237f0dea9c98232fce9a29
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route3
+      name: cf-bounce.fernfiles.com
+      type: MX
+      adopt: c7f9f45ff0d9e95e38bac9f93cb02f96
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-spf-txt
+      name: cf-bounce.fernfiles.com
+      type: TXT
+      adopt: 0b581c1583a9febda79fb48cf529d1ab
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-domainkey-txt
+      name: cf-bounce._domainkey.fernfiles.com
+      type: TXT
+      adopt: 1afd063dba6bfdfd0260456837bdced3
+      managementPolicies: ["Observe"]

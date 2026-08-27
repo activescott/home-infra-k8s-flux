@@ -69,3 +69,35 @@ spec:
       name: _dmarc.ramblefeed.com
       type: TXT
       content: v=DMARC1; p=none; rua=mailto:dmarc@ramblefeed.com
+    # Created by Cloudflare Email Sending when this zone was onboarded, not by us. All five
+    # come back from the API with `meta.read_only: true`, and Cloudflare documents Email
+    # Sending records on the cf-bounce subdomain as staying managed by Email Service for the
+    # lifetime of the domain configuration -- only Email Routing's root-domain records can
+    # ever be unlocked. Declared Observe so git records that they exist and who owns them,
+    # without Crossplane attempting a write the API will refuse. Content is deliberately
+    # omitted: Cloudflare owns the values, including the DKIM key.
+    - key: cf-bounce-mx-route1
+      name: cf-bounce.ramblefeed.com
+      type: MX
+      adopt: 8950fc8c501c5a826c85e1e94e25bdc2
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route2
+      name: cf-bounce.ramblefeed.com
+      type: MX
+      adopt: f984a5af9d9d074bb2cae051a624b8d8
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route3
+      name: cf-bounce.ramblefeed.com
+      type: MX
+      adopt: 3dd7e39fc738c7ff7ca1374d735e43e2
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-spf-txt
+      name: cf-bounce.ramblefeed.com
+      type: TXT
+      adopt: c3f19efc5d3b4df2e86a0d81e84de2ae
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-domainkey-txt
+      name: cf-bounce._domainkey.ramblefeed.com
+      type: TXT
+      adopt: c7aa7c9e29a9396f86fbadc182f36877
+      managementPolicies: ["Observe"]

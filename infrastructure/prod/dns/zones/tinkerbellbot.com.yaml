@@ -69,3 +69,35 @@ spec:
       name: _dmarc.tinkerbellbot.com
       type: TXT
       content: v=DMARC1; p=none; rua=mailto:dmarc@tinkerbellbot.com
+    # Created by Cloudflare Email Sending when this zone was onboarded, not by us. All five
+    # come back from the API with `meta.read_only: true`, and Cloudflare documents Email
+    # Sending records on the cf-bounce subdomain as staying managed by Email Service for the
+    # lifetime of the domain configuration -- only Email Routing's root-domain records can
+    # ever be unlocked. Declared Observe so git records that they exist and who owns them,
+    # without Crossplane attempting a write the API will refuse. Content is deliberately
+    # omitted: Cloudflare owns the values, including the DKIM key.
+    - key: cf-bounce-mx-route1
+      name: cf-bounce.tinkerbellbot.com
+      type: MX
+      adopt: 2243900cc32d5b5713c413ab0ab2182e
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route2
+      name: cf-bounce.tinkerbellbot.com
+      type: MX
+      adopt: b774c20e1c641fc7d61cb02dd9a13711
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route3
+      name: cf-bounce.tinkerbellbot.com
+      type: MX
+      adopt: d4107cb1894c1b431aa570842a04a34e
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-spf-txt
+      name: cf-bounce.tinkerbellbot.com
+      type: TXT
+      adopt: 52f5f8631989a7a23370d00135d8460f
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-domainkey-txt
+      name: cf-bounce._domainkey.tinkerbellbot.com
+      type: TXT
+      adopt: 3974ab44207fb9bd407966cb061431f3
+      managementPolicies: ["Observe"]
