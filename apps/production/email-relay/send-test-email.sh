@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Send a test message through the relay, or check that its access controls still hold.
+# Send a test message through the relay and check that its access controls still hold.
 #
 # The SASL passwords live in the relay's own Secret and nowhere else. This script never
 # reads them: the python it pipes in runs *inside* the pod and reads them from that
@@ -61,51 +61,85 @@ case "$app" in
   *) usage ;;
 esac
 
-if [[ "$mode" == send ]]; then
-  echo "sending as $sender (login $login) to $recipient via $namespace/relay on context $context"
-  kubectl --context "$context" -n "$namespace" exec -i deploy/relay -- \
-    python3 - "$login" "$sender" "$recipient" <<'PY'
-import os, smtplib, sys
+echo "sending as $sender (login $login) to $recipient on context $context, mode $mode"
 
-login, sender, recipient = sys.argv[1:4]
-users = dict(p.split(":", 1) for p in os.environ["SMTPD_SASL_USERS"].split(","))
-with smtplib.SMTP("127.0.0.1", 587, timeout=30) as s:
-    s.login(login, users[login])
-    s.sendmail(
-        sender,
-        [recipient],
-        f"From: {sender}\r\nTo: {recipient}\r\n"
-        "Subject: email-relay test\r\n\r\n"
-        "Sent through the email-relay Postfix null client to Cloudflare Email Sending.\r\n"
-        "Check the received headers for SPF, DKIM and DMARC results.\r\n",
-    )
-print("accepted by postfix for delivery")
-PY
-  exit 0
-fi
-
-# Access checks. Two of the three MUST be refused; a pass there is a regression, not a
-# success, so the exit status reflects the expectations rather than the send outcomes.
-echo "sending as $sender (login $login) to $recipient and checking access controls, context $context"
+# One python program for both modes. In access mode two of the three attempts MUST be
+# refused; a pass there is a regression, not a success, so the exit status reflects the
+# expectations rather than the send outcomes.
 kubectl --context "$context" -n "$namespace" exec -i deploy/relay -- \
-  python3 - "$login" "$sender" "$foreign" "$recipient" <<'PY'
-import os, smtplib, sys
+  python3 - "$mode" "$login" "$sender" "$foreign" "$recipient" <<'PY'
+import os
+import smtplib
+import sys
+from datetime import datetime, timezone
 
-login, sender, foreign, recipient = sys.argv[1:5]
+mode, login, sender, foreign, recipient = sys.argv[1:6]
 users = dict(p.split(":", 1) for p in os.environ["SMTPD_SASL_USERS"].split(","))
+stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+domain = sender.split("@", 1)[1]
 failures = []
 
 
+def body(subject, sender, recipient):
+    """A test message that tells its reader what to look for without them
+    having to remember the design."""
+    return "\r\n".join(
+        [
+            f"From: {sender}",
+            f"To: {recipient}",
+            f"Subject: {subject}",
+            "Auto-Submitted: auto-generated",  # keeps autoresponders and vacation replies quiet
+            "",
+            "This is a TEST message. Nothing is wrong; someone ran",
+            "apps/production/email-relay/send-test-email.sh in home-infra-k8s-flux.",
+            "",
+            f"  sent at    {stamp}",
+            f"  from       {sender}",
+            f"  SASL login {login}",
+            "  path       app -> Postfix null client (email-relay) -> Cloudflare Email",
+            "             Sending on smtp.mx.cloudflare.net:465 -> your MX",
+            "",
+            "WHAT TO CHECK, in the raw source / original message headers:",
+            "",
+            "1. Authentication-Results -- all three must say pass:",
+            f"     dkim=pass header.i=@{domain} header.s=cf-bounce",
+            "     spf=pass",
+            f"     dmarc=pass ... header.from={domain}",
+            "",
+            f"   The DKIM signature that matters is the one with d={domain} and",
+            "   s=cf-bounce, signed with this domain's own key. A second DKIM signature",
+            "   from d=cloudflare-email.net s=cf2024-1 is Cloudflare signing as itself and",
+            "   is expected -- it is not a substitute for the first one.",
+            "",
+            f"2. Return-Path: <bounces@cf-bounce.{domain}>",
+            "   This is what makes SPF align with the From domain under relaxed alignment,",
+            "   which is what DMARC is passing on.",
+            "",
+            "3. NO Received header naming a pod. The relay strips its own via header_checks;",
+            "   if you see `by relay-<hash>-<id> (Postfix)` or a 172.16.x.x address, that",
+            "   protection has regressed and internal topology is reaching recipients.",
+            "",
+            "IF SOMETHING FAILS:",
+            "",
+            "   dkim=fail   -> the cf-bounce._domainkey record for the domain is wrong or",
+            "                  missing; compare against Cloudflare's Email Sending settings.",
+            "   spf=fail    -> check the TXT record on cf-bounce.<domain>.",
+            "   dmarc=fail  -> alignment, not signing: SPF and DKIM can both pass while the",
+            "                  From domain matches neither.",
+            "",
+            "   Relay-side, find this message by its Message-ID:",
+            "     kubectl --context nas -n email-relay logs deploy/relay | grep status=",
+            "",
+        ]
+    )
+
+
 def attempt(label, login, password, sender, expect_accepted):
+    subject = f"[email-relay test] {sender} -- {stamp}"
     try:
         with smtplib.SMTP("127.0.0.1", 587, timeout=30) as s:
             s.login(login, password)
-            s.sendmail(
-                sender,
-                [recipient],
-                f"From: {sender}\r\nTo: {recipient}\r\n"
-                f"Subject: email-relay access check -- {label}\r\n\r\n{label}\r\n",
-            )
+            s.sendmail(sender, [recipient], body(subject, sender, recipient))
         outcome, detail = True, "accepted"
     except smtplib.SMTPException as e:
         outcome, detail = False, f"{type(e).__name__}: {e}"
@@ -116,14 +150,15 @@ def attempt(label, login, password, sender, expect_accepted):
         failures.append(label)
 
 
-# The happy path. Sends a real message.
+# The happy path. Sends a real message, in both modes.
 attempt(f"{sender} accepted", login, users[login], sender, True)
 
-# smtpd_sender_login_maps: one app must not be able to send as another's domain.
-attempt(f"{foreign} refused", login, users[login], foreign, False)
+if mode == "access":
+    # smtpd_sender_login_maps: one app must not be able to send as another's domain.
+    attempt(f"{foreign} refused", login, users[login], foreign, False)
 
-# SASL is genuinely enforced, rather than the connection being permitted by mynetworks.
-attempt("bad password refused", login, "not-the-password", sender, False)
+    # SASL is genuinely enforced, rather than the connection being permitted by mynetworks.
+    attempt("bad password refused", login, "not-the-password", sender, False)
 
 sys.exit(1 if failures else 0)
 PY
