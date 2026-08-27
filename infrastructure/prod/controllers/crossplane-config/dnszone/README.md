@@ -47,6 +47,30 @@ It exists because every implicit alternative is unsafe:
   changes the hash, turning a routine update into a delete-and-recreate. On mail
   records that is a live outage.
 
+## Quoting TXT records
+
+Cloudflare's dashboard says TXT content must be quoted and that it may add quotes on
+your behalf. That is a dashboard behaviour. **The API stores exactly what you send and
+does not normalise**, verified 2026-08-27 across both forms in this account:
+
+| Record | API `content` | `dig` answer |
+|---|---|---|
+| pre-existing, stored quoted | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` | `"v=spf1 include:_spf.mx.cloudflare.net ~all"` |
+| written by Crossplane, unquoted | `composition probe one` | `"composition probe one"` |
+
+Both serve identically — DNS adds one level of presentation quoting regardless — and
+neither drifts.
+
+Two rules follow:
+
+- **Adopting: copy the API's value verbatim.** Do not add quotes. Quoting an
+  already-quoted value yields `""v=spf1 ...""`, a broken SPF record; quoting an
+  unquoted one makes spec differ from observed and rewrites a live record at the
+  moment of adoption, which is precisely what adoption must not do.
+- **Creating a new TXT record: include the quotes**, per Cloudflare's own guidance.
+  Consistency matters more than the choice, since whatever is written is what comes
+  back.
+
 ## Adopting records that already exist
 
 Set `adopt:` on a record to its current Cloudflare record ID. It becomes

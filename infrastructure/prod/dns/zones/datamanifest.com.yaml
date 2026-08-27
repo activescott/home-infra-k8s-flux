@@ -1,0 +1,54 @@
+# Generated from the Cloudflare export by scripts/generate-dnszones.sh.
+#
+# Every record carries `adopt`, its existing Cloudflare record ID, so Crossplane
+# takes over the live record instead of creating a duplicate beside it. Once a zone
+# is adopted and stable, `adopt` can be dropped -- Crossplane tracks the ID itself
+# from then on.
+#
+# `key` is this record's identity. Changing one deletes the record and creates a
+# new one; edit `content` to change a record in place. See
+# infrastructure/prod/controllers/crossplane-config/dnszone/README.md.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: datamanifest-com
+  namespace: cloudflare
+spec:
+  zoneId: 3a610f170ef3305f17048ec68b832da7
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: apex-mx-1
+      name: datamanifest.com
+      type: MX
+      adopt: 2c3a94498ea2000776f2f64abd5bd6cb
+      ttl: 1
+      priority: 76
+      content: route3.mx.cloudflare.net
+    - key: apex-mx-2
+      name: datamanifest.com
+      type: MX
+      adopt: 57add590fac2405418e9e31c9f8283d3
+      ttl: 1
+      priority: 45
+      content: route2.mx.cloudflare.net
+    - key: apex-mx-3
+      name: datamanifest.com
+      type: MX
+      adopt: 9044e92ba165037d20f84b16b79e45f2
+      ttl: 1
+      priority: 65
+      content: route1.mx.cloudflare.net
+    - key: apex-txt
+      name: datamanifest.com
+      type: TXT
+      adopt: 3920d492b7e4a081d91afe11c72b8f3c
+      ttl: 1
+      content: '"v=spf1 include:_spf.mx.cloudflare.net ~all"'
+    - key: cf2024-1-domainkey-txt
+      name: cf2024-1._domainkey.datamanifest.com
+      type: TXT
+      adopt: c3495ccc82bb5255d5d450a7887ef4c8
+      ttl: 1
+      content: '"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78k" "m4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB"'

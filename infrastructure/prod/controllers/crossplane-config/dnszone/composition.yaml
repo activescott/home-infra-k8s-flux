@@ -37,11 +37,16 @@ spec:
               providerConfigRef:
                 kind: ProviderConfig
                 name: {{ $zone.spec.providerConfigName | default "default" }}
+              {{- with $record.managementPolicies }}
+              managementPolicies: {{ toJson . }}
+              {{- end }}
               forProvider:
                 zoneId: {{ $zone.spec.zoneId | quote }}
                 name: {{ $record.name | quote }}
                 type: {{ $record.type | quote }}
-                content: {{ $record.content | quote }}
+                {{- with $record.content }}
+                content: {{ . | quote }}
+                {{- end }}
                 ttl: {{ $record.ttl | default $defaults.ttl | default 300 }}
                 proxied: {{ if hasKey $record "proxied" }}{{ $record.proxied }}{{ else }}{{ $defaults.proxied | default false }}{{ end }}
                 {{- with $record.priority }}

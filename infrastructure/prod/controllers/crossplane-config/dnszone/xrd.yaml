@@ -66,6 +66,9 @@ spec:
                         enum: [A, AAAA, CNAME, MX, TXT, SRV, CAA, NS, PTR]
                       content:
                         type: string
+                        description: >-
+                          Required in practice for any managed record. Optional only so
+                          an observed record can omit it -- see managementPolicies.
                       ttl:
                         type: integer
                       proxied:
@@ -83,5 +86,20 @@ spec:
                           crossplane.io/external-name, so Crossplane adopts the record
                           instead of creating a duplicate. Remove it once adopted; it is
                           then redundant, since Crossplane records the ID itself.
-                    required: [key, name, type, content]
+                      managementPolicies:
+                        type: array
+                        items:
+                          type: string
+                          enum: [Observe, Create, Update, Delete, LateInitialize, "*"]
+                        description: >-
+                          Defaults to full management. Set to ["Observe"] for a record
+                          whose value is owned by something outside git -- today only
+                          wan.activescott.com, which ddclient rewrites on every WAN IP
+                          change. Without this the two fight on every reconcile. An
+                          observed record should also omit `content`: Crossplane never
+                          writes it, ddclient keeps changing it, so a value here would go
+                          stale and misrepresent reality in a repo whose premise is that
+                          git is the truth. Declaring the record without its value states
+                          exactly that -- the record is ours, the value is delegated.
+                    required: [key, name, type]
               required: [zoneId, records]
