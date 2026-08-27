@@ -87,8 +87,22 @@ spec:
             - name: POSTFIX_smtpd_tls_auth_only
               value: "no"
 
+            # Cloudflare advertises SIZE 5242880 in EHLO. Without a local limit postfix
+            # accepts an oversized message, transfers it, and only then takes the
+            # rejection -- so the failure surfaces as a bounce rather than a submission
+            # error the calling application can act on.
+            - name: POSTFIX_message_size_limit
+              value: "5242880"
+
+            # The pod has no IPv6 route, so every delivery first spent a round trip
+            # learning that smtp.mx.cloudflare.net's AAAA is unreachable.
+            - name: POSTFIX_smtp_address_preference
+              value: ipv4
+
+            # Debian tzdata has no US/Pacific; the container logged
+            # "Cannot set timezone" and stayed on UTC.
             - name: TZ
-              value: US/Pacific
+              value: America/Los_Angeles
           volumeMounts:
             # Postfix's queue. Deliberately not persisted: Cloudflare accepts or rejects
             # within the connection, so the queue is empty except during an outage, and a
