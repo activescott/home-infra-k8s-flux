@@ -13,4 +13,20 @@ spec:
   # Terraform provider has no resource for it -- so onboarding a sending domain stays a manual
   # dashboard step. Verified by enumerating the package; details in the private repo's
   # docs/specs/email-infrastructure/.
-  package: xpkg.crossplane.io/crossplane-contrib/provider-upjet-cloudflare:v0.1.0
+  # Built and published from activescott/provider-upjet-cloudflare, a fork of
+  # crossplane-contrib/provider-upjet-cloudflare. Upstream has never cut a release: it has no
+  # tags, its Publish Provider Package workflow has never run, and nothing is pushed to any
+  # registry -- xpkg.crossplane.io and ghcr.io/crossplane-contrib both deny the pull. The
+  # source is healthy (CI green on main, e2e green), it was simply never published.
+  #
+  # The fork changes no provider code. It adds the two things that made publishing impossible
+  # from anywhere but the upstream org, and is offered back upstream:
+  #   - packages: write on the publishing job, since the default GITHUB_TOKEN is read-only
+  #   - registry_org derived from github.repository_owner rather than hardcoded
+  #
+  # Rebuild only when an input changes -- a new Cloudflare Terraform provider release (pinned
+  # as TERRAFORM_PROVIDER_VERSION, currently 5.15.0), a new upjet/crossplane-runtime, or a
+  # dependency CVE. Cloudflare API changes alone do not require one; they arrive here only via
+  # a Terraform provider release. Publishing is a manual workflow_dispatch, documented in the
+  # fork's README.
+  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.1.0
