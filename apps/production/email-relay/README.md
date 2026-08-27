@@ -42,6 +42,23 @@ lost. That is a deliberate trade: a PV would outlive the failure it exists for, 
 risk is sign-in codes, which a user simply requests again. It is also why delivery failures are
 alerted on rather than left to retry silently.
 
+## Alerting, and what it does not cover
+
+Postfix exports no metrics, so the alloy pipeline derives counters from its log lines
+(`apps/production/monitoring/alloy/helmrelease.yaml`) and the alerts are ordinary PromQL beside
+everything else (`prometheus/helmrelease.yaml`, group `email-relay`): `EmailRelayBounced`,
+`EmailRelayDeferred`, `EmailRelayAuthFailures`.
+
+**These watch the relay-to-Cloudflare hop, not deliverability.** Cloudflare accepts a message
+during the SMTP conversation and delivers it afterwards, so a recipient's mail server rejecting
+it produces `status=sent` here and a bounce that goes to `bounces@cf-bounce.<domain>` — which
+Cloudflare handles and this relay never sees. What `status=bounced` and `status=deferred`
+actually catch is Cloudflare refusing *us*: a bad or revoked API token, an oversized message, a
+sender domain that is not onboarded, or the sending quota being hit.
+
+Recipient-side failures live in Cloudflare's suppression list instead
+(`GET /accounts/{account_id}/email/sending/suppressions`). Nothing polls it today.
+
 ## Debugging
 
 ```bash
