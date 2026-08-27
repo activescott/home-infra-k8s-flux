@@ -1,7 +1,9 @@
-# productpoet.com is a parked domain used to prove the tooling before it touches a
-# zone anything depends on. Its real apex TXT (a Sedo verification record) is
-# deliberately NOT listed here yet -- adopting it is a later, separate step, so a
-# mistake in this file cannot reach it.
+# productpoet.com is a parked domain, used to prove the tooling before it touches a
+# zone anything depends on.
+#
+# The apex TXT is a real Sedo verification record that predates Crossplane. It is
+# adopted here by its existing Cloudflare record ID rather than recreated, so its ID
+# and value survive unchanged.
 apiVersion: dns.activescott.com/v1alpha1
 kind: DNSZone
 metadata:
@@ -13,14 +15,17 @@ spec:
     ttl: 300
     proxied: false
   records:
+    - key: apex-sedo-verification
+      name: productpoet.com
+      type: TXT
+      content: a0bc85eaa82517101cbd12886f579defe9c11ed6
+      # ttl 1 is Cloudflare's "automatic". Matches the live record exactly, so
+      # adoption is a no-op rather than an immediate update.
+      ttl: 1
+      comment: for sedo.com
+      adopt: ed29a28dd4103a5304cd9c9736e33b36
     - key: composition-probe-one
       name: probe-one.productpoet.com
       type: TXT
       content: composition probe one
-      comment: Phase 3 composition probe; safe to delete
-    - key: composition-probe-two
-      name: probe-two.productpoet.com
-      type: TXT
-      content: composition probe two
-      ttl: 600
       comment: Phase 3 composition probe; safe to delete
