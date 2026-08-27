@@ -6,7 +6,7 @@ spec:
   # Generated from the Cloudflare Terraform provider via upjet. The package itself is young
   # (v0.1.0), but the resource handling underneath is the mature Terraform provider.
   #
-  # Ships 251 CRDs. Relevant here: dnsrecords, zones, zonesettings, and the full email routing
+  # Ships 247 CRDs. Relevant here: dnsrecords, zones, zonesettings, and the full email routing
   # set (emailroutingrules / -addresses / -catchalls / -settings / -dnses).
   #
   # NOT covered: Cloudflare Email *Sending*. There is no CRD for it, because the upstream

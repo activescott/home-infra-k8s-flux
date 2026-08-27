@@ -1,4 +1,4 @@
-apiVersion: cloudflare.m.crossplane.io/v1beta1
+apiVersion: cloudflare.m.cloudflare.com/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
@@ -17,7 +17,15 @@ spec:
 # Cluster-scoped equivalent, so managed resources outside the `cloudflare` namespace can share
 # the same credential without duplicating the Secret. Both point at the one Secret; whichever a
 # resource references, it is the same token.
-apiVersion: cloudflare.m.crossplane.io/v1beta1
+#
+# Note the group is `cloudflare.m.cloudflare.com`, NOT `cloudflare.m.crossplane.io`. The
+# provider repo's own examples/ say the latter and are wrong -- see
+# apis/namespaced/v1beta1/register.go:12. Managed resources follow the same pattern
+# (dns.cloudflare.m.cloudflare.com, email.cloudflare.m.cloudflare.com, ...). The cluster-scoped
+# ProviderConfig is different again, `cloudflare.cloudflare.com`, while cluster-scoped managed
+# resources are `<sub>.cloudflare.crossplane.io`. Verify with `kubectl get crd | grep cloudflare`
+# rather than trusting the examples.
+apiVersion: cloudflare.m.cloudflare.com/v1beta1
 kind: ClusterProviderConfig
 metadata:
   name: cloudflare
