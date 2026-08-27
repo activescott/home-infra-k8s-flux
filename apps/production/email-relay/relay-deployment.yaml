@@ -115,8 +115,13 @@ spec:
             # topology to anyone who reads a message. Cloudflare adds its own Received
             # header downstream, so dropping ours costs no traceability outside the
             # cluster -- and inside it, the postfix log is the record.
+            #
+            # Inline table syntax is fussy: two rules written `{{a}{b}}` fail with
+            # "syntax error after '}'". Each rule needs its own braces separated by
+            # whitespace, inside an outer pair. Verify a change with
+            #   postmap -q "Received: x" "regexp:{ ... }"
             - name: POSTFIX_header_checks
-              value: "regexp:{{/^Received:/ IGNORE}{/^X-Originating-IP:/ IGNORE}}"
+              value: "regexp:{ {/^Received:/ IGNORE} {/^X-Originating-IP:/ IGNORE} }"
           volumeMounts:
             # Postfix's queue. Deliberately not persisted: Cloudflare accepts or rejects
             # within the connection, so the queue is empty except during an outage, and a
