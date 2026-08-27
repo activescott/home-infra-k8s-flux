@@ -9,9 +9,17 @@
 # sendmail(1) inside the container -- local injection bypasses SASL and
 # smtpd_sender_login_maps entirely and would prove nothing about access control.
 #
+# By default it does not just send: it also proves the two controls that are supposed to
+# refuse, and exits non-zero if either one lets a message through. A send on its own only
+# demonstrates that the relay works, which is the failure mode nobody worries about.
+#
+# --send-only exists for the cases where extra noise is the problem rather than weaker
+# coverage: submitting to mail-tester.com or similar, and testing after the delivery-failure
+# alert is in place, where deliberately failing an auth would page someone.
+#
 # Usage:
-#   ./send-test-email.sh <recipient> [app]        # app: fernfiles (default) | ramblefeed | tinkerbell
-#   ./send-test-email.sh --access-checks <recipient>
+#   ./send-test-email.sh <recipient> [app]  # app: fernfiles (default) | ramblefeed | tinkerbell
+#   ./send-test-email.sh --send-only <recipient> [app]
 #
 # Environment:
 #   KUBE_CONTEXT   kubectl context to use (default: nas)
@@ -30,13 +38,13 @@ namespace=email-relay
 
 usage() {
   echo "usage: $0 <recipient> [fernfiles|ramblefeed|tinkerbell]" >&2
-  echo "       $0 --access-checks <recipient>" >&2
+  echo "       $0 --send-only <recipient> [fernfiles|ramblefeed|tinkerbell]" >&2
   exit 64
 }
 
-mode=send
-if [[ "${1:-}" == "--access-checks" ]]; then
-  mode=access
+mode=access
+if [[ "${1:-}" == "--send-only" ]]; then
+  mode=send
   shift
 fi
 
@@ -44,10 +52,12 @@ recipient="${1:-}"
 app="${2:-fernfiles}"
 [[ -n "$recipient" ]] || usage
 
+# `foreign` is a domain this login must NOT be allowed to send as -- any of the others will
+# do, so each app's checks use a different one.
 case "$app" in
-  fernfiles) login=fernfiles@relay.local; sender=noreply@fernfiles.com ;;
-  ramblefeed) login=ramblefeed@relay.local; sender=noreply@ramblefeed.com ;;
-  tinkerbell) login=tinkerbell@relay.local; sender=noreply@tinkerbellbot.com ;;
+  fernfiles) login=fernfiles@relay.local; sender=noreply@fernfiles.com; foreign=noreply@ramblefeed.com ;;
+  ramblefeed) login=ramblefeed@relay.local; sender=noreply@ramblefeed.com; foreign=noreply@tinkerbellbot.com ;;
+  tinkerbell) login=tinkerbell@relay.local; sender=noreply@tinkerbellbot.com; foreign=noreply@fernfiles.com ;;
   *) usage ;;
 esac
 
@@ -76,12 +86,12 @@ fi
 
 # Access checks. Two of the three MUST be refused; a pass there is a regression, not a
 # success, so the exit status reflects the expectations rather than the send outcomes.
-echo "checking relay access controls against $recipient on context $context"
+echo "sending as $sender (login $login) to $recipient and checking access controls, context $context"
 kubectl --context "$context" -n "$namespace" exec -i deploy/relay -- \
-  python3 - "$recipient" <<'PY'
+  python3 - "$login" "$sender" "$foreign" "$recipient" <<'PY'
 import os, smtplib, sys
 
-recipient = sys.argv[1]
+login, sender, foreign, recipient = sys.argv[1:5]
 users = dict(p.split(":", 1) for p in os.environ["SMTPD_SASL_USERS"].split(","))
 failures = []
 
@@ -107,16 +117,13 @@ def attempt(label, login, password, sender, expect_accepted):
 
 
 # The happy path. Sends a real message.
-attempt("own domain accepted", "fernfiles@relay.local",
-        users["fernfiles@relay.local"], "noreply@fernfiles.com", True)
+attempt(f"{sender} accepted", login, users[login], sender, True)
 
 # smtpd_sender_login_maps: one app must not be able to send as another's domain.
-attempt("other domain refused", "fernfiles@relay.local",
-        users["fernfiles@relay.local"], "noreply@ramblefeed.com", False)
+attempt(f"{foreign} refused", login, users[login], foreign, False)
 
 # SASL is genuinely enforced, rather than the connection being permitted by mynetworks.
-attempt("bad password refused", "fernfiles@relay.local",
-        "not-the-password", "noreply@fernfiles.com", False)
+attempt("bad password refused", login, "not-the-password", sender, False)
 
 sys.exit(1 if failures else 0)
 PY

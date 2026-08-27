@@ -59,19 +59,24 @@ inside the pod and reads the SASL passwords from that container's own environmen
 credential reaches your shell or its history.
 
 ```bash
-./send-test-email.sh you@example.com                  # as noreply@fernfiles.com
-./send-test-email.sh you@example.com ramblefeed       # or tinkerbell
-./send-test-email.sh --access-checks you@example.com  # all three controls, exit 1 on regression
+./send-test-email.sh you@example.com                   # as noreply@fernfiles.com
+./send-test-email.sh you@example.com tinkerbell        # or ramblefeed
+./send-test-email.sh --send-only you@example.com       # one message, no refusals
 ```
 
-The access-check mode is the useful one after any config change. Two of its three cases must
-be *refused*; an acceptance there is a regression and exits non-zero:
+It always checks the controls, not just the send: a message that goes through only proves the
+relay works, which is not the failure anyone worries about. Two of the three cases must be
+*refused*, so an acceptance there is a regression and exits non-zero:
 
 ```
-[ok] own domain accepted: accepted
-[ok] other domain refused: 553 5.7.1 <noreply@ramblefeed.com>: Sender address rejected: not owned by user fernfiles@relay.local
+[ok] noreply@tinkerbellbot.com accepted: accepted
+[ok] noreply@fernfiles.com refused: 553 5.7.1 Sender address rejected: not owned by user tinkerbell@relay.local
 [ok] bad password refused: 535 5.7.8 Error: authentication failed
 ```
+
+`--send-only` exists for when the extra noise is the problem rather than the weaker coverage:
+submitting to mail-tester.com and similar, and testing once the delivery-failure alert is in
+place, where deliberately failing an auth would page someone.
 
 A delivered message logs `status=sent (250 2.0.0 Ok <...@fernfiles.com>)`. Read the received
 headers at the far end to confirm the auth chain: expect `dkim=pass header.i=@<domain>
