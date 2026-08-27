@@ -1,0 +1,44 @@
+# Two volumes, not one, because the image declares VOLUME for both /etc/stalwart and
+# /var/lib/stalwart. A volume mounted at a parent of a declared VOLUME does not cover it: the
+# container runtime backfills the uncovered path with a throwaway anonymous volume that shadows
+# the real storage and is discarded on every restart. Here that would silently drop the
+# configuration each time the pod moved, sending Stalwart back into bootstrap mode with an empty
+# database. `scripts/check-persistent-mounts.mts` exists because this class of bug already cost
+# a database once (see docs/specs/arize-phoenix/plan.md).
+#
+# Both paths sit under /mnt/thedatapool/app-data/, which is what puts them in the backup set:
+# the B2 cloud sync task's include list is an allowlist and /app-data/** is already on it, so no
+# backup configuration changes for this service. ZFS snapshots and sanoid cover the same tree.
+#
+# Retain, so deleting the PVC (or a mistaken `prune` of this directory) leaves the mail behind.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: email-stalwart-prod-pv-config
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/app-data/stalwart/prod/config
+---
+# The mailbox store and, unavoidably, the server's entire configuration -- Stalwart v0.16 keeps
+# its settings in this datastore rather than in a file, so this volume is the only copy of both.
+# See the Phase 7 section of the private spec for why that is a recorded exception to
+# git-as-source-of-truth rather than an oversight.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: email-stalwart-prod-pv-data
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/app-data/stalwart/prod/data

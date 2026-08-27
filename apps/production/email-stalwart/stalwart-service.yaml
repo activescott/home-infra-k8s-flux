@@ -1,0 +1,81 @@
+# Required by the StatefulSet for stable pod DNS. Carries no traffic.
+apiVersion: v1
+kind: Service
+metadata:
+  name: stalwart-headless
+  namespace: email-stalwart
+spec:
+  clusterIP: None
+  selector:
+    app: stalwart
+  ports:
+    - name: smtp
+      port: 25
+---
+# The externally-reachable mail listeners. LoadBalancer because these are L4 protocols:
+# Traefik is an HTTP proxy and cannot carry SMTP or IMAP. k3s's klipper implementation binds
+# the node IP (10.1.111.20) directly, the same way plex and alloy-syslog already do -- there
+# is one node, so there is no address to allocate.
+#
+# Nothing reaches these from outside the house until the OPNsense NAT rule exists. Only :25
+# needs to be forwarded at the firewall: it is the port Google's dual-delivery routing rule
+# connects to. 587 and 993 are for Scott's own clients and are reachable over the LAN and
+# over Tailscale without opening anything.
+#
+# Deliberately NOT here: 443. Traefik already owns :443 on this node IP, so publishing
+# Stalwart's HTTPS listener through a LoadBalancer would collide with every ingress in the
+# cluster. Admin and JMAP access go through the ClusterIP service below instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: stalwart
+  namespace: email-stalwart
+spec:
+  type: LoadBalancer
+  # Preserves the connecting IP. Without it every inbound message appears to come from a
+  # node-internal address, which defeats both the spam filter's reputation checks and any
+  # later attempt to restrict :25 to Google's ranges at the firewall. Same setting and same
+  # reason as monitoring/alloy/syslog-service.yaml, which is already proven on this cluster.
+  externalTrafficPolicy: Local
+  selector:
+    app: stalwart
+  ports:
+    - name: smtp
+      port: 25
+      targetPort: 25
+      protocol: TCP
+    - name: submission
+      port: 587
+      targetPort: 587
+      protocol: TCP
+    - name: smtps
+      port: 465
+      targetPort: 465
+      protocol: TCP
+    - name: imaps
+      port: 993
+      targetPort: 993
+      protocol: TCP
+---
+# Admin UI, JMAP, and the bootstrap listener. ClusterIP on purpose: the admin interface is
+# not exposed to the internet, and there is no ingress for it. Reach it with
+#   kubectl --context nas -n email-stalwart port-forward svc/stalwart-admin 8080:8080
+# Port 8080 is what Stalwart opens in bootstrap mode for initial setup; 443 is the normal
+# listener once configured.
+apiVersion: v1
+kind: Service
+metadata:
+  name: stalwart-admin
+  namespace: email-stalwart
+spec:
+  selector:
+    app: stalwart
+  ports:
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+    - name: recovery
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
