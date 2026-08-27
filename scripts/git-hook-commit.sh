@@ -38,10 +38,9 @@ check_kustomize() {
 # Check the trees Flux builds
 check_kustomize "${repo_dir}/apps/production"
 check_kustomize "${repo_dir}/infrastructure/prod/configs"
-# DNS records are Crossplane managed resources under `prune: true`, so a
-# kustomize error that drops a record from the build output deletes the real
-# record from Cloudflare. Cheap to catch here.
-check_kustomize "${repo_dir}/infrastructure/prod/dns"
+# Phase 3 adds infrastructure/prod/dns here. DNS records are Crossplane managed
+# resources under `prune: true`, so a kustomize error that drops a record from the
+# build output deletes the real record from Cloudflare -- cheap to catch here.
 
 # check-persistent-mounts.mts is TypeScript run via Node's native type
 # stripping — select the pinned version through nvm rather than assuming the
