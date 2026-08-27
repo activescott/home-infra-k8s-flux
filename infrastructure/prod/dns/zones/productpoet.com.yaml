@@ -35,3 +35,35 @@ spec:
       type: TXT
       content: v=DMARC1; p=none; rua=mailto:dmarc@productpoet.com
       comment: probe -- does Email Sending onboarding overwrite an existing DMARC record?
+    # Created by Cloudflare Email Sending when this zone was onboarded, not by us. Every
+    # one comes back from the API with `meta.read_only: true`, and Cloudflare's docs say
+    # Email Sending records on the cf-bounce subdomain "stay managed by Email Service for
+    # the lifetime of the domain configuration" -- unlike Email Routing's root-domain
+    # records, they can never be unlocked. So they are declared Observe: git records that
+    # they exist and who owns them, and Crossplane never attempts a write it cannot win.
+    # Content is deliberately omitted; Cloudflare owns the values, including the DKIM key.
+    - key: cf-bounce-mx-route1
+      name: cf-bounce.productpoet.com
+      type: MX
+      adopt: 23587fb7b571c5107c22dfec7ebbab4b
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route2
+      name: cf-bounce.productpoet.com
+      type: MX
+      adopt: a05ecb60b86612d0989c6f2110077b7e
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route3
+      name: cf-bounce.productpoet.com
+      type: MX
+      adopt: 5fcea1cb094454d80d19ab812b7e3908
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-spf-txt
+      name: cf-bounce.productpoet.com
+      type: TXT
+      adopt: 799b4d419c749d4afddcf7d414439297
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-domainkey-txt
+      name: cf-bounce._domainkey.productpoet.com
+      type: TXT
+      adopt: 2ae18b0c16d96dd0128be93174756c88
+      managementPolicies: ["Observe"]
