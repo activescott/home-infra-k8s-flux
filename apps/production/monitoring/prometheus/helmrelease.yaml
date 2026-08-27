@@ -455,10 +455,13 @@ spec:
                 # produces no delivery lines at all, so the counters above stay flat
                 # and look like a quiet day. This is what makes that case visible.
                 #
-                # Tolerates a few: send-test-email.sh deliberately fails one auth per
-                # run to prove SASL is enforced, so a threshold of zero would fire
-                # every time someone tests.
-                expr: 'increase(loki_process_custom_email_relay_auth_failed_total[1h]) > 3'
+                # Counts LOG LINES, not attempts: postfix walks CRAM-MD5, PLAIN and
+                # LOGIN, so one rejected login emits three. Measured, not assumed —
+                # an earlier threshold of 3 would have paged after two test runs.
+                # send-test-email.sh deliberately fails one auth per run to prove SASL
+                # is enforced, so this allows three such runs an hour and fires on the
+                # fourth. A genuinely misconfigured app retries far faster than that.
+                expr: 'increase(loki_process_custom_email_relay_auth_failed_total[1h]) > 9'
                 for: 10m
                 labels:
                   severity: warning

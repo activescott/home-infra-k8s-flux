@@ -317,8 +317,10 @@ spec:
             // Inbound SASL failures. Catches an app whose password no longer matches
             // the relay's copy: it produces no delivery lines at all, so the counters
             // above stay flat — indistinguishable from a quiet day at this volume.
-            // send-test-email.sh deliberately fails one auth per run, which is why the
-            // alert on this tolerates a few rather than firing on the first.
+            // Note this counts log LINES, not attempts: postfix walks CRAM-MD5, PLAIN
+            // and LOGIN, so a single rejected login increments it three times. The
+            // alert's threshold accounts for that, and for send-test-email.sh
+            // deliberately failing one auth per run.
             stage.match {
               selector = "{namespace=\"email-relay\"} |= \"SASL\" |= \"authentication failed\""
 
