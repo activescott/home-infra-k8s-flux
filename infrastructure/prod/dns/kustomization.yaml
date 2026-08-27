@@ -9,8 +9,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - zones/activescott.com.yaml
+  - zones/coinpoet.com.yaml
   - zones/datamanifest.com.yaml
   - zones/fernfiles.com.yaml
+  - zones/gpupoet.com.yaml
+  - zones/pingpoet.com.yaml
   - zones/productpoet.com.yaml
   - zones/ramblefeed.com.yaml
   - zones/tinkerbellbot.com.yaml

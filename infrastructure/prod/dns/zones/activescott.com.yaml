@@ -1,0 +1,201 @@
+# Generated from the Cloudflare export by scripts/generate-dnszones.sh.
+#
+# Every record carries `adopt`, its existing Cloudflare record ID, so Crossplane
+# takes over the live record instead of creating a duplicate beside it. Once a zone
+# is adopted and stable, `adopt` can be dropped -- Crossplane tracks the ID itself
+# from then on.
+#
+# `key` is this record's identity. Changing one deletes the record and creates a
+# new one; edit `content` to change a record in place. See
+# infrastructure/prod/controllers/crossplane-config/dnszone/README.md.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: activescott-com
+  namespace: cloudflare
+spec:
+  zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: apex-cname
+      name: activescott.com
+      type: CNAME
+      adopt: 4896a46a571800a3744a8c3eb56e2bd9
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: apex-mx-1
+      name: activescott.com
+      type: MX
+      adopt: 2d62904fdff4a2376bd8f1f5a2361d87
+      ttl: 1
+      priority: 31
+      content: route3.mx.cloudflare.net
+    - key: apex-mx-2
+      name: activescott.com
+      type: MX
+      adopt: 313983c488b50cad499b38faca9ffb3f
+      ttl: 1
+      priority: 95
+      content: route2.mx.cloudflare.net
+    - key: apex-mx-3
+      name: activescott.com
+      type: MX
+      adopt: ddf88bd6eb4c72671f7937374b20a049
+      ttl: 1
+      priority: 41
+      content: route1.mx.cloudflare.net
+    - key: apex-txt-1
+      name: activescott.com
+      type: TXT
+      adopt: be6e8e6c266593430430d5db23a90565
+      ttl: 1
+      content: v=spf1 include:_spf.mx.cloudflare.net ~all
+    - key: apex-txt-2
+      name: activescott.com
+      type: TXT
+      adopt: e4431e6d55d8f959845194d84ae221e5
+      ttl: 1
+      comment: for google search console in pingpoet account
+      content: google-site-verification=xmb3W_6WzJSFVsWf-G6ZdBBzgmutoqwuTFRvLTkN13w
+    - key: cf2024-1-domainkey-txt
+      name: cf2024-1._domainkey.activescott.com
+      type: TXT
+      adopt: f0d3b90039af100f843966b83864ffd7
+      ttl: 1
+      content: '"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78k" "m4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB"'
+    - key: cvat-cname
+      name: cvat.activescott.com
+      type: CNAME
+      adopt: 01f2512222cebbba6d6015c339893cc8
+      ttl: 1
+      content: k8s.activescott.com
+    - key: dmarc-txt
+      name: _dmarc.activescott.com
+      type: TXT
+      adopt: 23f6012744cdecb426f5724cdce3c489
+      ttl: 1
+      content: v=DMARC1; p=reject; sp=reject; rua=mailto:admin@activescott.com; ruf=mailto:admin@activescott.com
+    - key: eth-cname
+      name: eth.activescott.com
+      type: CNAME
+      adopt: e9f8e36e696733a099ddeffae6485eca
+      ttl: 1
+      content: k8s.activescott.com
+    - key: flux-webhook-cname
+      name: flux-webhook.activescott.com
+      type: CNAME
+      adopt: 00c9efa557dcff2d76ff3920f5db050e
+      ttl: 1
+      comment: for the flux webhook receiver in kubernetes
+      content: k8s.activescott.com
+    - key: grafana-cname
+      name: grafana.activescott.com
+      type: CNAME
+      adopt: 820bf5fe7c80df49989aeae3428cb5e2
+      ttl: 1
+      comment: Public for letsencrypt issuance
+      content: k8s.activescott.com
+    - key: h-cname
+      name: h.activescott.com
+      type: CNAME
+      adopt: 39ea8c4eeb54c464363b39833ec4e57e
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: hass-cname
+      name: hass.activescott.com
+      type: CNAME
+      adopt: 59d2b83c8a72ee74bda05d9cb4c72d37
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: k8s-cname
+      name: k8s.activescott.com
+      type: CNAME
+      adopt: be577de5a1dd395fffc198f1fd22d2ec
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: lessmsi-cname
+      name: lessmsi.activescott.com
+      type: CNAME
+      adopt: 7995fda5e6a227599004713b663c6bc3
+      ttl: 1
+      proxied: true
+      content: activescott.github.io
+    - key: nas-cname
+      name: nas.activescott.com
+      type: CNAME
+      adopt: ef4ed1571c14b4bb370f6a34dc7388bc
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: oci-registry-cname-1
+      name: oci-registry.activescott.com
+      type: CNAME
+      adopt: 4d5c1787eeac878387ab369d3165b95a
+      ttl: 1
+      content: k8s.activescott.com
+    - key: oci-registry-cname-2
+      name: '*.oci-registry.activescott.com'
+      type: CNAME
+      adopt: cabfa6b9b70450c414996c706985bc71
+      ttl: 1
+      content: k8s.activescott.com
+    - key: phoenix-cname
+      name: phoenix.activescott.com
+      type: CNAME
+      adopt: 1c6013582cd6c576c4cd565815314a8d
+      ttl: 1
+      content: k8s.activescott.com
+    - key: photos-cname
+      name: photos.activescott.com
+      type: CNAME
+      adopt: 75d867b9daa6f8ffe18233e4f18d1c25
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: prometheus-cname
+      name: prometheus.activescott.com
+      type: CNAME
+      adopt: 5f87acf96ed701dcb70459eb39bb47be
+      ttl: 1
+      comment: Public for letsencrypt issuance
+      content: k8s.activescott.com
+    - key: transmission-cname
+      name: transmission.activescott.com
+      type: CNAME
+      adopt: 70abc54672c438d90d2dcb29c5235853
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: unifi-cname
+      name: unifi.activescott.com
+      type: CNAME
+      adopt: 0284e0b64abdc1a74adacf8e084d3f8c
+      ttl: 1
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
+    - key: wan-a
+      name: wan.activescott.com
+      type: A
+      adopt: b070fd3754f383716a8b22c7bc592203
+      ttl: 1
+      comment: Single dynamic record maintained by OPNsense ddclient. All other names CNAME to this.
+      managementPolicies:
+        - Observe
+    - key: www-cname
+      name: www.activescott.com
+      type: CNAME
+      adopt: 97dc642a12788d247013630f6048b28c
+      ttl: 60
+      content: scott.willeke.com
+    - key: www-test-cname
+      name: www-test.activescott.com
+      type: CNAME
+      adopt: 6959690e086f8efdba0bf1fd75bc2449
+      ttl: 1
+      comment: TEMP just for testing eleventy scott.willeke.com in k8s before the main domain moves over.
+      content: k8s.activescott.com

@@ -1,0 +1,164 @@
+# Generated from the Cloudflare export by scripts/generate-dnszones.sh.
+#
+# Every record carries `adopt`, its existing Cloudflare record ID, so Crossplane
+# takes over the live record instead of creating a duplicate beside it. Once a zone
+# is adopted and stable, `adopt` can be dropped -- Crossplane tracks the ID itself
+# from then on.
+#
+# `key` is this record's identity. Changing one deletes the record and creates a
+# new one; edit `content` to change a record in place. See
+# infrastructure/prod/controllers/crossplane-config/dnszone/README.md.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: pingpoet-com
+  namespace: cloudflare
+spec:
+  zoneId: 9c81e8552bb40ea8dad4916c0e0e03e4
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: apex-a-1
+      name: pingpoet.com
+      type: A
+      adopt: 2063884c34435f219835ab2da9866e48
+      ttl: 1
+      content: 185.199.110.153
+    - key: apex-a-2
+      name: pingpoet.com
+      type: A
+      adopt: 24c5bdcdce12da467b60d399497344a9
+      ttl: 1
+      content: 185.199.108.153
+    - key: apex-a-3
+      name: pingpoet.com
+      type: A
+      adopt: 6fcb64808c5634e7b36fba49453a4e16
+      ttl: 1
+      content: 185.199.111.153
+    - key: apex-a-4
+      name: pingpoet.com
+      type: A
+      adopt: e4979a7da4567acb7a4335d7abcec132
+      ttl: 1
+      content: 185.199.109.153
+    - key: apex-aaaa-1
+      name: pingpoet.com
+      type: AAAA
+      adopt: 5c3d00fe50ffe807b9912439a7734fe0
+      ttl: 1
+      content: 2606:50c0:8003::153
+    - key: apex-aaaa-2
+      name: pingpoet.com
+      type: AAAA
+      adopt: 6da19858c5888e219b48814815cd82a9
+      ttl: 1
+      content: 2606:50c0:8002::153
+    - key: apex-aaaa-3
+      name: pingpoet.com
+      type: AAAA
+      adopt: c951c5bed0b9cae67c4c4f51155b8d3e
+      ttl: 1
+      content: 2606:50c0:8000::153
+    - key: apex-aaaa-4
+      name: pingpoet.com
+      type: AAAA
+      adopt: ee4b1db29e4be21c1fb0c9c005deb0ee
+      ttl: 1
+      content: 2606:50c0:8001::153
+    - key: apex-mx-1
+      name: pingpoet.com
+      type: MX
+      adopt: 05d3484ff854eff0b376964037035c10
+      ttl: 1
+      priority: 1
+      content: aspmx.l.google.com
+    - key: apex-mx-2
+      name: pingpoet.com
+      type: MX
+      adopt: 4d47850fe8b1b914a3c557d2059cc5c9
+      ttl: 1
+      priority: 5
+      content: alt2.aspmx.l.google.com
+    - key: apex-mx-3
+      name: pingpoet.com
+      type: MX
+      adopt: bed9eedd6a5d68d920193d8e5db9ea29
+      ttl: 1
+      priority: 5
+      content: alt1.aspmx.l.google.com
+    - key: apex-txt-1
+      name: pingpoet.com
+      type: TXT
+      adopt: 7ae3048e29e7ae14144f26f9f37b29ce
+      ttl: 1
+      comment: for scott@pingpoet.com to verify with google search console
+      content: google-site-verification=xB5x7HplW_3kjsuIs_Oe89tzWahgpRJVnXe1jEqO52M
+    - key: apex-txt-2
+      name: pingpoet.com
+      type: TXT
+      adopt: 85df9c87cf3dd42115c1acc21dd85cfe
+      ttl: 1
+      content: v=spf1 include:_spf.google.com ~all
+    - key: blogs-cname
+      name: blogs.pingpoet.com
+      type: CNAME
+      adopt: 421e8e7ad372a629c40c435582b712b0
+      ttl: 1
+      proxied: true
+      content: activescott.github.io
+    - key: github-pages-challenge-pingpoet-txt
+      name: _github-pages-challenge-pingpoet.pingpoet.com
+      type: TXT
+      adopt: fd75177767533b16b3c8ce5be64ec112
+      ttl: 1
+      comment: for verifying the domain for the PingPoet org on Github
+      content: 6bc0499c48fa085af0d78795357a25
+    - key: google-domainkey-txt
+      name: google._domainkey.pingpoet.com
+      type: TXT
+      adopt: 5d1f4c23e330dade3284efe87f9eb984
+      ttl: 1
+      content: v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr0lb/GihaTKwu+07iQFSZUS6e8kuOGMLlbXFBTOIjhy2Hy2QIxp1+khaihSKSVrt4yjimgUd4GJ9Qt0qWOi2IvLvfUTNpmzmQDyXUzrntQqmyJXsGT0loKz7wQtIkQNXrD4RlwwDLlX7VzqcCPsf62cGCcD0puv7KoeAa/Xv0ad4I5n5JwrRnEu80zHbFFRCh" "AAsIkI3cJvJ6YaUUvL3lgfkT2lMbEvBODfInNNbaluycRPFFkqWsDGGXJ2fQBoaivqo0O7NAEIpTRknivDRDKD60Z8F5T2T5ggmkxKwJI01MWd8hCQcAVUnHlW7USGMI9lCM2c0fs9WvHDL+bmYKwIDAQAB
+    - key: mail-cname
+      name: mail.pingpoet.com
+      type: CNAME
+      adopt: 4564a5440cba535904d6b8c4cce8a2b1
+      ttl: 1
+      proxied: true
+      content: ghs.google.com
+    - key: pop-cname
+      name: pop.pingpoet.com
+      type: CNAME
+      adopt: 5d8375ab2b812c4c166e5db14a4e3b08
+      ttl: 1
+      proxied: true
+      content: pop.gmail.com
+    - key: smtp-cname
+      name: smtp.pingpoet.com
+      type: CNAME
+      adopt: 99e91448c53bb14bd37ac8629836675a
+      ttl: 1
+      proxied: true
+      content: smtp.gmail.com
+    - key: start-cname
+      name: start.pingpoet.com
+      type: CNAME
+      adopt: 5352512755045a9d9b3b1f7e087dff8d
+      ttl: 1
+      proxied: true
+      content: ghs.google.com
+    - key: stockpoet-cname
+      name: stockpoet.pingpoet.com
+      type: CNAME
+      adopt: 74bc6355242653279293f64e2458d414
+      ttl: 1
+      comment: https://vercel.com/pingpoet/stockpoet/settings/domains
+      content: cname.vercel-dns.com
+    - key: www-cname
+      name: www.pingpoet.com
+      type: CNAME
+      adopt: 6d7c4ad5540fe4cef48e9459f67977d0
+      ttl: 1
+      content: pingpoet.github.io
