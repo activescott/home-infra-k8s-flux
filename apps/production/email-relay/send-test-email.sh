@@ -127,7 +127,9 @@ def body(subject, sender, recipient):
             "   dmarc=fail  -> alignment, not signing: SPF and DKIM can both pass while the",
             "                  From domain matches neither.",
             "",
-            "   Relay-side, find this message by its Message-ID:",
+            "   Relay-side, match by the timestamp above -- NOT by Message-ID. Cloudflare",
+            "   rewrites it, so the ID on the delivered message does not appear in the",
+            "   relay's log at all; the relay records its own, @relay.email-relay.svc.",
             "     kubectl --context nas -n email-relay logs deploy/relay | grep status=",
             "",
         ]
