@@ -76,12 +76,9 @@ spec:
   secretRef:
     name: webhook-token
   resources:
-    - kind: ImageRepository
-      name: repo-tayle-app
-      namespace: tayle-prod
-    - kind: ImageRepository
-      name: repo-tayle-worker
-      namespace: tayle-prod
+    # repo-tayle-app / repo-tayle-worker removed 2026-08-26 alongside ./tayle in
+    # apps/production/kustomization.yaml — see the comment there for why. Restoring
+    # tayle means re-adding both here and there.
     - kind: ImageRepository
       name: repo-scott-willeke-com
       namespace: scott-willeke-com-prod

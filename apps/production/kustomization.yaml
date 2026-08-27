@@ -2,7 +2,15 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ./transmission
-  - ./tayle
+  # `./tayle` removed from the cluster 2026-08-26. Its Let's Encrypt certificate
+  # expired 2026-08-25 and cert-manager could not renew it: tayle.co's DNS is not
+  # under our control, so the HTTP-01 challenge resolves to someone else's server
+  # and had been retrying for 31 days. That failing Certificate was one of the two
+  # things keeping the `apps` Kustomization unhealthy.
+  # Manifests are intentionally left in ./tayle so the app can be restored by
+  # re-adding this line. All three PVs are Retain, so hostPath data survives at
+  # /mnt/thedatapool/app-data/tayle/prod/{db-data,db-backups,rabbitmq-data}
+  # (also covered by the B2 backup's /app-data/** include).
   - ./home-assistant
   - ./photoprism
   - ./monitoring
