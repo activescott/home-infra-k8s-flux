@@ -416,6 +416,55 @@ spec:
                 annotations:
                   summary: 'Tinkerbell app logging elevated error/fatal volume.'
                   description: 'More than 3 error/fatal log lines from the tinkerbell app in the last hour. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level=~"error|fatal".'
+          - name: email-relay
+            rules:
+              # Outbound mail for fernfiles, ramblefeed and tinkerbell all leaves
+              # through the email-relay Postfix null client
+              # (activescott/fernfiles#204). Postfix exports no metrics, so these
+              # are fed by counters the alloy pipeline derives from its log lines
+              # — see alloy/helmrelease.yaml.
+              #
+              # The applications cannot detect any of this themselves: the relay
+              # accepts a message and delivers it afterwards, so a send that fails
+              # at Cloudflare still looks like a success to the app that submitted it.
+              - alert: EmailRelayBounced
+                # Any permanent failure at all. These are sign-in codes and share
+                # invites, so a single lost message is a user who cannot get into
+                # their account — worth paging on rather than thresholding.
+                expr: 'increase(loki_process_custom_email_relay_bounced_total[15m]) > 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'email-relay could not deliver a message.'
+                  description: 'Postfix reported status=bounced — the message is gone and will not be retried. Check Loki in Grafana Explore: {namespace="email-relay"} |= "status=bounced". Auth chain and debugging notes: apps/production/email-relay/README.md.'
+              - alert: EmailRelayDeferred
+                # Deferrals in ones and twos are normal; postfix retries and usually
+                # succeeds. Sustained deferral means Cloudflare is refusing us, which
+                # is the documented risk of Email Sending being a beta with an
+                # undocumented, auto-scaling daily quota.
+                expr: 'increase(loki_process_custom_email_relay_deferred_total[1h]) > 5'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'email-relay is repeatedly deferring mail.'
+                  description: 'More than 5 deferrals in an hour. Postfix is still retrying, but sustained deferral usually means Cloudflare is rejecting us — check the sending quota and the API token. Loki: {namespace="email-relay"} |= "status=deferred".'
+              - alert: EmailRelayAuthFailures
+                # An app whose SASL password no longer matches the relay's copy
+                # produces no delivery lines at all, so the counters above stay flat
+                # and look like a quiet day. This is what makes that case visible.
+                #
+                # Tolerates a few: send-test-email.sh deliberately fails one auth per
+                # run to prove SASL is enforced, so a threshold of zero would fire
+                # every time someone tests.
+                expr: 'increase(loki_process_custom_email_relay_auth_failed_total[1h]) > 3'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Repeated failed authentications against email-relay.'
+                  description: 'More than 3 SASL failures in an hour. Most likely an app password no longer matches SMTPD_SASL_USERS in the relay secret; also worth checking whether anything is reaching the port that should not be. Loki: {namespace="email-relay"} |= "authentication failed".'
           - name: tinkerbell-scrape-health
             rules:
               # Meta-alert: catches the case where /metrics is unreachable

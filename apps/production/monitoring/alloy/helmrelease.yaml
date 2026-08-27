@@ -255,6 +255,84 @@ spec:
               }
             }
 
+            // email-relay: outbound mail delivery outcomes. Postfix is the only
+            // evidence that mail is or is not leaving — it exports no metrics, and
+            // the applications cannot tell either, since the relay accepts a message
+            // and delivers it afterwards. Without these counters, a total outage of
+            // outbound mail (sign-in codes included) is silent.
+            //
+            // Postfix logs plain text, not the JSON the stages above parse, so these
+            // select on the literal `status=` token rather than a `level` label. A
+            // delivery line looks like:
+            //   to=<x@y>, relay=smtp.mx.cloudflare.net[...]:465, dsn=2.0.0, status=sent (250 ...)
+            //
+            // Separate counters, not one "problem" counter: `deferred` is transient and
+            // usually self-resolving, `bounced` is terminal. Merging them means paging
+            // for things that fix themselves — the mistake the tinkerbell warn/error
+            // split above documents.
+            stage.match {
+              selector = "{namespace=\"email-relay\"} |= \"status=sent\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "email_relay_sent_total"
+                  description = "messages the relay handed to Cloudflare successfully"
+                  match_all   = true
+                  action      = "inc"
+                  // As with the tinkerbell counters: the 5m default deletes an idle
+                  // series, and these are idle for days at a time by design.
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
+            stage.match {
+              selector = "{namespace=\"email-relay\"} |= \"status=bounced\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "email_relay_bounced_total"
+                  description = "messages the relay could not deliver, permanently"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
+            stage.match {
+              selector = "{namespace=\"email-relay\"} |= \"status=deferred\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "email_relay_deferred_total"
+                  description = "messages queued for retry after a temporary failure"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
+            // Inbound SASL failures. Catches an app whose password no longer matches
+            // the relay's copy: it produces no delivery lines at all, so the counters
+            // above stay flat — indistinguishable from a quiet day at this volume.
+            // send-test-email.sh deliberately fails one auth per run, which is why the
+            // alert on this tolerates a few rather than firing on the first.
+            stage.match {
+              selector = "{namespace=\"email-relay\"} |= \"SASL\" |= \"authentication failed\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "email_relay_auth_failed_total"
+                  description = "failed SMTP authentications against the relay"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 
