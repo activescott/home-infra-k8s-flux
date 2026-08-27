@@ -19,14 +19,26 @@ spec:
   # registry -- xpkg.crossplane.io and ghcr.io/crossplane-contrib both deny the pull. The
   # source is healthy (CI green on main, e2e green), it was simply never published.
   #
-  # The fork changes no provider code. It adds the two things that made publishing impossible
-  # from anywhere but the upstream org, and is offered back upstream:
-  #   - packages: write on the publishing job, since the default GITHUB_TOKEN is read-only
-  #   - registry_org derived from github.repository_owner rather than hardcoded
+  # The fork carries two fixes, both offered back upstream:
+  #
+  # 1. Publishing. The default GITHUB_TOKEN is read-only, and registry_org was hardcoded to
+  #    crossplane-contrib, so no fork could ever push a package.
+  #
+  # 2. Nothing could be created. Upstream generates Terraform-CLI controllers for every
+  #    resource, but terraform-provider-cloudflare v5 is pure plugin-framework: upjet writes an
+  #    empty "id" into tfstate before the first create, refreshes, and the Cloudflare Read
+  #    answers with an error diagnostic instead of empty state -- so observe fails and create
+  #    never runs. That is upstream issue #31. The DNS record, the five email routing kinds and
+  #    the zone setting are now served through upjet's plugin framework runtime, which is the
+  #    only one exposing IsNotFoundDiagnosticFn. The other resources keep their CLI
+  #    controllers, so no CRD schema changed. Hosting the framework provider in-process needs
+  #    an exported constructor, which Cloudflare does not ship (implementation is under
+  #    internal/), so the fork also depends on activescott/terraform-provider-cloudflare via a
+  #    replace directive.
   #
   # Rebuild only when an input changes -- a new Cloudflare Terraform provider release (pinned
   # as TERRAFORM_PROVIDER_VERSION, currently 5.15.0), a new upjet/crossplane-runtime, or a
   # dependency CVE. Cloudflare API changes alone do not require one; they arrive here only via
   # a Terraform provider release. Publishing is a manual workflow_dispatch, documented in the
   # fork's README.
-  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.1.0
+  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.2.0
