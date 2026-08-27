@@ -34,11 +34,18 @@ spec:
   #    controllers, so no CRD schema changed. Hosting the framework provider in-process needs
   #    an exported constructor, which Cloudflare does not ship (implementation is under
   #    internal/), so the fork also depends on activescott/terraform-provider-cloudflare via a
-  #    replace directive.
+  #    replace directive. Two dependencies the CLI runtime never used had to be supplied for
+  #    the framework runtime: controller.Options.OperationTrackerStore (nil-dereference panic
+  #    without it) and terraform.Setup.FrameworkProvider ("cannot retrieve framework
+  #    provider").
+  #
+  # Verified end to end against the live Cloudflare API on 2026-08-27: a DNSRecord with no
+  # external-name reconciles to Synced=True/Ready=True, Cloudflare assigns the record id and it
+  # is written back as the external name, and deleting the managed resource removes the record.
   #
   # Rebuild only when an input changes -- a new Cloudflare Terraform provider release (pinned
   # as TERRAFORM_PROVIDER_VERSION, currently 5.15.0), a new upjet/crossplane-runtime, or a
   # dependency CVE. Cloudflare API changes alone do not require one; they arrive here only via
   # a Terraform provider release. Publishing is a manual workflow_dispatch, documented in the
   # fork's README.
-  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.2.0
+  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.3.0
