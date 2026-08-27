@@ -59,3 +59,13 @@ spec:
       adopt: 466cdd7356173f4e3b022262ac81010d
       ttl: 1
       content: '"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78k" "m4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB"'
+    # DMARC is established BEFORE this zone is onboarded to Email Sending, deliberately.
+    # Onboarding writes Cloudflare's own _dmarc record at p=reject if none exists; proven
+    # on productpoet.com, an existing record is left alone, which is how this one stays
+    # ours and stays editable. Starts at p=none per the plan, tightened once rua= reports
+    # come back clean. The cf-bounce records that onboarding creates are read-only and
+    # get declared Observe afterwards.
+    - key: dmarc-txt
+      name: _dmarc.tinkerbellbot.com
+      type: TXT
+      content: v=DMARC1; p=none; rua=mailto:dmarc@tinkerbellbot.com
