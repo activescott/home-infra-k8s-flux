@@ -38,3 +38,20 @@ resources:
   # relay.email-relay.svc.cluster.local:587 -- see its README for the access
   # model and why the queue is not persistent.
   - ./email-relay
+  # Stalwart, holding a second copy of scott@willeke.com. Unrelated to
+  # email-relay above: that is the outbound application path, this is the
+  # inbound personal one, kept separate so a mistake in one cannot reach the
+  # other. Google Workspace stays the authoritative MX and keeps its own copy,
+  # so this server is additive and never load-bearing for account recovery.
+  #
+  # Deploying it does not make mail arrive. Nothing reaches it until the Google
+  # Workspace routing rule exists, which is a manual admin-console step. Until
+  # then the mailbox is empty, which is deliberately the window in which to fix
+  # the offsite backup: the B2 cloud sync task reads live files and cannot
+  # safely copy a database. See the private repo's scott-todo.md.
+  #
+  # hostPath volumes at /mnt/thedatapool/app-data/stalwart/prod/{config,data}
+  # (covered by the B2 backup's /app-data/** include) must exist and be owned by
+  # 2000:2000 before the pod starts, or Stalwart silently re-bootstraps and
+  # looks exactly like data loss. Created 2026-08-28.
+  - ./email-stalwart
