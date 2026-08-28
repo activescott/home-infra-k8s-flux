@@ -125,6 +125,25 @@ spec:
       ttl: 1
       proxied: true
       content: activescott.github.io
+    - key: mail-cname
+      name: mail.activescott.com
+      type: CNAME
+      ttl: 1
+      # Stalwart's inbound hostname. No `adopt` -- this is a genuinely new record, not an
+      # adoption; the name did not resolve before 2026-08-28.
+      #
+      # It lives in this zone rather than willeke.com on purpose, even though the mail it
+      # receives is addressed to willeke.com. Google Workspace's dual-delivery routing rule
+      # takes an arbitrary hostname and does not require one in the recipient's domain, and
+      # willeke.com is on Google Cloud DNS, outside Crossplane. Putting it here means the
+      # record is git-managed and Stalwart's ACME DNS-01 challenge uses the Cloudflare token
+      # that already exists, instead of a new Google Cloud DNS credential.
+      #
+      # mail.willeke.com was the original plan and is NOT available: it is a live CNAME to
+      # ghs.googlehosted.com that Scott's father uses to reach Gmail. willeke.com is shared,
+      # so nothing in it is touched by this design.
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
     - key: nas-cname
       name: nas.activescott.com
       type: CNAME
