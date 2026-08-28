@@ -1,0 +1,138 @@
+{
+  "title": "Crossplane / Cloudflare API",
+  "uid": "crossplane-cloudflare",
+  "tags": ["crossplane", "cloudflare"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "text",
+      "title": "Why this dashboard exists",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "Cloudflare allows **1200 API requests per 5 minutes per token**, and once exceeded it returns 429 for *every* call for the next 5 minutes — not just the call that went over. A single token is shared by every managed resource, so adding resources anywhere raises the cost of every sweep.\n\nA fresh provider pod sweeps all managed resources at once: measured at ~1186 calls in ~3 minutes for 131 resources, which is 99% of the quota in one burst. Steady state at `--poll=15m` is ~85 per 5 minutes. **So restarts are the risk, not steady running.**\n\nIf the budget panel is pegged, raise `--poll` in `provider-cloudflare-runtimeconfig.yaml`. **Do not set `--max-reconcile-rate`** — setting it to 2 silently stopped controllers reconciling entirely while DNS kept working and the provider still reported Healthy."
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cloudflare API calls per 5m (quota 1200)",
+      "description": "upjet_resource_ext_api_duration_count is the provider's own counter of calls to the Cloudflare API. The 1200 line is the hard limit; crossing it 429s everything for 5 minutes.",
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 10, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 600 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["max", "lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "sum(increase(upjet_resource_ext_api_duration_count[5m]))",
+          "legendFormat": "calls / 5m",
+          "refId": "A"
+        },
+        {
+          "expr": "vector(1200)",
+          "legendFormat": "quota (1200)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Budget used, last 5m",
+      "description": "Percent of the 1200-per-5-minute Cloudflare token quota currently consumed.",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 50 },
+              { "color": "red", "value": 83 }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "area", "colorMode": "background" },
+      "targets": [
+        {
+          "expr": "100 * sum(increase(upjet_resource_ext_api_duration_count[5m])) / 1200",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Managed resources not syncing, by kind",
+      "description": "crossplane_managed_resource_{exists,synced} are per-GVK gauges, NOT per-resource — one series per installed CRD kind. `synced == 0` would match every kind that merely has no resources (241 of 242 here), so the difference against _exists is the real signal.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 20, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "crossplane_managed_resource_exists - crossplane_managed_resource_synced > 0",
+          "legendFormat": "{{gvk}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "External API call rate",
+      "description": "Zero while the provider pod is Running means controllers are not running at all — a failure mode that leaves the pod Ready and the Provider Healthy. Expect roughly 17 calls/min at --poll=15m with ~131 managed resources.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (operation) (rate(upjet_resource_ext_api_duration_count[5m]))",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Managed resources: exist vs synced vs ready",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 0, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(crossplane_managed_resource_exists)", "legendFormat": "exists", "refId": "A" },
+        { "expr": "sum(crossplane_managed_resource_synced)", "legendFormat": "synced", "refId": "B" },
+        { "expr": "sum(crossplane_managed_resource_ready)", "legendFormat": "ready", "refId": "C" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider restarts (each one costs a full-sweep burst)",
+      "description": "A restart re-observes every managed resource at once. That burst, not steady-state polling, is what exhausts the Cloudflare quota.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (pod) (kube_pod_container_status_restarts_total{namespace=\"crossplane-system\"})",
+          "legendFormat": "{{pod}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
