@@ -17,14 +17,21 @@ and it should not run until the two owner-approval steps below are done.
 
 Blocking, in order:
 
-1. **Fill `.env.secret.stalwart`** (placeholder on disk) and let it be encrypted.
-2. **`mail.willeke.com` DNS** — repointing an existing record, not adding one. Private repo
-   `scott-todo.md` item 10.
-3. **OPNsense NAT rule** forwarding `:25` to `10.1.111.20`. Firewall change, needs explicit
-   owner approval.
-4. **Google Workspace routing rule** for dual delivery, in the admin console.
+1. ~~**Fill `.env.secret.stalwart`**~~ — done 2026-08-28, encrypted.
+2. ~~**DNS**~~ — done 2026-08-28, but **not** at the name originally planned. `mail.willeke.com`
+   is live and in use: it is a CNAME to `ghs.googlehosted.com` that Scott's father uses to reach
+   Gmail, and `willeke.com` is a shared domain. The hostname is now
+   **`mail.activescott.com`** — a Cloudflare zone, so the record is git-managed
+   (`infrastructure/prod/dns/zones/activescott.com.yaml`) and ACME DNS-01 works with a
+   Cloudflare token instead of a Google Cloud DNS credential. Google's routing rule accepts an
+   arbitrary hostname, so nothing requires it to live in the recipient's domain.
+3. ~~**OPNsense NAT rule** forwarding `:25`~~ — done 2026-08-28, and inbound `:25` was
+   **measured open**, not assumed. Method recorded in the private repo's `scott-todo.md` item 2.
+4. **NAT rules for `:993` and `:587`** — still to do. Tailscale is not in use, so mail clients
+   reach IMAP and submission over the internet. Exposure accepted by Scott, 2026-08-28.
+5. **Google Workspace routing rule** for dual delivery, in the admin console.
 
-Steps 3 and 4 are what make mail actually arrive. Everything before them is inert.
+Step 5 is what makes mail actually arrive. Everything before it is inert.
 
 ## Before the first start: create the volume directories
 
@@ -75,11 +82,38 @@ egress to GitHub to be administrable, and it tracks `latest` rather than the ima
 ## TLS
 
 Stalwart does its own ACME; cert-manager here is HTTP-01 only and cannot cover mail hostnames.
-Configure the ACME provider in the admin UI once `mail.willeke.com` resolves. Traefik owns :80
-and :443 on the node, so an HTTP-01 challenge cannot reach Stalwart — use **DNS-01**.
+Traefik owns :80 and :443 on the node, so an HTTP-01 challenge cannot reach Stalwart — use
+**DNS-01**.
 
-`willeke.com` is hosted at Google Cloud DNS, not Cloudflare, so a Cloudflare DNS-01 token does
-not help for that name. Settle the challenge method at the same time as the hostname decision.
+Settled 2026-08-28: **DNS-01 against `activescott.com` via Stalwart's own Cloudflare
+integration.** Stalwart drives the challenge through the provider API itself, so renewal needs
+no manual step. This is the direct consequence of naming the host `mail.activescott.com` — had
+it stayed in `willeke.com` (Google Cloud DNS) it would have needed a new credential there.
+
+Needs a **fourth Cloudflare token**, scoped as narrowly as it goes:
+
+```
+Zone -> DNS -> Edit
+Zone Resources -> Include -> Specific zone -> activescott.com
+```
+
+No Crossplane conflict: the `_acme-challenge` TXT is ephemeral and undeclared in git, and the
+`DNSZone` composition reconciles only records it declares — it does not prune unknown records
+from the zone. Do not re-run `generate-dnszones.sh` while a challenge record is live, or it
+could be adopted into git as a permanent record.
+
+### Do NOT enable Stalwart's automated DNS
+
+Stalwart can publish and maintain MX, SPF, DKIM, DMARC, TLSA and autoconfig records directly
+against a zone. **Leave that off.** It is a second writer competing with the project's tenet
+that git is the source of truth, and the domain it would write to is `willeke.com` — shared
+with Scott's father, where Google must remain MX. A mail server that helpfully publishes an MX
+pointing at itself is the most destructive thing that could happen to this design.
+
+The ACME DNS-01 automation above is a deliberate exception: it writes one ephemeral TXT record
+in a different zone, and nothing in git ever describes that record.
+
+DKIM is not configured, because Stalwart signs nothing — see Sending below.
 
 Stalwart also reports that its resolver cannot validate DNSSEC and therefore disables DANE. That
 is fine for a receive-only role but forecloses TLSA if this ever becomes authoritative.
@@ -88,6 +122,24 @@ is fine for a receive-only role but forecloses TLSA if this ever becomes authori
 
 | Port | Where | Why |
 |---|---|---|
-| 25 | LoadBalancer, **and** the firewall NAT rule | Google's routing rule connects here. The only port that needs to be open to the internet. |
-| 587, 465, 993 | LoadBalancer, LAN/Tailscale only | Scott's own clients. Not forwarded at the firewall. |
+| 25 | LoadBalancer, **and** the firewall NAT rule | Google's routing rule connects here. Verified reachable from the internet 2026-08-28. |
+| 993, 587 | LoadBalancer, **and** the firewall NAT rule | Scott's own clients. Internet-facing because Tailscale is not in use; exposure accepted 2026-08-28. |
+| 465 | LoadBalancer, LAN only | Implicit-TLS twin of 587. Adds exposure without adding capability — open only if a client cannot do STARTTLS. |
+
+## Sending
+
+Stalwart delivers **nothing** directly. Outbound :25 is blocked by Ziply (Phase 0e), so a
+message submitted here could never reach a recipient's MX.
+
+Instead it relays through an authenticated smarthost: `smtp.gmail.com:587`, as Scott's Google
+account, configured as a `Relay` route (`authUsername` + `authSecret`, STARTTLS).
+
+This is what keeps `willeke.com`'s DNS untouched. Google remains the entity that sends, so the
+existing `v=spf1 include:aspmx.googlemail.com ~all` still passes and Google applies its own
+DKIM. **No SPF, MX, DMARC or DKIM change is needed for any of this** — which matters because
+that SPF record is domain-wide on a domain shared with Scott's father, and a mistake in it would
+break his outbound mail.
+
+Sending through Stalwart is also what populates its Sent folder, so the archive covers outbound
+without a second Google routing rule.
 | 443, 8080 | ClusterIP only | Admin UI and JMAP. Not exposed; reach by `port-forward`. Traefik already holds :443 on the node IP. |

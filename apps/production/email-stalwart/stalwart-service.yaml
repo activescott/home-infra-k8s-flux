@@ -17,10 +17,22 @@ spec:
 # the node IP (10.1.111.20) directly, the same way plex and alloy-syslog already do -- there
 # is one node, so there is no address to allocate.
 #
-# Nothing reaches these from outside the house until the OPNsense NAT rule exists. Only :25
-# needs to be forwarded at the firewall: it is the port Google's dual-delivery routing rule
-# connects to. 587 and 993 are for Scott's own clients and are reachable over the LAN and
-# over Tailscale without opening anything.
+# Three of these are forwarded at the OPNsense firewall, and that is a deliberate exposure
+# decision (Scott, 2026-08-28), not an oversight:
+#
+#   25   Google's dual-delivery routing rule connects here. NAT rule added 2026-08-28 and
+#        inbound :25 measured open -- see the private repo's scott-todo.md item 2.
+#   993  IMAP. Originally planned as LAN/Tailscale-only, but Tailscale is not in use, so mail
+#        clients need to reach it from the internet.
+#   587  Submission. Same reason, and required for the archive: mail sent THROUGH Stalwart is
+#        the only way its Sent folder gets populated.
+#
+# So IMAP and submission are internet-facing. Scott accepted this explicitly. What carries the
+# security here is Stalwart's own posture -- implicit TLS with the ACME certificate, plus its
+# built-in rate limiting and brute-force blocklists -- not network reachability.
+#
+# 465 is not forwarded. It is the implicit-TLS twin of 587 and adds exposure without adding
+# capability; open it only if a client cannot do STARTTLS on 587.
 #
 # Deliberately NOT here: 443. Traefik already owns :443 on this node IP, so publishing
 # Stalwart's HTTPS listener through a LoadBalancer would collide with every ingress in the
