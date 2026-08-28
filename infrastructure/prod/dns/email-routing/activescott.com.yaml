@@ -18,10 +18,15 @@ metadata:
   annotations:
     crossplane.io/external-name: bfad08f9d9ee4a7fb2abbc31cd7d05ff
 spec:
-  # Orphan, so deleting the Kubernetes object leaves the Cloudflare rule alone. Adoption is
-  # meant to transfer ownership, not lifecycle, and with `prune: true` on the cluster
-  # Kustomizations a kustomize path typo would otherwise delete real mail routing.
-  deletionPolicy: Orphan
+  # Everything except Delete: Crossplane may observe, create and update these rules but never
+  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
+  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
+  # kustomize path typo would otherwise delete real mail routing.
+  #
+  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
+  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
+  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -49,10 +54,15 @@ metadata:
   annotations:
     crossplane.io/external-name: 9a6e374b0f2c4aa78f44850c7392e675
 spec:
-  # Orphan, so deleting the Kubernetes object leaves the Cloudflare rule alone. Adoption is
-  # meant to transfer ownership, not lifecycle, and with `prune: true` on the cluster
-  # Kustomizations a kustomize path typo would otherwise delete real mail routing.
-  deletionPolicy: Orphan
+  # Everything except Delete: Crossplane may observe, create and update these rules but never
+  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
+  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
+  # kustomize path typo would otherwise delete real mail routing.
+  #
+  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
+  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
+  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
   providerConfigRef:
     kind: ProviderConfig
     name: default
