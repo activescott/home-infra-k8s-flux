@@ -1,0 +1,129 @@
+# Makes Stalwart pick up a renewed certificate.
+#
+# Stalwart does not notice a rotated certificate file. cert-manager renews
+# mail.activescott.com on its own and the kubelet refreshes the mounted Secret underneath the
+# running server, so the files on disk change and nothing reads them. Left alone, Stalwart keeps
+# serving the expired certificate on 993 and 465 -- both internet-facing -- and it fails
+# silently, roughly 60 days after issuance.
+#
+# WHY A RESTART RATHER THAN THE DOCUMENTED RELOAD ACTION
+#
+# The docs and support forum describe a ReloadTlsCertificates action. It is not in this
+# version's admin UI (0.16.19), and the management API could not be found: /api/* returns
+# structured 404s, /admin/* is an SPA catch-all returning the same 965-byte HTML for any path,
+# and /api/discover/* serves an OIDC document regardless of suffix. The web UI's own bundle is
+# minified and builds its paths dynamically.
+#
+# A restart, by contrast, is PROVEN. On 2026-08-28 a saved Certificate object was ignored --
+# "WARN No TLS certificates available, total = 0", self-signed placeholder still served on every
+# port -- until the pod was deleted, after which all of 25, 465 and 993 served the real
+# certificate. Prefer a verified blunt mechanism over an elegant inferred one.
+#
+# WHY IT DOES NOT RESTART ON A SCHEDULE
+#
+# It compares a hash of the certificate against the last one it acted on, kept in a ConfigMap
+# it owns, and restarts only when they differ. So it runs daily and is a no-op on all but the
+# ~4 days a year cert-manager renews.
+#
+# The hash is deliberately NOT stored as a pod-template annotation on the StatefulSet, which is
+# the more common form of this pattern. That would make the live StatefulSet differ from git,
+# and Flux reconciling it away would trigger another restart, which would re-add it -- a restart
+# loop driven by the reconcile interval. A ConfigMap this job owns is invisible to Flux: it is
+# not in git, so Flux neither applies nor prunes it.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: stalwart-tls-reload
+  namespace: email-stalwart
+---
+# Deliberately a Role, not a ClusterRole, and every verb is the minimum the job needs. It can
+# delete pods in this namespace and nothing else anywhere.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stalwart-tls-reload
+  namespace: email-stalwart
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["stalwart-tls"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stalwart-tls-reload
+  namespace: email-stalwart
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: stalwart-tls-reload
+subjects:
+  - kind: ServiceAccount
+    name: stalwart-tls-reload
+    namespace: email-stalwart
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stalwart-tls-reload
+  namespace: email-stalwart
+spec:
+  # Daily, shortly after midnight. Renewal timing is cert-manager's business; this only has to
+  # notice within a day of it happening, and the certificate has ~30 days of life left when
+  # cert-manager renews it.
+  schedule: "17 0 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          serviceAccountName: stalwart-tls-reload
+          restartPolicy: OnFailure
+          containers:
+            - name: reload
+              image: bitnami/kubectl:1.31.3
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  ns=email-stalwart
+                  cm=stalwart-tls-reload-state
+
+                  # Hash the certificate as the API returns it. Any renewal changes this.
+                  current=$(kubectl -n "$ns" get secret stalwart-tls \
+                    -o jsonpath='{.data.tls\.crt}' | sha256sum | cut -c1-32)
+
+                  last=$(kubectl -n "$ns" get configmap "$cm" \
+                    -o jsonpath='{.data.certHash}' 2>/dev/null || true)
+
+                  if [ "$current" = "$last" ]; then
+                    echo "certificate unchanged ($current), nothing to do"
+                    exit 0
+                  fi
+
+                  # First run has no recorded hash. Record it WITHOUT restarting: the running
+                  # server already loaded this certificate, so a restart would be pure
+                  # disruption for no gain.
+                  if [ -z "$last" ]; then
+                    echo "no recorded hash; adopting $current without restarting"
+                  else
+                    echo "certificate changed ($last -> $current); restarting Stalwart"
+                    kubectl -n "$ns" delete pod -l app=stalwart --wait=false
+                  fi
+
+                  kubectl -n "$ns" create configmap "$cm" \
+                    --from-literal=certHash="$current" \
+                    --dry-run=client -o yaml | kubectl -n "$ns" apply -f -
+                  echo "recorded $current"
