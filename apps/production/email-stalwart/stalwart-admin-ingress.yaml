@@ -36,11 +36,18 @@ spec:
 # credentials in cleartext -- verified 2026-08-28, http://admin.mail.activescott.com/ served the
 # UI rather than redirecting.
 #
-# This is a per-ingress fix, not a cluster-wide one. There is no HTTP-to-HTTPS redirect anywhere
-# in this Traefik setup: grafana.activescott.com has the same exposure and answers on :80 too.
-# Fixing that globally at the Traefik entrypoint is the better end state and is tracked
-# separately; it is not done here because it changes behaviour for every ingress at once,
-# including the ACME HTTP-01 challenge path.
+# Redundant with the cluster-wide redirect on Traefik's `web` entrypoint in
+# infrastructure/prod/configs/traefik-config.yaml, which lands every :80 request on :443 before any
+# router runs and so already covers this host. Kept anyway, deliberately: this is the highest-
+# exposure surface in the cluster (total control of the mail server), and it costs one object to
+# stay protected even if the entrypoint config is reverted or mis-renders.
+#
+# It is not a second redirect in the request path. On :80 the entrypoint redirect fires first and
+# this never runs; on :443 redirectScheme computes the same URL it was handed and passes through
+# instead of looping -- verified 2026-08-28, https://admin.mail.activescott.com/ returns the app's
+# own 302 to /account rather than redirecting to itself.
+#
+# Do not copy this onto new ingresses; the entrypoint redirect covers them already.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

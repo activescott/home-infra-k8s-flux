@@ -10,3 +10,75 @@ spec:
         # Preserve real client IPs instead of SNAT'ing through kube-proxy.
         # Required for PostHog geo-location and IP-based analytics.
         externalTrafficPolicy: Local
+    ports:
+      web:
+        # Redirect every plain-HTTP request to HTTPS, for every ingress in the
+        # cluster, current and future.
+        #
+        # Before this, nothing in the cluster redirected. Measured 2026-08-28
+        # against the WAN IP with a Host header: grafana.activescott.com,
+        # prometheus.activescott.com and transmission.activescott.com all answered
+        # on :80 -- the latter two with a 401 basic-auth challenge, so credentials
+        # for them were being typed into a cleartext connection. Both :80 and :443
+        # are forwarded from the internet at the edge firewall, so this was
+        # reachable from anywhere, not just the LAN.
+        #
+        # Chart syntax note: `redirectTo:` was REMOVED in traefik-helm-chart v34
+        # and the chart now hard-fails the render if it sees that key. k3s v1.33.5
+        # ships chart 34.2.1+up34.2.0, so `redirections:` below is the only form
+        # that works here. `scheme: https` is not optional either -- the chart
+        # refuses to redirect to a TLS-enabled entrypoint without it.
+        redirections:
+          entryPoint:
+            to: websecure
+            scheme: https
+            permanent: true
+        # WHY THIS DOES NOT BREAK CERTIFICATE RENEWAL
+        #
+        # cert-manager solves ACME HTTP-01 for all 25+ certificates in this
+        # cluster by standing up a temporary solver Ingress on
+        # /.well-known/acme-challenge/<token>, served over :80 -- the entrypoint
+        # this redirect now covers. The redirect is not path-aware and cannot be
+        # made to exempt that path: Traefik generates the redirect as a catch-all
+        # router at priority math.MaxInt-1 (`RedirectEntryPoint.SetDefaults` in
+        # pkg/config/static/entrypoints.go), while user-defined router priority is
+        # capped at math.MaxInt-1000. No ingress, including the solver's, can
+        # outrank it. So every challenge request WILL be redirected.
+        #
+        # That is fine, because Let's Encrypt follows the redirect. From
+        # https://letsencrypt.org/docs/challenge-types/, verbatim: "Our
+        # implementation of the HTTP-01 challenge follows redirects, up to 10
+        # redirects deep. It only accepts redirects to 'http:' or 'https:', and
+        # only to ports 80 or 443." and "When redirected to an HTTPS URL, it does
+        # not validate certificates (since this challenge is intended to bootstrap
+        # valid certificates, it may encounter self-signed or expired certificates
+        # along the way)."
+        #
+        # The redirected request then has to land on the solver again, over
+        # :443. It does, and none of that depends on the certificate existing yet:
+        #
+        #  - The solver Ingress sets no `traefik.ingress.kubernetes.io/router.entrypoints`
+        #    annotation, and Traefik's Ingress provider only ever sets a router's
+        #    entrypoints from that annotation (`loadRouter` in
+        #    pkg/provider/kubernetes/ingress). With none, the router gets the
+        #    default entrypoints -- which includes websecure. Presence or absence
+        #    of `spec.tls` does not change this; it only decides whether a
+        #    certificate is loaded. Observed live: the stalwart-admin-ingress had a
+        #    websecure router while its TLS secret still did not exist.
+        #  - On an unknown SNI Traefik completes the handshake with its built-in
+        #    `CN=TRAEFIK DEFAULT CERT` self-signed certificate rather than dropping
+        #    the connection. Verified 2026-08-28 against a hostname with no
+        #    Ingress and no Certificate. Let's Encrypt ignores that, per the quote
+        #    above.
+        #  - Router priority defaults to rule length, and the solver's rule
+        #    (Host + the 28-character challenge prefix + a 43-character token) is
+        #    always far longer than an app's Host + PathPrefix(`/`), so the solver
+        #    wins over the app on websecure too.
+        #
+        # VERIFY AFTER THIS ROLLS OUT. The failure mode here is silent and slow:
+        # cert-manager renews at two-thirds of lifetime, so a break would not
+        # surface as an outage for ~30 days, and there is no certificate-expiry
+        # alerting yet. Force one renewal and watch it succeed rather than waiting:
+        #   kubectl --context nas -n monitoring delete secret grafana-activescott-com
+        #   kubectl --context nas -n monitoring get certificate,order,challenge -w
+        # A challenge reaching `valid` proves the whole redirect-following path.
