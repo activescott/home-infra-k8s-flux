@@ -176,6 +176,65 @@ spec:
                     NOT update while the reason stays the same, so a stale-looking timestamp
                     does not mean the controller has stopped retrying -- and an unchanging one
                     does not mean it is still trying either.
+              # CrossplaneResourcesNotSynced resolves on exists - synced == 0,
+              # which is reached either by synced rising OR by exists falling to
+              # zero. Deletion and repair produce an identical "Resolved"
+              # notification. On 2026-08-28 that had to be told apart by hand,
+              # by checking the denominators had held at 10 and 7.
+              #
+              # Self-baselining rather than a hardcoded floor: a literal
+              # `> 100` is correct only until the real count changes, and
+              # nobody updates a number that is not failing. max_over_time
+              # tracks additions on its own.
+              #
+              # `max by (gvk)` is load-bearing, not tidying. The raw series
+              # carry pod, instance and pkg_crossplane_io_revision labels, all
+              # of which change when the provider upgrades -- so an unaggregated
+              # comparison silently starts a fresh 6h baseline on every rollout
+              # and cannot see a drop across one. `sum by (gvk)` would instead
+              # double-count while old and new pods overlap mid-roll, then halve
+              # and fire a false alarm on every upgrade. max is stable across
+              # both: one replica's worth either way.
+              #
+              # It fires on deliberate deletions too. That is intended -- every
+              # managed resource here comes from git, so an unannounced drop is
+              # exactly the event worth interrupting for. Expect it to stay
+              # firing until the 6h window rolls past the old high-water mark.
+              #
+              # Verified against live Prometheus before merging: the expression
+              # returns nothing now, and the same expression with `+ 1` on the
+              # right returns all 242 series -- which is what proves the
+              # comparison actually joins on labels rather than silently
+              # matching nothing and never firing.
+              - alert: CrossplaneResourcesDisappeared
+                expr: 'max by (gvk) (crossplane_managed_resource_exists) < max_over_time(max by (gvk) (crossplane_managed_resource_exists)[6h:])'
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Crossplane managed resources vanished: {{ $labels.gvk }}"
+                  description: >-
+                    {{ $labels.gvk }} now reports {{ $value }} resources, fewer than its
+                    6h high-water mark. If this was not a deliberate git deletion, suspect a
+                    kustomize path change combined with prune: true. Cloudflare state is the
+                    ground truth -- re-run export-cloudflare.sh and diff before recreating
+                    anything, since the records may still be live and only the managed
+                    resources gone.
+              # The threshold rules above cannot fire on data that does not
+              # exist: if the whole metric family disappears, every expr
+              # referencing it goes empty and silently stops alerting. absent()
+              # is the only form that catches its own absence.
+              - alert: CrossplaneStateMetricsAbsent
+                expr: 'absent(crossplane_managed_resource_exists)'
+                for: 30m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Crossplane managed-resource state metrics have disappeared
+                  description: >-
+                    No crossplane_managed_resource_exists series at all. Every other Crossplane
+                    alert here is blind while this is firing. Check the provider pod, its
+                    metrics endpoint, and the ServiceMonitor.
               # A provider that stops reconciling a whole kind looks completely
               # healthy: the pod is Running, the Provider is Healthy, and other
               # kinds keep working. This is the only signal that catches it.
