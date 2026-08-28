@@ -5,6 +5,9 @@ kind: EmailRoutingRule
 metadata:
   name: ramblefeed-com-dmarc
   namespace: cloudflare
+  annotations:
+    # Created by Crossplane on 2026-08-28, then pinned. See fernfiles.com.yaml for why.
+    crossplane.io/external-name: 84a278ede93d444fafae56d0ece0c12e
 spec:
   providerConfigRef:
     kind: ProviderConfig

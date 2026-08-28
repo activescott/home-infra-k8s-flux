@@ -11,6 +11,10 @@ kind: EmailRoutingRule
 metadata:
   name: fernfiles-com-dmarc
   namespace: cloudflare
+  annotations:
+    # Created by Crossplane on 2026-08-28, then pinned here. See the note at the bottom of
+    # this file for why the id is written back into git rather than left to the controller.
+    crossplane.io/external-name: 28e88c59e5c5488697277d99598a7b32
 spec:
   providerConfigRef:
     kind: ProviderConfig
@@ -43,6 +47,8 @@ kind: EmailRoutingRule
 metadata:
   name: fernfiles-com-privacy
   namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: fabc55828afc432184868f9ad0ffede4
 spec:
   providerConfigRef:
     kind: ProviderConfig
@@ -66,6 +72,8 @@ kind: EmailRoutingRule
 metadata:
   name: fernfiles-com-support
   namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 24bb47ac27064ec7a258be8fc1cd33df
 spec:
   providerConfigRef:
     kind: ProviderConfig
@@ -104,3 +112,23 @@ spec:
       - type: all
     actions:
       - type: drop
+#
+# Why every rule in this directory carries an external-name, including the ones Crossplane
+# created itself.
+#
+# When these five rules were first applied without one, the creates succeeded -- Cloudflare
+# made each rule exactly once -- but the Observe that runs immediately afterwards, which is
+# what reads the assigned id back out and writes it into the external-name annotation, was
+# rejected with 429 Too Many Requests. Cloudflare rate-limits the Email Routing endpoints far
+# more tightly than DNS, and seventeen resources reconciling at once cleared that limit.
+#
+# The result is a resource that is created but has no external name. Crossplane records
+# `crossplane.io/external-create-succeeded` for exactly this case and then refuses to act,
+# which is what stopped it creating a second copy of every rule on the next pass -- the failure
+# this whole adoption strategy is built to avoid. It is safe, but it is stuck, and it does not
+# resolve on its own: with no external name there is nothing for a later Observe to look up.
+#
+# Pinning the id here is the durable repair. It converts a create into an adoption, which is
+# idempotent, breaks the error loop that was sustaining the 429, and survives the managed
+# resource being deleted and recreated. An in-cluster `kubectl annotate` would have fixed the
+# symptom until the next time something reapplied from git.

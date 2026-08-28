@@ -5,6 +5,9 @@ kind: EmailRoutingRule
 metadata:
   name: tinkerbellbot-com-dmarc
   namespace: cloudflare
+  annotations:
+    # Created by Crossplane on 2026-08-28, then pinned. See fernfiles.com.yaml for why.
+    crossplane.io/external-name: 839b01eab8c64f619e320be0b5f31669
 spec:
   providerConfigRef:
     kind: ProviderConfig
