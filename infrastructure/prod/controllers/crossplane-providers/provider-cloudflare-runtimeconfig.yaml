@@ -1,0 +1,40 @@
+# Slows the Cloudflare provider's polling to fit inside Cloudflare's API rate limit.
+#
+# Cloudflare allows 1,200 requests per 5 minutes per token, and going over "blocks all calls
+# for the next 5 minutes" -- not just the offending call.
+# https://developers.cloudflare.com/fundamentals/api/reference/limits/
+#
+# At the default --poll=1m, 131 managed resources are re-read every minute: 655 requests per 5
+# minutes before counting that an upjet Observe is usually more than one API call. At two calls
+# each that is ~1,310, over the limit. And once over, the 5-minute block lands while polling
+# continues, which re-trips it. That is why the 429s on 2026-08-28 never decayed no matter how
+# long everything sat idle -- the DNS records alone kept the token over budget.
+#
+# It presented as an Email Routing problem because those resources come later in the sweep and
+# so absorbed the rejections, while DNSRecord mostly landed in the gaps. Chasing it as an Email
+# Routing or credential problem cost hours; the giveaway that it was neither was that a plain
+# curl from a pod, with the same token and endpoint, returned 200 thirty-five times in a row.
+#
+# 15m takes the same 131 resources to ~44 requests per 5 minutes, a 27x margin. Nothing is lost:
+# these are DNS records and mail routing rules that change when someone changes them in git, and
+# the poll exists only to catch drift made outside git.
+#
+# DO NOT add --max-reconcile-rate here. Setting it to 2 on 2026-08-28 stopped the Email Routing
+# controllers running at all -- silently, with no error, while DNSRecord kept reconciling
+# normally so the provider looked healthy. See docs/specs/email-infrastructure/summary.md in
+# the private repo.
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-upjet-cloudflare
+spec:
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          containers:
+            # Must be `package-runtime` -- the patch is matched by container name.
+            - name: package-runtime
+              args:
+                - --poll=15m
