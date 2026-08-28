@@ -64,6 +64,17 @@ spec:
               mountPath: /etc/stalwart
             - name: data
               mountPath: /var/lib/stalwart
+            # cert-manager writes tls.crt and tls.key here. Mounted read-only and separately
+            # from /etc/stalwart so a certificate rotation never touches persistent storage.
+            #
+            # Stalwart does NOT notice a rotated file on its own -- it re-reads certificates
+            # only when the ReloadTlsCertificates action is invoked. The kubelet refreshes this
+            # mount automatically when cert-manager renews, so the files change underneath a
+            # running server and nothing picks them up. See the reload CronJob task; without it
+            # TLS silently goes stale ~60 days from issuance on internet-facing ports.
+            - name: tls
+              mountPath: /etc/stalwart-tls
+              readOnly: true
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -71,3 +82,8 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: stalwart-data
+        # Produced by stalwart-certificate.yaml. Issued 2026-08-28 by letsencrypt-production
+        # over HTTP-01, CN=mail.activescott.com, valid to 2026-11-26.
+        - name: tls
+          secret:
+            secretName: stalwart-tls
