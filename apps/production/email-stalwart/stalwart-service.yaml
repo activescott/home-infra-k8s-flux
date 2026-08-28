@@ -24,15 +24,19 @@ spec:
 #        inbound :25 measured open -- see the private repo's scott-todo.md item 2.
 #   993  IMAP. Originally planned as LAN/Tailscale-only, but Tailscale is not in use, so mail
 #        clients need to reach it from the internet.
-#   587  Submission. Same reason, and required for the archive: mail sent THROUGH Stalwart is
-#        the only way its Sent folder gets populated.
+#   465  Submission, implicit TLS. Same reason, and required for the archive: mail sent THROUGH
+#        Stalwart is the only way its Sent folder gets populated.
 #
 # So IMAP and submission are internet-facing. Scott accepted this explicitly. What carries the
-# security here is Stalwart's own posture -- implicit TLS with the ACME certificate, plus its
-# built-in rate limiting and brute-force blocklists -- not network reachability.
+# security here is Stalwart's own posture -- TLS with the ACME certificate, plus its built-in
+# rate limiting and brute-force blocklists -- not network reachability.
 #
-# 465 is not forwarded. It is the implicit-TLS twin of 587 and adds exposure without adding
-# capability; open it only if a client cannot do STARTTLS on 587.
+# 587 is published here but Stalwart does NOT listen on it. Its default configuration puts
+# submission on 465 with implicit TLS and starts no STARTTLS listener on 587, which follows
+# RFC 8314's preference for implicit TLS. Verified 2026-08-28: 25, 465 and 993 accept
+# connections on the node; 587 refuses. The port is left in the Service only so that adding a
+# 587 listener later needs no manifest change -- do not forward it at the firewall while
+# nothing is listening, or an external probe returns "refused" and reads like a broken NAT rule.
 #
 # Deliberately NOT here: 443. Traefik already owns :443 on this node IP, so publishing
 # Stalwart's HTTPS listener through a LoadBalancer would collide with every ingress in the

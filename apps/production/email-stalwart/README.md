@@ -123,8 +123,11 @@ is fine for a receive-only role but forecloses TLSA if this ever becomes authori
 | Port | Where | Why |
 |---|---|---|
 | 25 | LoadBalancer, **and** the firewall NAT rule | Google's routing rule connects here. Verified reachable from the internet 2026-08-28. |
-| 993, 587 | LoadBalancer, **and** the firewall NAT rule | Scott's own clients. Internet-facing because Tailscale is not in use; exposure accepted 2026-08-28. |
-| 465 | LoadBalancer, LAN only | Implicit-TLS twin of 587. Adds exposure without adding capability — open only if a client cannot do STARTTLS. |
+| 993, 465 | LoadBalancer, **and** the firewall NAT rule | Scott's own clients: IMAP and submission. Internet-facing because Tailscale is not in use; exposure accepted 2026-08-28. |
+| 587 | published, but **nothing listens** | Stalwart's default config puts submission on 465 with implicit TLS (RFC 8314) and starts no STARTTLS listener. Do not forward it. |
+
+Verified on the node 2026-08-28 after setup: 25, 465 and 993 accept connections; 587 and 995
+refuse. 995 refuses because the Service does not publish it, so klipper never forwards it.
 
 ## Sending
 
