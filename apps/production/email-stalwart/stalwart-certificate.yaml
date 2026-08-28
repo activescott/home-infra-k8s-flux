@@ -1,0 +1,36 @@
+# TLS certificate for the mail hostname, issued the same way as the other 24 certificates in
+# this cluster: a standalone Certificate against the letsencrypt-production ClusterIssuer,
+# solved over HTTP-01.
+#
+# HTTP-01 works here, which is not obvious. Traefik owns :80 and :443 on the node IP, so
+# Stalwart cannot serve an ACME challenge itself -- but it does not need to. cert-manager
+# publishes the challenge through Traefik, writes the result to a Secret, and Stalwart only
+# ever reads the finished certificate from disk. Traefik holding those ports is what makes
+# this work, not what prevents it.
+#
+# Verified before adopting this approach: an HTTP request to the WAN address with
+# Host: mail.activescott.com reaches Traefik (it answers 404 for want of a router, rather
+# than timing out), so the solver's temporary route will be reachable from Let's Encrypt.
+#
+# This deliberately replaces Stalwart's own built-in ACME client. Stalwart's configuration
+# lives in its database, which git does not describe and whose offsite backup is currently
+# broken; a certificate issued in-app would exist in exactly one place. A Certificate resource
+# is a file in this repo, renewed by the controller that already renews everything else and
+# covered by the same alerting.
+#
+# It also sidesteps a modelling problem: Stalwart obtains certificates per configured mail
+# *domain*, and mail.activescott.com is the server hostname, not a mail domain. Using its
+# built-in ACME would have meant inventing an activescott.com domain entry purely to hold a
+# certificate, which would also make Stalwart willing to accept mail for that domain.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mail-activescott-com
+  namespace: email-stalwart
+spec:
+  secretName: stalwart-tls
+  dnsNames:
+    - mail.activescott.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-production

@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - stalwart-pv.yaml
   - stalwart-pvc.yaml
+  - stalwart-certificate.yaml
   - stalwart-statefulset.yaml
   - stalwart-service.yaml
 namespace: email-stalwart

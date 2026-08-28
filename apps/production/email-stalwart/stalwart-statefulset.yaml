@@ -55,15 +55,6 @@ spec:
                 secretKeyRef:
                   name: stalwart-creds
                   key: STALWART_RECOVERY_ADMIN
-            # Cloudflare token for the ACME DNS-01 challenge on mail.activescott.com.
-            # Referenced from Stalwart's ACME settings rather than pasted into them, so the
-            # credential stays SOPS-encrypted in git and survives a rebuild -- Stalwart's own
-            # configuration lives in its database, which git does not describe.
-            - name: CLOUDFLARE_ACME_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: stalwart-creds
-                  key: CLOUDFLARE_ACME_TOKEN
             - name: TZ
               value: America/Los_Angeles
           volumeMounts:
