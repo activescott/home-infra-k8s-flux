@@ -118,6 +118,15 @@ spec:
       ttl: 1
       comment: Points at the single ddclient-maintained dynamic record.
       content: wan.activescott.com
+    - key: admin-mail-cname
+      name: admin.mail.activescott.com
+      type: CNAME
+      ttl: 1
+      # Stalwart's admin UI and JMAP surface, served by Traefik on :443 -- unlike
+      # mail.activescott.com, whose mail ports are answered by Stalwart directly through the
+      # LoadBalancer. Both names resolve to the same address; the port decides which one serves.
+      comment: Points at the single ddclient-maintained dynamic record.
+      content: wan.activescott.com
     - key: lessmsi-cname
       name: lessmsi.activescott.com
       type: CNAME

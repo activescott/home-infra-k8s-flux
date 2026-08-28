@@ -5,6 +5,7 @@ resources:
   - stalwart-pv.yaml
   - stalwart-pvc.yaml
   - stalwart-certificate.yaml
+  - stalwart-admin-ingress.yaml
   - stalwart-tls-reload.yaml
   - stalwart-statefulset.yaml
   - stalwart-service.yaml

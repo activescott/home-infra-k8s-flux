@@ -1,0 +1,58 @@
+# Stalwart's admin UI and JMAP surface, on its own hostname.
+#
+# Separate from the mail certificate on purpose. Adding admin.mail.activescott.com as a SAN to
+# the existing mail certificate would rewrite the stalwart-tls Secret on every renewal, which
+# trips the reload CronJob and restarts the mail server. Coupling "a web hostname changed" to
+# "the mail server bounced" is a trap; separate certificates keep the blast radii apart.
+#
+# Backend is plain HTTP on 8080 rather than Stalwart's own HTTPS listener on 443. Traefik
+# terminates TLS, the hop to the pod stays inside the cluster, and Stalwart's self-signed
+# internal certificate never has to be trusted by anything.
+#
+# EXPOSURE: this puts the mail server's admin interface on the public internet, which is total
+# control of the server -- a larger exposure than the IMAP credentials on 993/465. Scott accepted
+# this deliberately on 2026-08-28, on the basis that Stalwart authenticates every request and has
+# working brute-force protection (observed banning a scanner on :25 the same day, security.scan-ban
+# after an invalid SMTP command), and that OPNsense already drops known-bad source addresses.
+#
+# Not done here, and worth doing: a basic-auth or IP-allowlist middleware in front, so
+# unauthenticated traffic never reaches the application at all. This repo already has that pattern
+# in the prometheus-basic-auth middleware. Tracked separately.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: admin-mail-activescott-com
+  namespace: email-stalwart
+spec:
+  secretName: admin-mail-activescott-com-cert
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: admin.mail.activescott.com
+  dnsNames:
+    - admin.mail.activescott.com
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stalwart-admin-ingress
+  namespace: email-stalwart
+spec:
+  tls:
+    - hosts:
+        - admin.mail.activescott.com
+      # must match the Certificate's secretName above
+      secretName: admin-mail-activescott-com-cert
+  rules:
+    - host: admin.mail.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # ClusterIP service; deliberately NOT the LoadBalancer, which carries the mail
+                # ports and must not gain an HTTP surface.
+                name: stalwart-admin
+                port:
+                  number: 8080
