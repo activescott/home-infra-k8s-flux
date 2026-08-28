@@ -1,3 +1,7 @@
+# The default config, used by everything except the Email Routing resources: DNS records, zone
+# settings, and the DNSZone composites. Its token carries DNS: Edit and Zone: Read, and after
+# the 2026-08-28 rotation it no longer carries Email Routing Rules -- the `email-routing` config
+# below owns that surface, on a separate token and therefore a separate rate-limit budget.
 apiVersion: cloudflare.m.cloudflare.com/v1beta1
 kind: ProviderConfig
 metadata:
@@ -34,5 +38,42 @@ spec:
     source: Secret
     secretRef:
       name: cloudflare-credentials
+      namespace: cloudflare
+      key: credentials.json
+---
+# A second token, holding ONLY the Email Routing resources -- the 17 objects under
+# infrastructure/prod/dns/email-routing/.
+#
+# Cloudflare rate-limits per token: 1,200 requests per 5 minutes, and going over 429s every
+# call for the next 5 minutes rather than only the offending one. An upjet Observe costs ~9
+# Cloudflare API calls per managed resource, and a fresh provider pod observes every resource
+# it owns at once, so with all 131 resources on one token a cold sweep cost ~1,186 calls --
+# measured at ~380/minute on 2026-08-28, exhausting the budget in about three minutes. Email
+# Routing comes late in that sweep, so it absorbed the rejections and its 17 objects never
+# reached Synced while the 114 DNS records reconciled normally. It looked like an Email Routing
+# or credential fault for hours and was neither.
+#
+# No provider flag fixes it. --max-reconcile-rate is a rate per SECOND, so even at 1 the sweep
+# runs ~9 calls/sec = 2,700 per 5 minutes, still over budget; at 2 it starved the Email Routing
+# controllers of workers entirely (see provider-cloudflare-runtimeconfig.yaml). --poll only
+# controls drift detection and does nothing about the startup burst, which is the actual cost.
+#
+# Two tokens means two budgets, which is the only lever that changes the arithmetic:
+#   default        114 DNS records            ~1,026 calls/sweep, alone in its budget
+#   email-routing   17 Email Routing objects    ~153 calls/sweep, 13% of its budget
+#
+# Namespaced only -- every Email Routing resource lives in the `cloudflare` namespace, so there
+# is no cluster-scoped equivalent here. Add one only if a resource outside that namespace ever
+# needs this token.
+apiVersion: cloudflare.m.cloudflare.com/v1beta1
+kind: ProviderConfig
+metadata:
+  name: email-routing
+  namespace: cloudflare
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      name: cloudflare-email-credentials
       namespace: cloudflare
       key: credentials.json

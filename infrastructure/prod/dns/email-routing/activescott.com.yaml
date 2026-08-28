@@ -27,9 +27,12 @@ spec:
   # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
   # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
+  # resources need a budget the 114 DNS records cannot exhaust. See
+  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
   providerConfigRef:
     kind: ProviderConfig
-    name: default
+    name: email-routing
   forProvider:
     zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
     name: Rule created at 2022-08-27T03:18:21.105Z
@@ -63,9 +66,12 @@ spec:
   # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
   # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
   managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
+  # resources need a budget the 114 DNS records cannot exhaust. See
+  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
   providerConfigRef:
     kind: ProviderConfig
-    name: default
+    name: email-routing
   forProvider:
     zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
     enabled: false

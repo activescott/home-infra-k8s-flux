@@ -20,5 +20,14 @@ secretGenerator:
       - credentials.json=cloudflare-credentials.json.encrypted
     options:
       disableNameSuffixHash: true
+  # The Email Routing token, consumed by the `email-routing` ProviderConfig. Separate from the
+  # one above because Cloudflare's rate limit is per token -- see providerconfig.yaml for the
+  # measurement that forced the split. Same fixed-name and generator-key constraints apply.
+  - name: cloudflare-email-credentials
+    namespace: cloudflare
+    files:
+      - credentials.json=cloudflare-email-credentials.json.encrypted
+    options:
+      disableNameSuffixHash: true
 
 buildMetadata: [originAnnotations, transformerAnnotations]
