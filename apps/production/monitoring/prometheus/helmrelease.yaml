@@ -112,6 +112,84 @@ spec:
     serverFiles:
       alerting_rules.yml:
         groups:
+          # Cloudflare's API allows 1200 requests per 5 minutes per token, and
+          # exceeding it returns 429 for *every* call for the next 5 minutes --
+          # not just the call that went over. Crossplane then cannot observe any
+          # resource, so nothing reconciles and drift goes undetected.
+          #
+          # This cost most of a night on 2026-08-28 because it is invisible
+          # without these metrics: the provider reports Healthy, DNS keeps
+          # working (it lands in the gaps), and only some resources show 429 --
+          # which reads like a bug in those resources rather than a shared
+          # budget being exhausted. Full write-up in the private repo's
+          # docs/specs/email-infrastructure/summary.md.
+          #
+          # One token is shared by every managed resource, so the budget is
+          # account-wide in practice: adding resources anywhere raises the cost
+          # of every sweep.
+          - name: crossplane-cloudflare-api
+            rules:
+              # 1200 per 5 minutes is the hard limit. Warn at half of it, which
+              # leaves a full sweep of headroom to react in.
+              - alert: CloudflareAPIBudgetHigh
+                expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 600'
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Crossplane is using over half the Cloudflare API budget
+                  description: >-
+                    Over 600 Cloudflare API calls in 5 minutes; the limit is 1200 per token,
+                    after which every call 429s for 5 minutes and Crossplane stops reconciling.
+                    Raise --poll in provider-cloudflare-runtimeconfig.yaml. Do NOT set
+                    --max-reconcile-rate, which silently stops controllers.
+              - alert: CloudflareAPIBudgetCritical
+                expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 1000'
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Crossplane is about to exhaust the Cloudflare API budget
+                  description: >-
+                    Over 1000 Cloudflare API calls in 5 minutes against a 1200 limit. At the
+                    limit every call 429s for 5 minutes and no managed resource can be observed.
+              # The symptom rather than the cause: resources that cannot sync.
+              # Catches throttling, credential problems and dead controllers
+              # alike, which is the point -- on 2026-08-28 all three looked
+              # identical from outside.
+              # crossplane_managed_resource_{exists,synced} are per-GVK gauges,
+              # NOT per-resource. There is one series per installed CRD kind --
+              # 242 of them for this provider -- so `synced == 0` matches every
+              # kind that simply has no resources, which was 241 of them. The
+              # difference against _exists is what actually means "resources
+              # exist for this kind and some of them are not syncing".
+              - alert: CrossplaneResourcesNotSynced
+                expr: 'crossplane_managed_resource_exists - crossplane_managed_resource_synced > 0'
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Crossplane resources unsynced for 30m: {{ $labels.gvk }}"
+                  description: >-
+                    {{ $value }} managed resources of {{ $labels.gvk }} report Synced=False.
+                    Check the resource's Synced condition message. Note lastTransitionTime does
+                    NOT update while the reason stays the same, so a stale-looking timestamp
+                    does not mean the controller has stopped retrying -- and an unchanging one
+                    does not mean it is still trying either.
+              # A provider that stops reconciling a whole kind looks completely
+              # healthy: the pod is Running, the Provider is Healthy, and other
+              # kinds keep working. This is the only signal that catches it.
+              - alert: CrossplaneProviderNotReconciling
+                expr: 'sum(rate(upjet_resource_ext_api_duration_count[15m])) == 0'
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Crossplane provider has made no external API calls in 30m
+                  description: >-
+                    The provider is up but calling nothing. Expected steady-state is roughly
+                    17 calls/min at --poll=15m with ~131 managed resources. Zero means
+                    controllers are not running even though the pod is Running and Healthy.
           - name: gpupoet
             rules:
               - alert: ProbeFailure
@@ -667,6 +745,13 @@ spec:
         metrics_path: "/metrics"
         static_configs:
           - targets: ["app.tinkerbell-prod.svc.cluster.local:3100"]
+      # No job here for the Crossplane providers on purpose. Their :8080 metrics
+      # are ALREADY collected by the chart's built-in `kubernetes-pods` job, and
+      # adding a second scrape of the same endpoint would double every counter
+      # -- which would silently halve the effective thresholds of the
+      # crossplane-cloudflare-api alerts below rather than failing visibly.
+      # Confirmed with:
+      #   upjet_resource_ext_api_duration_count -> job="kubernetes-pods"
       - job_name: "prometheus self scrape"
         static_configs:
           - targets: ["localhost:9090"]
