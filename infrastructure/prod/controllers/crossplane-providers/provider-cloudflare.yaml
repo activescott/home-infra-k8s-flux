@@ -19,7 +19,7 @@ spec:
   # registry -- xpkg.crossplane.io and ghcr.io/crossplane-contrib both deny the pull. The
   # source is healthy (CI green on main, e2e green), it was simply never published.
   #
-  # The fork carries two fixes, both offered back upstream:
+  # The fork carries three fixes, all offered back upstream:
   #
   # 1. Publishing. The default GITHUB_TOKEN is read-only, and registry_org was hardcoded to
   #    crossplane-contrib, so no fork could ever push a package.
@@ -44,6 +44,19 @@ spec:
   #    (destination_address_identifier) still could not be created -- the same failure, for a
   #    second spelling of the argument name.
   #
+  # 3. Nothing with a nested list attribute could be observed. v0.5.0 bumps upjet v2.2.0 ->
+  #    v2.4.2 for a fix in proposed_state.go:490, which passed the whole attribute's Terraform
+  #    type to tftypes.NewValue while handing it the value of a single nested object. That
+  #    panics on any list-of-nested-objects attribute, on the plugin framework path only.
+  #    EmailRoutingRule has matchers and actions; DNSRecord has none -- which is why 0/17
+  #    routing rules synced while 114/114 DNS records held, same token, same pod. The panic is
+  #    recovered per goroutine and controller-runtime's log.SetLogger is never called, so only
+  #    the first is ever printed: it presents as a controller that stopped issuing API calls,
+  #    not as a crash. Diagnosing it cost a day of chasing rate limits and credentials.
+  #    v2.4.2 also fixes a companion bug at :502 where prior.As silently fails on nulls.
+  #    Taking it requires controller-runtime v0.23.3 and a full regeneration, because
+  #    NewWebhookManagedBy became generic.
+  #
   # Verified end to end against the live Cloudflare API on 2026-08-27: a DNSRecord with no
   # external-name reconciles to Synced=True/Ready=True, Cloudflare assigns the record id and it
   # is written back as the external name, and deleting the managed resource removes the record.
@@ -53,7 +66,7 @@ spec:
   # dependency CVE. Cloudflare API changes alone do not require one; they arrive here only via
   # a Terraform provider release. Publishing is a manual workflow_dispatch, documented in the
   # fork's README.
-  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.4.0
+  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.5.0
   # Polling cadence lives in provider-cloudflare-runtimeconfig.yaml. The default 1m puts this
   # many managed resources over Cloudflare's 1,200-per-5-minute token limit, which then blocks
   # every call for 5 minutes and re-trips as polling continues. Read that file before changing
