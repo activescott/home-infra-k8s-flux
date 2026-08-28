@@ -18,9 +18,13 @@
 # which for this account should be nothing. Detecting such drift in 15 minutes rather than 1 is
 # not a meaningful loss, and it takes the steady-state load to ~9 requests a minute.
 #
-# max-reconcile-rate caps how many reconciles run at once. Lowering it from the default 10
-# flattens the burst when many resources are applied together -- which is exactly the shape
-# that triggered this, 17 rules arriving in one Flux apply.
+# --max-reconcile-rate=2 was set here as well, to flatten the burst when many resources arrive
+# in one apply. It was removed again: after it was applied, the seventeen Email Routing managed
+# resources stopped being reconciled at all -- no status update from an unpause, a pod restart,
+# or a metadata edit, while DNSRecord kept reconciling normally on the same pod and token. That
+# is not proof it was the cause, but it is the only change in the window, and a knob that
+# reduces concurrency is a plausible way to starve some controllers and not others. Do not
+# re-add it without watching every kind, not just DNS.
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
@@ -37,4 +41,3 @@ spec:
             - name: package-runtime
               args:
                 - --poll=15m
-                - --max-reconcile-rate=2
