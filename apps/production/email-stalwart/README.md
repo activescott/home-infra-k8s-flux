@@ -102,6 +102,37 @@ No Crossplane conflict: the `_acme-challenge` TXT is ephemeral and undeclared in
 from the zone. Do not re-run `generate-dnszones.sh` while a challenge record is live, or it
 could be adopted into git as a permanent record.
 
+### Registering the certificate (a manual step, and a trap)
+
+cert-manager issues the certificate, but Stalwart will not *use* it until a `Certificate` object
+exists in its database pointing at the mounted files. That configuration is not in git — it
+lives in Stalwart's own store — so it must be recreated by hand after any rebuild:
+
+**Settings → TLS → Certificates → Create**, both as **File** references:
+
+| Field | Value |
+|---|---|
+| Certificate | `/etc/stalwart-tls/tls.crt` |
+| Private key | `/etc/stalwart-tls/tls.key` |
+
+Use File references, never pasted PEM text. Pasted text is a copy frozen in the database; it
+would not change when cert-manager renews, so renewal would silently do nothing.
+
+**Saving it is not enough.** Observed 2026-08-28: after saving, the admin UI displayed the
+certificate and its domain correctly — it reads the file at save time to extract SANs — while
+the server kept logging `WARN No TLS certificates available (tls.no-certificates-available)
+total = 0` and kept serving its self-signed placeholder on every port. Deleting the pod fixed
+it at once.
+
+Two lessons: a correct-looking admin UI is not evidence that TLS is being served, and **a
+restart is a proven way to load certificates** where the documented `ReloadTlsCertificates`
+action is not present in this version's UI at all. Always check the wire:
+
+```bash
+openssl s_client -connect 10.1.111.20:993 -servername mail.activescott.com </dev/null 2>/dev/null |
+  openssl x509 -noout -subject -issuer -dates
+```
+
 ### Do NOT enable Stalwart's automated DNS
 
 Stalwart can publish and maintain MX, SPF, DKIM, DMARC, TLSA and autoconfig records directly
