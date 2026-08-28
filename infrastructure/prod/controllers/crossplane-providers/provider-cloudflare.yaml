@@ -39,6 +39,11 @@ spec:
   #    without it) and terraform.Setup.FrameworkProvider ("cannot retrieve framework
   #    provider").
   #
+  #    v0.4.0 widens that fix. IsNotFoundDiagnosticFn matched only identifier arguments
+  #    ending in "_id", so EmailRoutingRule (rule_identifier) and EmailRoutingAddress
+  #    (destination_address_identifier) still could not be created -- the same failure, for a
+  #    second spelling of the argument name.
+  #
   # Verified end to end against the live Cloudflare API on 2026-08-27: a DNSRecord with no
   # external-name reconciles to Synced=True/Ready=True, Cloudflare assigns the record id and it
   # is written back as the external name, and deleting the managed resource removes the record.
@@ -48,4 +53,4 @@ spec:
   # dependency CVE. Cloudflare API changes alone do not require one; they arrive here only via
   # a Terraform provider release. Publishing is a manual workflow_dispatch, documented in the
   # fork's README.
-  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.3.0
+  package: ghcr.io/activescott/provider-upjet-cloudflare:v0.4.0

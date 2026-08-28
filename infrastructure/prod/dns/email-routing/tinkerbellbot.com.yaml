@@ -1,0 +1,75 @@
+# Email Routing rules for tinkerbellbot.com. See fernfiles.com.yaml in this directory for
+# why routing is declarative here while Email Sending onboarding is not.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: tinkerbellbot-com-dmarc
+  namespace: cloudflare
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: de97633dfb5edea4c5d5e63d13fd6a84
+    # Destination for the rua= address in _dmarc.tinkerbellbot.com. Without a rule,
+    # aggregate reports bounce and the p=none monitoring period observes nothing.
+    name: dmarc-reports
+    enabled: true
+    priority: 10
+    matchers:
+      - type: literal
+        field: to
+        value: dmarc@tinkerbellbot.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Predates Crossplane, created through the dashboard on 2026-02-23. Adopted by its existing
+# rule id so ownership transfers without the rule changing. The name is Cloudflare's
+# auto-generated label, reproduced verbatim -- see ramblefeed.com.yaml.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: tinkerbellbot-com-scott
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 8fc80bec0b7e4ef9895c6e19aba1c94b
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: de97633dfb5edea4c5d5e63d13fd6a84
+    name: Rule created at 2026-02-23T03:56:30.391Z
+    enabled: true
+    priority: 0
+    matchers:
+      - type: literal
+        field: to
+        value: scott@tinkerbellbot.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than a second EmailRoutingRule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: tinkerbellbot-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: ed45cee4d57343a1ba966d625247a944
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: de97633dfb5edea4c5d5e63d13fd6a84
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop

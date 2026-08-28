@@ -1,0 +1,106 @@
+# Email Routing rules for fernfiles.com. Unlike Email Sending, routing is fully
+# declarative -- the provider serves EmailRoutingRule directly, so these are ordinary
+# managed resources rather than composed ones.
+#
+# Routing is already enabled on this zone (status: ready) with the apex MX, SPF and
+# cf2024-1 DKIM records adopted in zones/fernfiles.com.yaml. Those records are Cloudflare's,
+# but unlike the Email Sending ones they can be unlocked, which is why they are fully
+# managed there and the cf-bounce ones are not.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: fernfiles-com-dmarc
+  namespace: cloudflare
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
+    # Destination for the rua= address in _dmarc.fernfiles.com. Without a rule, aggregate
+    # reports bounce and the p=none monitoring period observes nothing.
+    name: dmarc-reports
+    enabled: true
+    priority: 10
+    matchers:
+      - type: literal
+        field: to
+        value: dmarc@fernfiles.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# The two addresses the shipped policy pages already publish. Until these existed, both pages
+# pointed users at addresses that hit the dropping catch-all below, so a privacy request or a
+# support mail was accepted by Cloudflare and silently discarded.
+#
+# Created by Crossplane rather than adopted -- no external-name annotation -- so Cloudflare
+# assigns the rule id and writes it back. Priority is deliberately the same 10 as the DMARC
+# rule: literal matchers cannot overlap, so relative order between them never decides delivery.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: fernfiles-com-privacy
+  namespace: cloudflare
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
+    name: privacy
+    enabled: true
+    priority: 10
+    matchers:
+      - type: literal
+        field: to
+        value: privacy@fernfiles.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: fernfiles-com-support
+  namespace: cloudflare
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
+    name: support
+    enabled: true
+    priority: 10
+    matchers:
+      - type: literal
+        field: to
+        value: support@fernfiles.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than a second EmailRoutingRule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: fernfiles-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 1e2a6ca9c98d4e85a6890d6f0b108fd4
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop

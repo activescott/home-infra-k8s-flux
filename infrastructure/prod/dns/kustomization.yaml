@@ -18,3 +18,17 @@ resources:
   - zones/productpoet.com.yaml
   - zones/ramblefeed.com.yaml
   - zones/tinkerbellbot.com.yaml
+  # Email Routing rules, one file per zone. Kept out of zones/ because these are ordinary
+  # managed resources, not records fanned out through the DNSZone composition.
+  #
+  # pingpoet.com and productpoet.com are absent on purpose. Email Routing is `unconfigured`
+  # on both, and Cloudflare still returns a placeholder disabled catch-all for a zone that
+  # has never enabled the feature. Adopting that would declare configuration that does not
+  # exist. Add a file here if either zone ever turns routing on.
+  - email-routing/activescott.com.yaml
+  - email-routing/coinpoet.com.yaml
+  - email-routing/datamanifest.com.yaml
+  - email-routing/fernfiles.com.yaml
+  - email-routing/gpupoet.com.yaml
+  - email-routing/ramblefeed.com.yaml
+  - email-routing/tinkerbellbot.com.yaml

@@ -1,0 +1,83 @@
+# Email Routing rules for ramblefeed.com. See fernfiles.com.yaml in this directory for
+# why routing is declarative here while Email Sending onboarding is not.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: ramblefeed-com-dmarc
+  namespace: cloudflare
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: e520413f6aef57eb975b6a1304132116
+    # Destination for the rua= address in _dmarc.ramblefeed.com. Without a rule, aggregate
+    # reports bounce and the p=none monitoring period observes nothing.
+    name: dmarc-reports
+    enabled: true
+    priority: 10
+    matchers:
+      - type: literal
+        field: to
+        value: dmarc@ramblefeed.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Predates Crossplane, created through the dashboard on 2025-11-03. Adopted by its existing
+# rule id so ownership transfers without the rule changing.
+#
+# The name is Cloudflare's auto-generated label, reproduced verbatim for that reason. It is
+# only a label, so renaming it is safe -- but as its own deliberate change, not smuggled in
+# with the adoption.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: ramblefeed-com-scott
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: caa584e6593b433b9c1c5aa966a6ec25
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: e520413f6aef57eb975b6a1304132116
+    name: Rule created at 2025-11-03T00:44:19.254Z
+    enabled: true
+    priority: 0
+    matchers:
+      - type: literal
+        field: to
+        value: scott@ramblefeed.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# The catch-all, disabled and dropping, which is Cloudflare's default for a routing-enabled
+# zone. Declared so git shows what governs every address no other rule matches.
+#
+# It is EmailRoutingCatchAll, not EmailRoutingRule, even though Cloudflare returns it in the
+# rules list too: /email/routing/rules and /email/routing/rules/catch_all are two views of one
+# object with one id. Adopting it as both kinds would leave two managed resources writing to
+# the same rule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: ramblefeed-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: df8f269b73c543368a35b4b85bd5d3b1
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: e520413f6aef57eb975b6a1304132116
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop

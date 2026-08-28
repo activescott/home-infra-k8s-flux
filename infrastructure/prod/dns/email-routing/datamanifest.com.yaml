@@ -1,0 +1,27 @@
+# Email Routing rules for datamanifest.com. See fernfiles.com.yaml in this directory for why
+# routing is declarative here while Email Sending onboarding is not.
+#
+# Routing is enabled on this zone but has never had a forwarding rule -- only the catch-all
+# below, which drops. Every address at this domain is therefore unroutable today, and that is
+# the intended state; the zone serves `home.datamanifest.com` and nothing else.
+#
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than an EmailRoutingRule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: datamanifest-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 2a0f5e3a816d419d87c30a734b0f1496
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 3a610f170ef3305f17048ec68b832da7
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop

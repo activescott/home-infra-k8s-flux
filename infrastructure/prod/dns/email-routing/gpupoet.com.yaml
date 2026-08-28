@@ -1,0 +1,51 @@
+# Email Routing rules for gpupoet.com. See fernfiles.com.yaml in this directory for why
+# routing is declarative here while Email Sending onboarding is not.
+#
+# Predates Crossplane, created through the dashboard on 2025-11-27. Adopted by its existing
+# rule id so ownership transfers without the rule changing. The name is Cloudflare's
+# auto-generated label, reproduced verbatim -- see ramblefeed.com.yaml.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: gpupoet-com-scott
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 4955b869573a4b75b44e5a4259613a0d
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 118a81bf06d30768388417632caeb629
+    name: Rule created at 2025-11-27T20:20:57.995Z
+    enabled: true
+    priority: 0
+    matchers:
+      - type: literal
+        field: to
+        value: scott@gpupoet.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than a second EmailRoutingRule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: gpupoet-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 377e0bd190e8478486f8db6a360f576a
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 118a81bf06d30768388417632caeb629
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop

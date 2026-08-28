@@ -1,0 +1,51 @@
+# Email Routing rules for coinpoet.com. See fernfiles.com.yaml in this directory for why
+# routing is declarative here while Email Sending onboarding is not.
+#
+# Predates Crossplane, created through the dashboard on 2023-11-21. Adopted by its existing
+# rule id so ownership transfers without the rule changing. The name is Cloudflare's
+# auto-generated label, reproduced verbatim -- see ramblefeed.com.yaml.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: coinpoet-com-scott
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 6ebfd4fb78864b99a7e95b4d9ad52f76
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 143c0a29af5daf36ca684365cfc33dbf
+    name: Rule created at 2023-11-21T02:39:17.809Z
+    enabled: true
+    priority: 0
+    matchers:
+      - type: literal
+        field: to
+        value: scott@coinpoet.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than a second EmailRoutingRule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: coinpoet-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 15588e6969a54a8a80c7d4e68738cbd0
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 143c0a29af5daf36ca684365cfc33dbf
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop

@@ -1,0 +1,57 @@
+# Email Routing rules for activescott.com. See fernfiles.com.yaml in this directory for why
+# routing is declarative here while Email Sending onboarding is not.
+#
+# Predates Crossplane by three years -- created 2022-08-27, the same day scott@willeke.com was
+# verified as a destination address, which makes this the oldest routing rule on the account.
+# Adopted by its existing rule id so ownership transfers without the rule changing. The name is
+# Cloudflare's auto-generated label, reproduced verbatim -- see ramblefeed.com.yaml.
+#
+# This rule is load-bearing beyond forwarding: _dmarc.activescott.com publishes
+# rua=/ruf=mailto:admin@activescott.com, so it is what makes this zone's DMARC reports land.
+# activescott.com is at p=reject, unlike the p=none sending domains, so the reports are the
+# only warning of a legitimate sender failing alignment and being silently rejected.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingRule
+metadata:
+  name: activescott-com-admin
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: bfad08f9d9ee4a7fb2abbc31cd7d05ff
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
+    name: Rule created at 2022-08-27T03:18:21.105Z
+    enabled: true
+    priority: 0
+    matchers:
+      - type: literal
+        field: to
+        value: admin@activescott.com
+    actions:
+      - type: forward
+        value:
+          - scott@willeke.com
+---
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than a second EmailRoutingRule.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: activescott-com-catch-all
+  namespace: cloudflare
+  annotations:
+    crossplane.io/external-name: 9a6e374b0f2c4aa78f44850c7392e675
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop
