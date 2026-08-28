@@ -6,7 +6,6 @@ kind: Kustomization
 # the Compositions that call them are in the next stage and need them already running.
 resources:
   - ./provider-cloudflare.yaml
-  - ./provider-cloudflare-runtimeconfig.yaml
   - ./functions.yaml
 
 buildMetadata: [originAnnotations, transformerAnnotations]

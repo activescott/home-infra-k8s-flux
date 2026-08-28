@@ -54,7 +54,12 @@ spec:
   # a Terraform provider release. Publishing is a manual workflow_dispatch, documented in the
   # fork's README.
   package: ghcr.io/activescott/provider-upjet-cloudflare:v0.4.0
-  # Polling cadence, in provider-cloudflare-runtimeconfig.yaml. The default 1m is more than
-  # Cloudflare's Email Routing endpoints will accept at this resource count.
-  runtimeConfigRef:
-    name: provider-upjet-cloudflare
+  #
+  # A DeploymentRuntimeConfig setting --poll=15m and --max-reconcile-rate=2 was tried here on
+  # 2026-08-28 and reverted. --max-reconcile-rate=2 stopped the Email Routing controllers
+  # running at all, and removing only that flag did not bring them back reliably, so the whole
+  # runtime config went with it rather than leaving a half-tested tuning in place. The provider
+  # is back on Crossplane's defaults, which is the only configuration these controllers have
+  # ever been observed working under. See docs/specs/email-infrastructure/summary.md in the
+  # private repo before re-tuning; the failure is silent and does not affect DNSRecord, so it
+  # is easy to miss.
