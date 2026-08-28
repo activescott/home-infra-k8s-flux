@@ -15,6 +15,10 @@ metadata:
   annotations:
     crossplane.io/external-name: 2a0f5e3a816d419d87c30a734b0f1496
 spec:
+  # Orphan, so deleting the Kubernetes object leaves the Cloudflare rule alone. Adoption is
+  # meant to transfer ownership, not lifecycle, and with `prune: true` on the cluster
+  # Kustomizations a kustomize path typo would otherwise delete real mail routing.
+  deletionPolicy: Orphan
   providerConfigRef:
     kind: ProviderConfig
     name: default

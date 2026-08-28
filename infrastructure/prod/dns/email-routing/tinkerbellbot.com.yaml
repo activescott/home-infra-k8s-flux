@@ -9,6 +9,10 @@ metadata:
     # Created by Crossplane on 2026-08-28, then pinned. See fernfiles.com.yaml for why.
     crossplane.io/external-name: 839b01eab8c64f619e320be0b5f31669
 spec:
+  # Orphan, so deleting the Kubernetes object leaves the Cloudflare rule alone. Adoption is
+  # meant to transfer ownership, not lifecycle, and with `prune: true` on the cluster
+  # Kustomizations a kustomize path typo would otherwise delete real mail routing.
+  deletionPolicy: Orphan
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -39,6 +43,10 @@ metadata:
   annotations:
     crossplane.io/external-name: 8fc80bec0b7e4ef9895c6e19aba1c94b
 spec:
+  # Orphan, so deleting the Kubernetes object leaves the Cloudflare rule alone. Adoption is
+  # meant to transfer ownership, not lifecycle, and with `prune: true` on the cluster
+  # Kustomizations a kustomize path typo would otherwise delete real mail routing.
+  deletionPolicy: Orphan
   providerConfigRef:
     kind: ProviderConfig
     name: default
@@ -66,6 +74,10 @@ metadata:
   annotations:
     crossplane.io/external-name: ed45cee4d57343a1ba966d625247a944
 spec:
+  # Orphan, so deleting the Kubernetes object leaves the Cloudflare rule alone. Adoption is
+  # meant to transfer ownership, not lifecycle, and with `prune: true` on the cluster
+  # Kustomizations a kustomize path typo would otherwise delete real mail routing.
+  deletionPolicy: Orphan
   providerConfigRef:
     kind: ProviderConfig
     name: default
