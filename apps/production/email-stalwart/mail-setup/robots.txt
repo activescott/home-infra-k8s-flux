@@ -1,0 +1,4 @@
+# Nothing here is meant to be indexed. The setup page exists to be handed to a person, and the
+# profile paths carry an email address in the URL.
+User-agent: *
+Disallow: /

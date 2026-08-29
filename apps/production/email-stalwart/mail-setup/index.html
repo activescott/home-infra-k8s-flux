@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
     <title>Set up mail — mail.activescott.com</title>
     <style>
       :root {
@@ -41,6 +42,20 @@
       code {
         font-size: 0.95em;
       }
+      label {
+        display: block;
+        font-weight: 600;
+        margin: 1.25rem 0 0.4rem;
+      }
+      input[type="email"] {
+        width: 100%;
+        font: inherit;
+        padding: 0.7rem 0.8rem;
+        border: 1px solid rgba(128, 128, 128, 0.5);
+        border-radius: 0.6rem;
+        background: transparent;
+        color: inherit;
+      }
       a.install {
         display: block;
         text-align: center;
@@ -50,7 +65,12 @@
         color: #fff;
         padding: 0.9rem 1rem;
         border-radius: 0.7rem;
-        margin: 1.5rem 0;
+        margin: 1rem 0 0.5rem;
+      }
+      a.install[aria-disabled="true"] {
+        background: rgba(128, 128, 128, 0.35);
+        color: rgba(128, 128, 128, 0.9);
+        pointer-events: none;
       }
       table {
         border-collapse: collapse;
@@ -79,13 +99,15 @@
   </head>
   <body>
     <h1>Set up your mail</h1>
-    <p class="lede">Mailboxes on <code>mail.activescott.com</code>.</p>
+    <p class="lede">
+      Mail, calendar and contacts on <code>mail.activescott.com</code>.
+    </p>
 
     <h2>1. Create an app password</h2>
     <p>
       Accounts here use two-factor authentication, and mail apps cannot do
-      two-factor logins. Each app needs its own <em>app password</em> instead of
-      your normal one.
+      two-factor logins. Each device needs its own <em>app password</em> instead
+      of your normal one.
     </p>
     <ol>
       <li>
@@ -110,11 +132,29 @@
 
     <h2>2. iPhone, iPad or Mac</h2>
     <p>
-      Install the configuration profile. It fills in the server names and ports,
-      which Apple Mail otherwise guesses wrong.
+      Enter your address and install the profile. It sets up mail, calendar and
+      contacts in one step, with the server names and ports filled in — which
+      Apple Mail otherwise guesses wrong.
     </p>
 
-    <a class="install" href="/apple.mobileconfig">Install the profile</a>
+    <label for="addr">Your email address</label>
+    <input
+      id="addr"
+      type="email"
+      inputmode="email"
+      autocapitalize="none"
+      autocorrect="off"
+      spellcheck="false"
+      placeholder="you@willeke.com"
+    />
+
+    <a id="install" class="install" aria-disabled="true" href="#"
+      >Install the profile</a
+    >
+    <p class="note" id="fallback">
+      Or <a href="/setup/apple.mobileconfig">install a mail-only profile</a> and
+      type your address during setup.
+    </p>
 
     <ol>
       <li>Tap the button. It downloads rather than opening.</li>
@@ -130,18 +170,17 @@
         expected.
       </li>
       <li>
-        Enter your full email address when asked, and the app password from step
-        1.
+        Enter the app password from step 1. You will be asked
+        <strong>three times</strong> — once each for mail, calendar and
+        contacts. Same password every time.
       </li>
     </ol>
     <p class="note">
-      Removing the profile later removes the mail account with it.
+      Removing the profile later removes all three accounts with it.
     </p>
 
     <h2>Any other mail app</h2>
-    <p>
-      Enter these by hand. Use your full email address as the username in both.
-    </p>
+    <p>Enter these by hand. Use your full email address as the username.</p>
     <table>
       <tbody>
         <tr>
@@ -159,6 +198,14 @@
           </td>
         </tr>
         <tr>
+          <th>Calendar</th>
+          <td>CalDAV, <code>https://mail.activescott.com/dav/cal</code></td>
+        </tr>
+        <tr>
+          <th>Contacts</th>
+          <td>CardDAV, <code>https://mail.activescott.com/dav/card</code></td>
+        </tr>
+        <tr>
           <th>Password</th>
           <td>the app password from step 1, not your sign-in password</td>
         </tr>
@@ -169,5 +216,28 @@
       own ports often land on 587 or 25 and then report a wrong password. Set
       465 explicitly.
     </p>
+
+    <script>
+      const addr = document.getElementById("addr");
+      const install = document.getElementById("install");
+
+      function update() {
+        const value = addr.value.trim();
+        // Matches the same shape nginx will accept in the path. A stricter server-side check
+        // still runs; anything it rejects is redirected to the mail-only profile.
+        const ok = /^[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(
+          value,
+        );
+        install.setAttribute("aria-disabled", ok ? "false" : "true");
+        install.href = ok
+          ? "/setup/profiles/" +
+            encodeURIComponent(value) +
+            "/apple.mobileconfig"
+          : "#";
+      }
+
+      addr.addEventListener("input", update);
+      update();
+    </script>
   </body>
 </html>

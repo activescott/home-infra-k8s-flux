@@ -179,6 +179,15 @@ That page has the whole procedure: create an app password, install the configura
 and the manual host/port table for anything that is not Apple Mail. Hand out the URL; nothing
 else needs explaining, and nothing about it is per-user.
 
+The page asks for the user's address and builds a link to
+`/setup/profiles/<address>/apple.mobileconfig`, which is the same profile with the address substituted into
+all five places it appears. That profile sets up **mail, calendar and contacts** in one install.
+`/setup/apple.mobileconfig` is the fallback for anyone who does not enter an address — mail only, with
+Apple prompting for the identity.
+
+`/robots.txt` disallows everything. The page is meant to be handed to a person, and the profile
+URLs carry an email address.
+
 ### Why a configuration profile at all
 
 Apple Mail cannot be pointed at this server by hand on iOS. The New Account screen shows no port
@@ -191,17 +200,67 @@ shows no failed authentication, because none was ever attempted.
 An Apple configuration profile (`.mobileconfig`) sidesteps the probe by stating the ports as
 fact. Hosting it is what makes it self-service.
 
-### The profile is identity-free on purpose
+### Two profiles, and why
 
-It contains no email address, no username, and no password. Apple's payload reference says the
-device prompts for `EmailAddress` and the incoming/outgoing usernames when those keys are absent,
-so one file serves every user and nothing personal is published at a URL that needs no
-authentication. Do **not** add `IncomingPassword`/`OutgoingPassword` — Apple's own guidance
-restricts those to encrypted profiles, and this one is served in the clear.
+| Path                                           | Payloads                | Identity                     |
+| ---------------------------------------------- | ----------------------- | ---------------------------- |
+| `/setup/apple.mobileconfig`                    | mail only               | none — Apple prompts for it  |
+| `/setup/profiles/<address>/apple.mobileconfig` | mail + CalDAV + CardDAV | address substituted by nginx |
 
-Consequence worth knowing: `PayloadIdentifier` is a fixed string, so installing the profile twice
+The mail-only one carries no DAV payloads deliberately. `CalDAVUsername` and `CardDAVUsername`
+are documented as _required_ rather than prompted, so a DAV payload without one may fail to
+install rather than ask — unlike `EmailAddress`, where Apple explicitly documents the prompt.
+The templated profile knows the address, so all three payloads are safe there.
+
+Neither carries a password. Apple's reference restricts the password keys to encrypted profiles
+and both of these are served in the clear. The cost is **three password prompts** on the
+templated profile — mail, calendar, contacts — all taking the same app password. There is no
+"same as" key spanning payloads; `OutgoingPasswordSameAsIncomingPassword` only collapses the two
+mail prompts into one.
+
+Consequence worth knowing: `PayloadIdentifier` is a fixed string, so installing a profile twice
 on one device _replaces_ the account rather than adding a second. Fine for one mailbox per
-person.
+person. Both profiles share that identifier, so installing one replaces the other.
+
+### The substitution, and the one thing holding it safe
+
+nginx serves `apple-templated.mobileconfig` through `sub_filter`, replacing `__EMAIL__` with the
+address captured from the request path. Two decisions in `nginx-default.conf` are load-bearing:
+
+- **The address comes from the path, not a query argument.** nginx decodes `%XX` in the path
+  before matching but does not decode query arguments, so `?email=a%40b.com` would need
+  hand-rolled decoding. A path segment avoids that and gives the download a sensible filename.
+- **The `map` regex is the entire defence against XML injection.** These profiles are served
+  unauthenticated, so a crafted link that injected markup could hand someone an account pointed
+  at an attacker's server. The character class admits no `<`, `>`, `&`, `"`, `'`, `%` or
+  whitespace. **Do not widen it.** Anything that fails to match yields an empty value and is
+  redirected to the mail-only profile rather than served a half-substituted file.
+
+Verified 2026-08-28 against the real image: `scott@willeke.com` and `scott%40willeke.com` both
+substitute five occurrences and leave zero `__EMAIL__` behind; the result passes `plutil -lint`;
+an address containing angle brackets 302s to the fallback, as does anything that is not an
+address at all.
+
+`ngx_http_sub_module` must be present in the image or every templated profile silently ships the
+literal `__EMAIL__`. It is compiled into the official nginx images; a switch to a minimal or
+distroless variant would break this without any error.
+
+### Calendar and contacts
+
+IMAP carries mail only, which is why an IMAP-only account shows Mail and Notes on iOS but no
+Calendar — Notes rides on IMAP as messages in a folder. Calendar and contacts need CalDAV and
+CardDAV over HTTPS, which Stalwart serves on its HTTP listener.
+
+The Ingress routes `/dav` plus `/.well-known/caldav` and `/.well-known/carddav` on this hostname
+to `stalwart-admin:8080`. Apple discovers the endpoints by requesting the well-known paths;
+verified 2026-08-28 that Stalwart answers them with a 307 to `/dav/cal` and `/dav/card`, and that
+`/dav/cal/` and `/dav/card/` then return 401.
+
+The profiles set no `CalDAVPrincipalURL`/`CardDAVPrincipalURL` and rely on that discovery. If it
+ever breaks, add `/dav/cal/` and `/dav/card/` explicitly.
+
+Only those paths are routed here, so Stalwart's admin UI remains reachable solely at
+`admin.mail.activescott.com`. This hostname exposes the DAV API and nothing else of Stalwart's.
 
 ### Every user needs their own app password
 
@@ -210,13 +269,33 @@ Two-factor is enabled on these accounts, and IMAP and SMTP cannot do a two-facto
 **Account → App Passwords** in the Stalwart UI — it acts on the logged-in user and requires
 re-entering their password, so it is genuinely self-service and needs no admin involvement.
 
-### Changing the page or the profile
+### Changing the page or the profiles
 
-Both live in `mail-setup/` and are pulled in by the `configMapGenerator` in
-`kustomization.yaml`. Kustomize hashes the file contents into the ConfigMap names, so editing
-either one rolls the `mail-setup` Deployment on the next reconcile. Do not convert them to inline
+Everything for this lives in `mail-setup/`, which is a self-contained kustomization: its own
+`kustomization.yaml` carries the manifests and the `configMapGenerator` for the served content,
+and the parent just lists the directory. Nothing about it appears at this directory's top level,
+so Stalwart's own manifests stay easy to pick out.
+
+Kustomize hashes the content files into the ConfigMap names, so editing the page or either
+profile rolls the `mail-setup` Deployment on the next reconcile. Do not convert them to inline
 ConfigMaps — the content would then change under a running pod without restarting it.
 
-The Ingress serves exactly two paths, `/setup` and `/apple.mobileconfig`, as `pathType: Exact`.
-That is what lets Phase 8's webmail take `/` on this same hostname later; Traefik ranks routers
-by rule specificity, so an exact path wins over `PathPrefix(/)`. Do not widen them to `Prefix`.
+**Keep the two profiles in sync.** `apple.mobileconfig` and `apple-templated.mobileconfig` share
+their mail payload; a port or hostname change has to land in both.
+
+The Ingress routes four things on this hostname, and nothing at `/`:
+
+| Path                   | Type   | Backend          |
+| ---------------------- | ------ | ---------------- |
+| `/setup`               | Prefix | `mail-setup`     |
+| `/robots.txt`          | Exact  | `mail-setup`     |
+| `/dav`                 | Prefix | `stalwart-admin` |
+| `/.well-known/car*dav` | Exact  | `stalwart-admin` |
+
+Everything user-facing lives under `/setup` — the page, both profiles, and anything added later.
+Ingress prefix matching is element-wise, so `/setup` matches `/setup` and `/setup/...` but never
+`/setupfoo`. `/robots.txt` is the one exception, because the root is the only location the
+standard defines.
+
+That shape is what lets Phase 8's webmail take `/` on this same hostname later: Traefik ranks
+routers by rule specificity, so all four beat `PathPrefix(/)`.

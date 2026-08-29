@@ -7,11 +7,11 @@
 # password", which is a lie; there is no failed authentication in the server log because it never
 # attempted one. The port fields that would fix it are not shown until the account exists.
 #
-# An Apple configuration profile states the ports as fact, so Mail never probes. The profile and
-# the page live in mail-setup/ and are loaded by the configMapGenerator in kustomization.yaml --
-# generated, so kustomize hashes them into the ConfigMap names and editing either one rolls this
-# Deployment. Do not convert them to inline ConfigMaps; the content would then change under a
-# running pod without restarting it.
+# An Apple configuration profile states the ports as fact, so Mail never probes. The profiles and
+# the page live alongside this file and are loaded by the configMapGenerator in this directory's
+# own kustomization.yaml -- generated, so kustomize hashes them into the ConfigMap names and
+# editing any of them rolls this Deployment. Do not convert them to inline ConfigMaps; the
+# content would then change under a running pod without restarting it.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,6 +35,10 @@ spec:
         - name: nginx
           # nginx-unprivileged, not nginx: the stock image needs root to bind :80 and to write its
           # pid file. This one listens on 8080 as uid 101 and tolerates a read-only root.
+          #
+          # ngx_http_sub_module must be present -- it is what substitutes the address into the
+          # templated profile. It is compiled into the official images; a switch to a minimal or
+          # distroless nginx would silently serve profiles containing the literal __EMAIL__.
           image: nginxinc/nginx-unprivileged:1.27-alpine
           ports:
             - name: http
@@ -97,11 +101,17 @@ spec:
       port: 80
       targetPort: http
 ---
-# Two exact paths on mail.activescott.com, not a prefix.
+# Everything served on mail.activescott.com, split between this nginx and Stalwart's own HTTP
+# listener. Every path is Exact or a narrow Prefix, never a bare "/".
 #
 # Phase 8 puts Bulwark webmail on this same hostname at "/". Traefik ranks routers by rule
-# specificity, so Path(`/setup`) beats PathPrefix(`/`) and the two coexist -- but only because
-# these are pathType: Exact. Do not widen them to Prefix.
+# specificity, so these all beat PathPrefix(`/`) and coexist with it.
+#
+# The /dav and /.well-known routes go to Stalwart, not to nginx: CalDAV and CardDAV are how the
+# profile delivers calendar and contacts. Apple discovers them by requesting /.well-known/caldav,
+# which Stalwart answers with a 307 to /dav/cal (verified 2026-08-28; /dav/cal/ and /dav/card/
+# then return 401). Only those paths are routed, so the admin UI stays reachable solely at
+# admin.mail.activescott.com -- this hostname exposes the DAV API and nothing else of Stalwart's.
 #
 # Reuses the stalwart-tls Secret rather than issuing a second certificate for the same name. That
 # Secret is owned by stalwart-certificate.yaml and is mounted read-only by the mail server;
@@ -122,17 +132,44 @@ spec:
     - host: mail.activescott.com
       http:
         paths:
+          # The page at /setup, the identity-free profile at /setup/apple.mobileconfig, and the
+          # templated one at /setup/profiles/<address>/apple.mobileconfig. Prefix rather than
+          # three Exact rules: the address is part of the path, and Ingress prefix matching is
+          # element-wise, so this matches /setup and /setup/... but never /setupfoo. nginx
+          # validates the address shape and redirects anything that fails.
           - path: /setup
+            pathType: Prefix
+            backend:
+              service:
+                name: mail-setup
+                port:
+                  number: 80
+          # Root, because that is the only place the standard defines it.
+          - path: /robots.txt
             pathType: Exact
             backend:
               service:
                 name: mail-setup
                 port:
                   number: 80
-          - path: /apple.mobileconfig
+          - path: /dav
+            pathType: Prefix
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+          - path: /.well-known/caldav
             pathType: Exact
             backend:
               service:
-                name: mail-setup
+                name: stalwart-admin
                 port:
-                  number: 80
+                  number: 8080
+          - path: /.well-known/carddav
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080

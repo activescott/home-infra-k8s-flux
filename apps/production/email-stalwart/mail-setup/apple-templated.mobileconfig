@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Apple configuration profile: mail, calendar and contacts for mail.activescott.com.
+
+  A TEMPLATE. Served only from /setup/profiles/<address>/apple.mobileconfig, where nginx substitutes every
+  occurrence of __EMAIL__ with the address captured from the path (see nginx-default.conf). It is
+  never served raw -- a request that does not match the address regex is redirected to the blank
+  apple.mobileconfig instead, so nobody receives a profile containing the literal placeholder.
+
+  Keep in sync with apple.mobileconfig, which is the identity-free fallback. That one is
+  deliberately mail-only: CalDAVUsername and CardDAVUsername are documented as required rather
+  than prompted, so a DAV payload without a username may fail to install rather than ask for one.
+  Here the address is known, so all three payloads are safe to include.
+
+  Still no passwords. Apple's reference restricts the password keys to encrypted profiles, and
+  this is served in the clear. The consequence is three password prompts on install -- mail,
+  calendar, contacts -- all taking the same app password. There is no "same as" key for it.
+
+  CalDAV and CardDAV carry no PrincipalURL on purpose. Stalwart answers /.well-known/caldav and
+  /.well-known/carddav with a 307 to /dav/cal and /dav/card (verified 2026-08-28), which is the
+  discovery mechanism Apple uses when the key is absent. If discovery ever breaks, the fix is to
+  add CalDAVPrincipalURL /dav/cal/ and CardDAVPrincipalURL /dav/card/ here.
+-->
+<plist version="1.0">
+<dict>
+  <key>PayloadDisplayName</key>
+  <string>mail.activescott.com</string>
+  <key>PayloadDescription</key>
+  <string>Mail, calendar and contacts for __EMAIL__. You will be asked for your app password three times, once per service.</string>
+  <key>PayloadIdentifier</key>
+  <string>com.activescott.mail.stalwart</string>
+  <key>PayloadOrganization</key>
+  <string>activescott</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>92F26BF0-772D-4871-9B6F-09B2A0B6132D</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+  <key>PayloadRemovalDisallowed</key>
+  <false/>
+  <key>PayloadContent</key>
+  <array>
+
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.mail.managed</string>
+      <key>PayloadIdentifier</key>
+      <string>com.activescott.mail.stalwart.account</string>
+      <key>PayloadUUID</key>
+      <string>47C140D7-BF98-4187-BFC3-0DDC63214BA9</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>Mail</string>
+
+      <key>EmailAccountDescription</key>
+      <string>mail.activescott.com</string>
+      <key>EmailAccountType</key>
+      <string>EmailTypeIMAP</string>
+      <key>EmailAddress</key>
+      <string>__EMAIL__</string>
+
+      <key>IncomingMailServerHostName</key>
+      <string>mail.activescott.com</string>
+      <key>IncomingMailServerPortNumber</key>
+      <integer>993</integer>
+      <key>IncomingMailServerUseSSL</key>
+      <true/>
+      <key>IncomingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>IncomingMailServerUsername</key>
+      <string>__EMAIL__</string>
+
+      <!-- 465, implicit TLS. Stalwart starts no STARTTLS listener on 587; stating the port here
+           is the entire reason this profile exists. -->
+      <key>OutgoingMailServerHostName</key>
+      <string>mail.activescott.com</string>
+      <key>OutgoingMailServerPortNumber</key>
+      <integer>465</integer>
+      <key>OutgoingMailServerUseSSL</key>
+      <true/>
+      <key>OutgoingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>OutgoingMailServerUsername</key>
+      <string>__EMAIL__</string>
+      <!-- One password prompt for mail instead of two. There is no equivalent for usernames,
+           and none that spans the DAV payloads below. -->
+      <key>OutgoingPasswordSameAsIncomingPassword</key>
+      <true/>
+
+      <key>PreventMove</key>
+      <false/>
+      <key>PreventAppSheet</key>
+      <false/>
+      <key>SMIMEEnabled</key>
+      <false/>
+    </dict>
+
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.caldav.account</string>
+      <key>PayloadIdentifier</key>
+      <string>com.activescott.mail.stalwart.caldav</string>
+      <key>PayloadUUID</key>
+      <string>D4D05417-34FB-47E3-BB62-7D3A3CB44C4D</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>Calendar</string>
+
+      <key>CalDAVAccountDescription</key>
+      <string>mail.activescott.com</string>
+      <key>CalDAVHostName</key>
+      <string>mail.activescott.com</string>
+      <key>CalDAVPort</key>
+      <integer>443</integer>
+      <key>CalDAVUseSSL</key>
+      <true/>
+      <key>CalDAVUsername</key>
+      <string>__EMAIL__</string>
+    </dict>
+
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.carddav.account</string>
+      <key>PayloadIdentifier</key>
+      <string>com.activescott.mail.stalwart.carddav</string>
+      <key>PayloadUUID</key>
+      <string>2C63DAA7-EAEF-4162-AED2-FACD0936F397</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>Contacts</string>
+
+      <key>CardDAVAccountDescription</key>
+      <string>mail.activescott.com</string>
+      <key>CardDAVHostName</key>
+      <string>mail.activescott.com</string>
+      <key>CardDAVPort</key>
+      <integer>443</integer>
+      <key>CardDAVUseSSL</key>
+      <true/>
+      <key>CardDAVUsername</key>
+      <string>__EMAIL__</string>
+    </dict>
+
+  </array>
+</dict>
+</plist>

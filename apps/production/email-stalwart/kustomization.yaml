@@ -9,18 +9,10 @@ resources:
   - stalwart-tls-reload.yaml
   - stalwart-statefulset.yaml
   - stalwart-service.yaml
-  - mail-setup.yaml
+  # Self-contained: its own kustomization carries the manifests and the configMapGenerator for
+  # the served content.
+  - mail-setup
 namespace: email-stalwart
-configMapGenerator:
-  # Generated rather than declared inline so kustomize hashes the content into the ConfigMap
-  # names; editing the page or the profile then rolls the mail-setup Deployment.
-  - name: mail-setup-content
-    files:
-      - mail-setup/index.html
-      - mail-setup/apple.mobileconfig
-  - name: mail-setup-nginx
-    files:
-      - mail-setup/nginx-default.conf
 secretGenerator:
   - name: stalwart-creds
     envs:
