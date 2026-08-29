@@ -991,7 +991,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
           "editorMode": "code",
-          "expr": "queue_count{job=\"stalwart\"}",
+          "expr": "queue_count{job=\"stalwart\"} or vector(0)",
           "legendFormat": "queued messages",
           "range": true,
           "refId": "A"
@@ -1001,7 +1001,7 @@
     {
       "type": "timeseries",
       "title": "Delivery outcomes (from the exporter)",
-      "description": "Stalwart's own counters, at finer granularity than the single failure counter the alerts use. Metric names carry no prefix and no labels — they are Stalwart's internal event ids with punctuation replaced by underscores — so every query here is qualified with job=\"stalwart\" to avoid colliding with other exporters.",
+      "description": "Stalwart's own counters, at finer granularity than the single failure counter the alerts use. Metric names carry no prefix and no labels — they are Stalwart's internal event ids with punctuation replaced by underscores — so every query here is qualified with job=\"stalwart\" to avoid colliding with other exporters.\n\nEXPECT 'No data' ON A QUIET SERVER, and do not read it as broken. Stalwart only exports a counter once its event has occurred at least once since the process started, so every series here is absent until the first matching message, and all of them reset on restart. Verified 2026-08-29: message_ingest_ham and smtp_dkim_pass did not exist until a test message arrived, then appeared at 1. queue_count behaves the same way and exists only while the queue is non-empty.",
       "id": 24,
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },

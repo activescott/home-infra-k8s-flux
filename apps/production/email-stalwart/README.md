@@ -548,6 +548,53 @@ namespaces and Secrets do not cross one:
 Changing one alone produces a 401 and fires `StalwartMetricsScrapeDown`, which looks identical to
 the exporter having been switched off (404). Check the status code before assuming which.
 
+### Adding an Alloy counter needs a DaemonSet restart
+
+Editing `monitoring/alloy/helmrelease.yaml` is not enough, and the failure is worse than the
+change not applying. The config-reloader sidecar hot-reloads the ConfigMap into the running
+process, but a reload re-registers the `loki.process` counters without unregistering the old
+ones, and the Prometheus client library then refuses to serve `/metrics` at all:
+
+```
+collected metric "loki_process_custom_email_relay_sent_total" {...}
+was collected before with the same name and label values
+```
+
+The scrape fails and **every** Alloy-derived series disappears — not just the edited ones.
+Observed 2026-08-29 while adding these counters: the email-relay, WAN-flapping and tinkerbell
+log-health alerts all went blind together, and the only symptom was alerts quietly not firing.
+
+```bash
+kubectl --context nas -n monitoring rollout restart daemonset alloy
+```
+
+This is why every alert reading these counters carries an `or absent(...)` arm. A bare `== 0`
+cannot fire on a series that does not exist, which is precisely the state this bug produces.
+
+### Counters do not exist until their event happens
+
+Stalwart exports a counter only once its event has occurred since the process started, so a
+freshly restarted, idle server exports almost nothing and several dashboard panels correctly read
+"No data". Verified 2026-08-29: `message_ingest_ham`, `smtp_dkim_pass`, `smtp_dmarc_pass` and
+`queue_message_queued` were all absent until a test message arrived, then appeared at `1`.
+
+Always-present gauges — useful as proof the exporter itself is working — are `user_count`,
+`domain_count`, `server_memory` and the `*_active_connections` family.
+
+`queue_count` is the notable absence: it exists only while the queue is non-empty. The
+`StalwartQueueBacklog` alert is unaffected (it only needs the metric when there _is_ a backlog),
+but any panel reading it needs `or vector(0)`.
+
+To generate real traffic end to end — relay → Cloudflare → Google MX → dual delivery →
+Stalwart `:25`:
+
+```bash
+./apps/production/email-relay/send-test-email.sh --send-only scott@willeke.com
+```
+
+Use `--send-only`. The default mode deliberately fails an authentication to prove the relay's
+access controls hold, which now trips `EmailRelayAuthFailures`.
+
 ### Metric names have no prefix and no labels
 
 Stalwart derives them from its internal event ids by replacing every non-alphanumeric character

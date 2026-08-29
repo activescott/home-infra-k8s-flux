@@ -59,6 +59,35 @@ spec:
       #    - Preserves raw JSON body so all fields are queryable via | json
       #
       # 5. loki.write - Pushes labeled log lines to Loki's HTTP API.
+      #
+      # ---------------------------------------------------------------------
+      # RESTART THE DAEMONSET AFTER CHANGING ANY metric.counter BELOW
+      #
+      #   kubectl --context nas -n monitoring rollout restart daemonset alloy
+      #
+      # Editing this file is not enough, and the failure is far worse than the
+      # change simply not applying.
+      #
+      # There is a config-reloader sidecar, so a ConfigMap change IS hot-reloaded
+      # into the long-running process. But a reload re-registers the loki.process
+      # counters without unregistering the old ones, and the Prometheus client
+      # library then refuses to serve the whole endpoint:
+      #
+      #   collected metric "loki_process_custom_email_relay_sent_total" {...}
+      #   was collected before with the same name and label values
+      #
+      # /metrics returns that error instead of metrics, so the scrape fails and
+      # EVERY Alloy-derived series disappears at once -- not just the ones being
+      # edited. Observed 2026-08-29 while adding the stalwart counters: the
+      # email-relay, WAN-flapping and tinkerbell log-health alerts all went blind
+      # together, and the only visible symptom was alerts quietly not firing.
+      # A restart clears it.
+      #
+      # This is why every alert reading these counters pairs its threshold with an
+      # `or absent(...)` arm -- see FirewallSyslogFeedDown and StalwartLogFeedDown
+      # in prometheus/helmrelease.yaml. A bare `== 0` cannot fire on a series that
+      # does not exist, which is exactly the state this bug produces.
+      # ---------------------------------------------------------------------
       configMap:
         content: |
           // Stage 1: Discover all pods via the Kubernetes API
