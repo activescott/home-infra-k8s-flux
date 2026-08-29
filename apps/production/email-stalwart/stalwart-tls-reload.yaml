@@ -92,7 +92,20 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: reload
-              image: bitnami/kubectl:1.31.3
+              # WAS bitnami/kubectl:1.31.3, which stopped pulling. Bitnami withdrew their
+              # legacy versioned tags from Docker Hub, so the tag simply no longer exists and
+              # the job sat in ImagePullBackOff for 14 hours (3,728 attempts) before anyone
+              # looked. It failed silently in the way that matters: nothing watches this
+              # CronJob, and its only job is to run on the ~4 days a year cert-manager renews.
+              # Discovered 2026-08-29 while checking for leftover Jobs, not by an alert.
+              #
+              # alpine/kubectl rather than registry.k8s.io/kubectl because the script below is
+              # /bin/sh; the official image is distroless and has no shell.
+              #
+              # 1.33.4 also fixes a skew problem: the server is v1.33.5+k3s1, so the old 1.31
+              # client was two minors behind, outside kubectl's supported +/-1 range.
+              # Pinned by digest, so a moved tag cannot repeat this quietly.
+              image: alpine/kubectl:1.33.4@sha256:f032392d7c23894ac391425ff5ff9658c064279d8519df8eb8c7d38dde867ce5
               command:
                 - /bin/sh
                 - -c
