@@ -154,6 +154,54 @@ is fine for a receive-only role but forecloses TLSA if this ever becomes authori
 Verified on the node 2026-08-28 after setup: 25, 465 and 993 accept connections; 587 and 995
 refuse. 995 refuses because the Service does not publish it, so klipper never forwards it.
 
+## HTTP arrives through Traefik, and Stalwart must be told so
+
+Both HTTP hostnames reach :8080 through the ingress controller, so without configuration every
+request looks to Stalwart like it came from Traefik's pod IP. Its auto-ban then counts the whole
+internet's behaviour against one address and eventually bans the ingress controller — which takes
+out the admin UI and CalDAV/CardDAV for everyone at once, while `/setup` keeps working because
+that is a separate nginx.
+
+This happened on 2026-08-29: 430 `security.ip-blocked` events in 24 hours, all naming
+`172.16.2.88`, with `admin.mail.activescott.com` and `/dav/*` returning 502. The trigger was
+almost certainly `scanBanRate` — 30 hits/day against `scanBanPaths` globs (`*/wp-*`, `*.php*`,
+`*xmlrpc*`, …), which internet background noise reaches in hours against a public admin UI. Note
+a DAV client's initial 401 is _not_ an auth failure and does not count.
+
+Two click-ops settings prevent it, both applied 2026-08-29:
+
+| Where                                          | Setting                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| Settings › Network › Services › HTTP › General | Proxy → **Obtain remote IP from Forwarded header** = on (`useXForwarded`) |
+| Settings › Security › Allowed IPs              | `172.16.0.0/16`, reason "cluster pod CIDR (Traefik ingress)"              |
+
+`useXForwarded` is the actual fix: Stalwart then takes the client IP from `X-Forwarded-For` and
+bans the real scanner. It is safe here only because k3s's Traefik sets no
+`forwardedHeaders.trustedIPs` and therefore **strips** any client-supplied `X-Forwarded-For`
+before adding its own — Stalwart reads the first element of that list, so a Traefik configured to
+trust client headers would make bans trivially evadable. Re-check this if Traefik's args change.
+
+The allow-list entry is the belt-and-braces half, and it is what recovers a live outage:
+`is_ip_blocked()` ends in `&& !is_ip_allowed(ip)`, so an allow-listed address is both
+un-blockable and un-bannable, and an existing block record against it stops mattering
+immediately.
+
+Two related things worth knowing before debugging this again:
+
+- **Bans are permanent by default.** `authBanPeriod`, `scanBanPeriod`, `abuseBanPeriod` and
+  `loiterBanPeriod` are all unset out of the box, which means no expiry. Settings › Security ›
+  Settings.
+- **Do not use `proxyTrustedNetworks` for this.** It looks like the right setting and is not: it
+  makes Stalwart _require_ a PROXY protocol header from matching peers, Traefik does not send
+  one, and the system-level list applies to every listener including SMTP and IMAP.
+
+If it does get banned, the way back in is a port-forward, which bypasses Traefik and arrives as
+loopback — always allowed:
+
+```bash
+kubectl --context nas -n email-stalwart port-forward stalwart-0 8081:8080
+```
+
 ## Sending
 
 Stalwart delivers **nothing** directly. Outbound :25 is blocked by Ziply (Phase 0e), so a
