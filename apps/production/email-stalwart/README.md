@@ -227,7 +227,7 @@ click-ops and this README is their only record.
 
 | Property       | Value                                                 |
 | -------------- | ----------------------------------------------------- |
-| `name`         | `google`                                              |
+| `name`         | `google-willeke-com-relay`                            |
 | `address`      | `smtp-relay.gmail.com`                                |
 | `port`         | `587`                                                 |
 | `protocol`     | `smtp`                                                |
@@ -250,9 +250,34 @@ _unauthenticated_ relay instead of erroring.
 }
 ```
 
-Only `else` changes, from `'mx'` to `'google'`. Local recipients keep hitting the `local` route,
-so inbound dual delivery is unaffected; everything else goes to the smarthost instead of being
-handed to a recipient MX that this host cannot reach anyway.
+Only `else` changes, from `'mx'` to `'google-willeke-com-relay'`. Local recipients keep hitting
+the `local` route, so inbound dual delivery is unaffected; everything else goes to the smarthost
+instead of being handed to a recipient MX that this host cannot reach anyway.
+
+The value is the route's `name`, and the inner single quotes are part of the expression syntax —
+it is a string literal inside a string. A name that does not resolve to a route is not an error:
+delivery falls back, so mail keeps attempting direct MX and expiring, which looks identical to
+having made no change at all. Confirm from the queue log that a delivery attempt names
+`smtp-relay.gmail.com`.
+
+### Restart the pod after changing MTA settings
+
+**Saving a setting in the admin UI is not the same as the running server using it.** This is the
+single most expensive thing to not know about this service, and it has now cost time twice:
+
+- A message submitted ~30 seconds after the outbound strategy was saved still went to direct MX
+  and timed out. The configuration in force had been built before the save.
+- Deleting a `BlockedIp` record removed it from the datastore — the UI correctly showed it
+  gone — while the running process kept dropping that address at TCP accept from a stale
+  in-memory copy. Blocked addresses are only reloaded at bootstrap.
+
+Both were resolved by `kubectl --context nas -n email-stalwart rollout restart statefulset/stalwart`.
+So: change the setting, restart, _then_ test. A test between those two steps produces a result
+about the old configuration and reads exactly like the change not working.
+
+Verified 2026-08-29 after a restart: submission on 465 → queued → `delivery.connect` to
+`smtp-relay.gmail.com:587` → STARTTLS TLSv1.3 → `250 OK`, 469 ms, envelope sender preserved as
+`scott@willeke.com`.
 
 ### Failure modes to know before debugging
 
