@@ -16,3 +16,13 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.prometheus-basic-auth.encrypted
+  # Mounted into the Prometheus server pod (server.extraSecretMounts in
+  # helmrelease.yaml) so the stalwart scrape job reads the password from a file
+  # instead of carrying it inline in the rendered ConfigMap, which is not a Secret
+  # and is readable by anyone who can get the Prometheus config. Same value as
+  # STALWART_METRICS_PASSWORD in apps/production/email-stalwart/.env.secret.stalwart.
+  - name: stalwart-metrics-auth
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.stalwart-metrics.encrypted

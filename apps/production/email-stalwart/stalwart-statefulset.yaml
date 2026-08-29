@@ -76,6 +76,31 @@ spec:
                 secretKeyRef:
                   name: stalwart-creds
                   key: STALWART_SMARTHOST_PASSWORD
+            # Basic-auth password for the Prometheus exporter at
+            # /metrics/prometheus. The Metrics singleton refers to this variable by
+            # name (authSecret -> EnvironmentVariable), the same indirection the
+            # smarthost password uses, so the credential stays in SOPS rather than in
+            # the datastore.
+            #
+            # Auth is not optional here: the exporter shares an HTTP listener with the
+            # admin UI, which stalwart-admin-ingress.yaml publishes to the internet.
+            # stalwart-metrics-ingress.yaml blocks /metrics at the edge as well; the
+            # two layers cover different failure modes and both are deliberate.
+            #
+            # Prometheus needs the identical value, in a different namespace and so a
+            # different Secret:
+            # apps/production/monitoring/prometheus/.env.secret.stalwart-metrics.
+            # Rotate both together.
+            #
+            # Resolved once at config-build time. Changing the Secret does nothing
+            # until this pod restarts, and an unresolvable value degrades the endpoint
+            # to unauthenticated rather than failing loudly -- which is the more
+            # dangerous direction here, and the reason the ingress block exists.
+            - name: STALWART_METRICS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stalwart-creds
+                  key: STALWART_METRICS_PASSWORD
             - name: TZ
               value: America/Los_Angeles
           volumeMounts:

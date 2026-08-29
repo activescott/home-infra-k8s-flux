@@ -1,0 +1,1551 @@
+{
+  "uid": "email",
+  "title": "Email",
+  "description": "Mail for willeke.com (Stalwart, self-hosted) and outbound for the apps (email-relay). Two evidence sources: Stalwart's own exporter (job=\"stalwart\") and counters Alloy derives from container logs (loki_process_custom_stalwart_*). The log counters keep working when the exporter does not, which is why some questions are answered twice.",
+  "tags": ["email", "stalwart"],
+  "editable": true,
+  "schemaVersion": 41,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Alerts — everything on this row can page you",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Firing alerts",
+      "description": "Count of email alerts currently firing, across the email-stalwart and email-relay rule groups. Zero is the expected value.",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "count(ALERTS{alertname=~\"Stalwart.*|EmailRelay.*\",alertstate=\"firing\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "firing",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Stalwart ready",
+      "description": "Ready replicas in the StatefulSet. One replica, so 0 is a total outage of IMAP, submission and inbound delivery. Inbound mail is not lost when this is 0 — Google remains the MX for willeke.com and retries.",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "max(kube_statefulset_status_replicas_ready{namespace=\"email-stalwart\",statefulset=\"stalwart\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "ready",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Firing now",
+      "description": "Empty is the healthy state. Each row corresponds to a rule in the email-stalwart or email-relay group in prometheus/helmrelease.yaml, where the reasoning and the remediation for each is written out in full.",
+      "id": 4,
+      "gridPos": { "h": 8, "w": 20, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "filterable": false },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": { "show": false, "reducer": ["sum"], "fields": "" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "ALERTS{alertname=~\"Stalwart.*|EmailRelay.*\",alertstate=\"firing\"}",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "renameByName": {
+              "alertname": "Alert",
+              "severity": "Severity",
+              "alertstate": "State"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Alert conditions — one panel per alert, so a page always has somewhere to look",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 5,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Served cert: days left",
+      "description": "Days of validity on the certificate Stalwart ACTUALLY SERVES on 465 and 993, measured by completing a TLS handshake. Alert: StalwartServedCertExpiringSoon at 14 days. cert-manager renews at 30, so anything under 30 sustained means renewal or reload is broken.",
+      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 14 },
+              { "color": "green", "value": 30 }
+            ]
+          },
+          "unit": "d",
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "min((probe_ssl_earliest_cert_expiry{job=\"blackbox_mail_tls\"} - time()) / 86400)",
+          "instant": true,
+          "legendFormat": "days",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Cert reload lag",
+      "description": "Gap between what cert-manager has issued and what Stalwart is serving, in days. 0 is correct. Anything above ~1 means cert-manager renewed and the server never picked it up — Stalwart does not notice a rotated file, which is what stalwart-tls-reload.yaml exists to fix. Alert: StalwartServedCertNotRenewed above 5 days.",
+      "id": 7,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "orange", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "d",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "(max(certmanager_certificate_expiration_timestamp_seconds{namespace=\"email-stalwart\",name=\"mail-activescott-com\"}) - min(probe_ssl_earliest_cert_expiry{job=\"blackbox_mail_tls\"})) / 86400",
+          "instant": true,
+          "legendFormat": "lag",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Mail ports answering TLS",
+      "description": "465 (submission) and 993 (IMAP), handshaked from inside the cluster. 2 is healthy. Probed against the Service, so this is the server itself — it does not prove the ports answer from the internet. Alert: StalwartMailPortDown.",
+      "id": 8,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(probe_success{job=\"blackbox_mail_tls\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "up",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Web surfaces answering",
+      "description": "admin.mail.activescott.com and mail.activescott.com/setup, probed through the real ingress and TLS. 2 is healthy. Alert: StalwartWebSurfaceDown. This is the check that would have caught the 2026-08-28 outage, where the admin UI returned 502 for everyone because Stalwart had banned the Traefik pod's address.",
+      "id": 9,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 1 },
+              { "color": "green", "value": 2 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(probe_success{job=\"blackbox_https\",instance=~\"https://(admin\\\\.)?mail\\\\.activescott\\\\.com/.*\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "up",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "In-cluster addresses blocked (1h)",
+      "description": "Stalwart refusing connections from 172.16/16 — i.e. from the ingress controller or another cluster pod. Must be 0. Anything above 0 means the admin UI and CalDAV are down for everyone, and it does NOT expire on its own because no ban period is configured. Alert: StalwartBlockingClusterAddress. Fix is Security > Allowed IPs plus a pod restart; deleting the block alone does not take effect.",
+      "id": 10,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_ip_blocked_cluster_total[1h])) or vector(0)",
+          "instant": true,
+          "legendFormat": "blocked",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Inbound mail (36h)",
+      "description": "Messages accepted on port 25 in the last 36 hours, from container logs rather than the exporter. Alert: StalwartNoInboundMail at 0. Volume here is genuinely low — roughly one a day as of 2026-08-29 — so a 0 is not immediately alarming, and the 36h window is a deliberate over-estimate rather than a measured baseline. Retune once a week of history exists.",
+      "id": 11,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "orange", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_inbound_queued_total[36h])) or vector(0)",
+          "instant": true,
+          "legendFormat": "received",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Delivery failures (1h)",
+      "description": "Failed outbound delivery attempts. Alert: StalwartDeliveryFailing above 5/hour. The most likely cause is Google having revoked the app password — it does that whenever the owning account's password changes. Stalwart falls back to unauthenticated relay when it cannot resolve the credential, so a missing secret looks the same as a rejected one.",
+      "id": 12,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 6 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_delivery_failed_total[1h])) or vector(0)",
+          "instant": true,
+          "legendFormat": "failures",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Auth failures (1h)",
+      "description": "Failed logins against IMAP, submission and the admin UI, all of which are internet-facing. Alert: StalwartAuthFailures above 20/hour. Some background noise is expected. Stalwart's auth-ban counts these, so a spike here tends to precede an address being banned.",
+      "id": 13,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "orange", "value": 21 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_auth_failed_total[1h])) or vector(0)",
+          "instant": true,
+          "legendFormat": "failures",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Queue depth",
+      "description": "Messages in Stalwart's MTA queue, from its own exporter. A couple mid-retry is normal. Alert: StalwartQueueBacklog above 25 sustained for 30 minutes, which usually means the outbound path is failing rather than that volume is high.",
+      "id": 14,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 26 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "max(queue_count{job=\"stalwart\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "queued",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Exporter scrape",
+      "description": "Whether Prometheus can read Stalwart's own metrics. Alert: StalwartMetricsScrapeDown. Two very different causes look identical here — the exporter switched off in the admin UI (404) or the basic-auth password out of sync between its two Secrets (401). Check the status code before assuming which. Every exporter-sourced panel on this dashboard is blank while this is 0.",
+      "id": 15,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "DOWN", "index": 0 },
+                "1": { "text": "UP", "index": 1 }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "max(up{job=\"stalwart\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "up",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Log heartbeat (30m)",
+      "description": "Stalwart reschedules an internal task every 5 minutes no matter how idle it is, so ~6 lines per half hour is the floor. Alert: StalwartLogFeedDown at 0. This is the panel that says whether to trust the other log-derived panels: while it is 0, 'no inbound mail' and 'no delivery failures' mean nothing was recorded, not that nothing happened.",
+      "id": 16,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_heartbeat_total[30m])) or vector(0)",
+          "instant": true,
+          "legendFormat": "lines",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Relay bounces (15m)",
+      "description": "email-relay, the Postfix null client the apps send through — a separate system from Stalwart, included here because it is the other half of 'is mail working'. Alert: EmailRelayBounced above 0. These are sign-in codes and share invites, so one lost message is a user who cannot get into their account.",
+      "id": 17,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_email_relay_bounced_total[15m])) or vector(0)",
+          "instant": true,
+          "legendFormat": "bounced",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Certificates",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 18,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Days of certificate validity remaining",
+      "description": "Two independent views of the same certificates.\n\nSOLID (probe) is what Stalwart serves on the mail ports, measured by handshake. DASHED (cert-manager) is what the Certificate object says. They should track each other; a persistent gap means the server never reloaded the renewed file. The sawtooth is normal — each drop to ~60 days is a renewal.",
+      "id": 19,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": 0 },
+              { "color": "orange", "value": 14 },
+              { "color": "green", "value": 30 }
+            ]
+          },
+          "unit": "d",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": "cert-manager.*" },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": { "fill": "dash", "dash": [10, 10] }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["lastNotNull", "min"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox_mail_tls\"} - time()) / 86400",
+          "legendFormat": "served {{instance}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "(probe_ssl_earliest_cert_expiry{job=\"blackbox_https\",instance=~\"https://(admin\\\\.)?mail\\\\.activescott\\\\.com/.*\"} - time()) / 86400",
+          "legendFormat": "served {{instance}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "(certmanager_certificate_expiration_timestamp_seconds{namespace=\"email-stalwart\"} - time()) / 86400",
+          "legendFormat": "cert-manager {{name}}",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reload lag: issued minus served",
+      "description": "The gap between the two lines on the left, isolated. Flat at 0 is correct.\n\nA step upward means cert-manager renewed and Stalwart kept serving the old certificate — the failure that stalwart-tls-reload.yaml exists to prevent, and that neither a cert-manager metric nor a plain expiry threshold can see until it is nearly too late. It resolves the moment the pod restarts.",
+      "id": 20,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": true,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "orange", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "d"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "(max(certmanager_certificate_expiration_timestamp_seconds{namespace=\"email-stalwart\",name=\"mail-activescott-com\"}) - min(probe_ssl_earliest_cert_expiry{job=\"blackbox_mail_tls\"})) / 86400",
+          "legendFormat": "lag",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Mail flow",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 21,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Messages in and out (from logs)",
+      "description": "Derived from container stdout, so these keep working when the exporter does not.\n\nInbound is mail accepted on :25 — the Google dual-delivery path. Outbound delivered is mail handed to the Google Workspace SMTP relay. Volume is low by nature; expect long flat stretches rather than a smooth rate.",
+      "id": 22,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "delivery failed" },
+            "properties": [
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "red" }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["sum"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_inbound_queued_total[1h]))",
+          "legendFormat": "inbound accepted",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_outbound_delivered_total[1h]))",
+          "legendFormat": "outbound delivered",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_delivery_failed_total[1h]))",
+          "legendFormat": "delivery failed",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth over time",
+      "description": "Stalwart's MTA queue, from its own exporter. Brief spikes are messages mid-retry and are normal. A staircase that never comes down means delivery is failing and the queue is filling — cross-check against the delivery outcome panel below.",
+      "id": 23,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": 0 },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 26 }
+            ]
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "queue_count{job=\"stalwart\"}",
+          "legendFormat": "queued messages",
+          "range": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Delivery outcomes (from the exporter)",
+      "description": "Stalwart's own counters, at finer granularity than the single failure counter the alerts use. Metric names carry no prefix and no labels — they are Stalwart's internal event ids with punctuation replaced by underscores — so every query here is qualified with job=\"stalwart\" to avoid colliding with other exporters.",
+      "id": 24,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": { "mode": "normal" }
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["sum"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(delivery_delivered{job=\"stalwart\"}[1h])",
+          "legendFormat": "delivered",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(delivery_dsn_temp_fail{job=\"stalwart\"}[1h])",
+          "legendFormat": "temp fail",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(delivery_dsn_perm_fail{job=\"stalwart\"}[1h])",
+          "legendFormat": "perm fail",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(message_ingest_ham{job=\"stalwart\"}[1h])",
+          "legendFormat": "ingested (ham)",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(message_ingest_spam{job=\"stalwart\"}[1h])",
+          "legendFormat": "ingested (spam)",
+          "range": true,
+          "refId": "E"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inbound authentication results",
+      "description": "SPF, DKIM, DMARC and IPREV outcomes on mail arriving at :25. Failures here are usually the sender's problem, not this server's — a forwarded message legitimately breaks SPF, for instance. Worth watching for a sudden all-fail pattern, which would instead point at this server's DNS resolution.",
+      "id": 25,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["sum"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(smtp_dkim_pass{job=\"stalwart\"}[1h])",
+          "legendFormat": "DKIM pass",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(smtp_dkim_fail{job=\"stalwart\"}[1h])",
+          "legendFormat": "DKIM fail",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(smtp_dmarc_pass{job=\"stalwart\"}[1h])",
+          "legendFormat": "DMARC pass",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(smtp_dmarc_fail{job=\"stalwart\"}[1h])",
+          "legendFormat": "DMARC fail",
+          "range": true,
+          "refId": "D"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(smtp_spf_from_fail{job=\"stalwart\"}[1h])",
+          "legendFormat": "SPF (From) fail",
+          "range": true,
+          "refId": "E"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(smtp_iprev_fail{job=\"stalwart\"}[1h])",
+          "legendFormat": "IPREV fail",
+          "range": true,
+          "refId": "F"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Access and security",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 26,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Authentication",
+      "description": "Successful and failed logins. 993 and 465 are deliberately internet-facing, so a background of failures is expected rather than alarming; what matters is the shape. A sustained climb in failures with no successes is a password spray, and it also feeds Stalwart's auth-ban.",
+      "id": 27,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*fail.*" },
+            "properties": [
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "red" }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["sum"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(auth_success{job=\"stalwart\"}[1h])",
+          "legendFormat": "success (exporter)",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_auth_failed_total[1h]))",
+          "legendFormat": "failed (logs)",
+          "range": true,
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Blocked connections and bans",
+      "description": "SOLID red is the one that matters: connections refused from inside the cluster, which means Stalwart has banned the ingress controller and the admin UI is 502 for everyone. It does not expire on its own.\n\nThe grey 'all blocked' series is mostly internet scanners being refused, which is the ban working as intended and is context rather than a problem.",
+      "id": 28,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "blocked: in-cluster" },
+            "properties": [
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "red" }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "blocked: all sources" },
+            "properties": [
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "text" }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["sum"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_ip_blocked_cluster_total[1h]))",
+          "legendFormat": "blocked: in-cluster",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_stalwart_ip_blocked_total[1h]))",
+          "legendFormat": "blocked: all sources",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(security_scan_ban{job=\"stalwart\"}[1h])",
+          "legendFormat": "new scan bans",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(security_authentication_ban{job=\"stalwart\"}[1h])",
+          "legendFormat": "new auth bans",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Active connections by protocol",
+      "description": "Live connection counts from the exporter. IMAP sitting at a small non-zero number is normal — mail clients hold idle connections open. Delivery connections spike only while the queue is draining.",
+      "id": 29,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 53 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "imap_active_connections{job=\"stalwart\"}",
+          "legendFormat": "IMAP",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "smtp_active_connections{job=\"stalwart\"}",
+          "legendFormat": "SMTP",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "delivery_active_connections{job=\"stalwart\"}",
+          "legendFormat": "outbound delivery",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "http_active_connections{job=\"stalwart\"}",
+          "legendFormat": "HTTP (admin, JMAP, DAV)",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "email-relay: outbound for the apps",
+      "description": "The Postfix null client that fernfiles, ramblefeed and tinkerbell send through — a different system from Stalwart, on the same dashboard because it answers the other half of 'is mail working'.\n\nPostfix exports no metrics, so these are Alloy counters over its log lines. Deferred is transient and usually self-resolving; bounced is terminal and pages.",
+      "id": 30,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 53 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "stacking": { "mode": "none" }
+          },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "bounced" },
+            "properties": [
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "red" }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "sent" },
+            "properties": [
+              {
+                "id": "color",
+                "value": { "mode": "fixed", "fixedColor": "green" }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": ["sum"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_email_relay_sent_total[1h]))",
+          "legendFormat": "sent",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_email_relay_deferred_total[1h]))",
+          "legendFormat": "deferred",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_email_relay_bounced_total[1h]))",
+          "legendFormat": "bounced",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_email_relay_auth_failed_total[1h]))",
+          "legendFormat": "auth failures",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Logs",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 61 },
+      "id": 31,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "title": "Problems: warnings, errors, failures and bans",
+      "description": "Start here. Filtered to lines worth reading, across both mail namespaces.\n\nNote the `level` label is unset for these pods — Stalwart prints its own plain-text format and Postfix is not JSON either — so severity is matched in the line text rather than by label. Excludes the 5-minute task-scheduling heartbeat, which is noise here but is what the Log heartbeat panel above counts.",
+      "id": 32,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 62 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "editorMode": "code",
+          "expr": "{namespace=~\"email-stalwart|email-relay\"} |~ `(?i)(WARN|ERROR|FATAL|status=bounced|status=deferred|authentication failed|security\\.|delivery\\.(connect-error|dsn-perm-fail|dsn-temp-fail|message-rejected)|auth\\.failed)`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Mail flow: what was accepted, delivered and ingested",
+      "description": "The audit trail for a specific message. Every line carries the queueId, so pick one out of a delivery line and re-filter on it in Explore to follow a single message end to end.\n\nRemember `kubectl logs` only holds the CURRENT container: after a restart, this panel is the record and kubectl is not.",
+      "id": 33,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 74 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "editorMode": "code",
+          "expr": "{namespace=~\"email-stalwart|email-relay\"} |~ `(queue\\.(message-queued|authenticated-message-queued|report-queued)|delivery\\.(delivered|completed)|message-ingest\\.(ham|spam)|auth\\.success|status=sent)`",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Everything, unfiltered",
+      "description": "Both mail namespaces, nothing removed — including the mail-setup nginx access log and Stalwart's 5-minute heartbeat. Here so that 'the dashboard shows nothing wrong' can always be checked against the raw stream rather than trusted.",
+      "id": 34,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 86 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "editorMode": "code",
+          "expr": "{namespace=~\"email-stalwart|email-relay\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

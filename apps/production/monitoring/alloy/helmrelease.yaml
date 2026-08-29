@@ -335,6 +335,191 @@ spec:
               }
             }
 
+            // email-stalwart: the mailboxes for willeke.com. Stalwart DOES have its
+            // own Prometheus exporter, and prometheus/helmrelease.yaml scrapes it --
+            // so why derive counters from logs as well?
+            //
+            // Because the exporter is a setting inside Stalwart's own datastore, not a
+            // file in this repo. It is enabled by hand in the admin UI, it is lost if
+            // the datastore is ever restored from an older backup, and nothing in git
+            // would show that it had turned itself off. These counters come from the
+            // container's stdout, which cannot be switched off from inside the
+            // application, so the "is mail still flowing" question survives the
+            // exporter being unavailable for any reason.
+            //
+            // Deliberately narrow: this is not a reimplementation of the exporter.
+            // Only the handful of events that answer "is mail arriving, is it leaving,
+            // and is the server locking people out" are counted here. Everything
+            // richer -- queue depth, per-protocol connections, delivery latency
+            // histograms -- comes from the exporter and appears only on the dashboard.
+            //
+            // Event names are Stalwart's own event ids, taken from the parenthesised
+            // tag it prints on every line, e.g.
+            //   INFO Queued message for delivery (queue.message-queued) listenerId = "smtp", ...
+            // Each was confirmed against live log lines rather than inferred from the
+            // documentation, which does not list them.
+            //
+            // As with the email-relay counters above, each of these ends up as several
+            // series (the counter inherits each line's labels), so every alert that
+            // reads them wraps the expression in sum().
+
+            // Inbound mail accepted on :25. This is the one signal that says the
+            // dual-delivery path from Google still works end to end: firewall NAT,
+            // the LoadBalancer, and Stalwart accepting the message.
+            //
+            // queue.message-queued is specific to mail arriving from outside.
+            // Submissions from a mail client on :465 log queue.authenticated-message-queued
+            // and DMARC/TLS reports log queue.report-queued, so neither inflates this.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(queue.message-queued)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_inbound_queued_total"
+                  description = "messages accepted from the internet on port 25"
+                  match_all   = true
+                  action      = "inc"
+                  // Inbound volume is roughly one message a day at present, so the
+                  // 5m default would delete this series constantly and every
+                  // increase() would start again from a fresh zero.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Outbound mail successfully handed to the Google Workspace SMTP relay.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(delivery.delivered)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_outbound_delivered_total"
+                  description = "messages Stalwart delivered to a remote server"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Delivery failures, permanent and transient together.
+            //
+            // One counter rather than the sent/deferred/bounced split used for
+            // email-relay, and for a reason: Stalwart spreads failure across a dozen
+            // event ids (TLS, greeting, MX lookup, rejection, DSN) where postfix has a
+            // single status= token. Enumerating them individually would mean a counter
+            // per id and an alert per counter, and the operator response to all of them
+            // is the same -- read the log lines. The regex covers the ids that mean
+            // "this message did not go out".
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |~ \"delivery\\\\.(connect-error|dsn-perm-fail|dsn-temp-fail|message-rejected|rcpt-to-rejected|mail-from-rejected|greeting-failed|ehlo-rejected|start-tls-error|implicit-tls-error|mx-lookup-failed|null-mx|auth-failed)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_delivery_failed_total"
+                  description = "outbound delivery attempts that failed, permanently or transiently"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Failed logins against IMAP, submission and the admin UI. Worth watching
+            // for its own sake -- 993 and 465 are internet-facing -- and because
+            // Stalwart's auth-ban counts these, so a burst here precedes an address
+            // being banned.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(auth.failed)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_auth_failed_total"
+                  description = "failed authentications against Stalwart"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Connections dropped because the source address is banned. Almost always
+            // a scanner on the public admin hostname, which is working as intended and
+            // is why the ban exists.
+            //
+            // It is here because of what happened on 2026-08-28: Stalwart banned the
+            // Traefik pod's address, and since it drops banned addresses at TCP accept
+            // -- before any request is parsed -- the admin UI and CalDAV returned 502
+            // for everyone with no HTTP log line to explain it. Bans do not expire
+            // (every *BanPeriod is unset by default), so that state was permanent
+            // until someone noticed. The alert on this counter looks specifically for
+            // an in-cluster address being blocked, which is the shape of that failure
+            // rather than of ordinary scanner traffic.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(security.ip-blocked)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_ip_blocked_total"
+                  description = "connections dropped because the source address is banned"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // The same event, narrowed to in-cluster source addresses. This is the
+            // counter the alert reads; the broad one above is for the dashboard.
+            //
+            // The distinction matters because the two cases mean opposite things. A
+            // banned address from the internet is the ban working correctly and
+            // happens constantly on a public admin hostname -- alerting on it would be
+            // pure noise. A banned address inside 172.16/16 is Stalwart having banned
+            // the ingress controller, which takes out the admin UI and CalDAV for
+            // everyone and does not resolve on its own, because no *BanPeriod is set
+            // and bans therefore never expire.
+            //
+            // Matching the CIDR as a string prefix rather than parsing the address
+            // into a label is deliberate: a remoteIp label would be unbounded
+            // cardinality driven by whoever is scanning today.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(security.ip-blocked)\" |= \"remoteIp = 172.16.\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_ip_blocked_cluster_total"
+                  description = "in-cluster addresses Stalwart is refusing, e.g. the ingress controller"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Liveness heartbeat for this pipeline, not for Stalwart.
+            //
+            // Every counter above is silent on a quiet day, and mail here IS quiet --
+            // so "no inbound mail in 36 hours" cannot on its own distinguish a broken
+            // mail path from a broken log path. Stalwart reschedules its internal
+            // calculateMetrics task every 5 minutes regardless of traffic, which makes
+            // task-scheduled the only line guaranteed to appear on an idle server. If
+            // this counter goes flat, every other Stalwart alert here is blind and
+            // should not be read as "all quiet".
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(task-manager.task-scheduled)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_heartbeat_total"
+                  description = "Stalwart internal task scheduling lines, ~12/hour on an idle server"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 

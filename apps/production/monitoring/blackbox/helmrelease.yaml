@@ -40,6 +40,36 @@ spec:
             method: GET
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
+        # Opens a TLS connection to Stalwart's implicit-TLS mail ports (465
+        # submission, 993 IMAP) and reports the certificate it is actually
+        # served, through probe_ssl_earliest_cert_expiry.
+        #
+        # This is NOT redundant with cert-manager's own
+        # certmanager_certificate_expiration_timestamp_seconds. That metric
+        # describes the Certificate object: it goes green the moment cert-manager
+        # writes a renewed Secret, and says nothing about what the server is
+        # presenting. Stalwart does not notice a rotated certificate file — see
+        # email-stalwart/stalwart-tls-reload.yaml — so the failure that actually
+        # happens here is "cert-manager renewed it, Stalwart is still serving the
+        # old one". The cert-manager metric cannot see that; only a completed
+        # handshake can. Both are alerted on separately for exactly that reason.
+        #
+        # server_name is pinned rather than derived from the target because the
+        # targets are in-cluster Service DNS names. Probing the public hostname
+        # instead would depend on the firewall hairpinning a connection from the
+        # LAN back to its own WAN address — a second thing that can break, which
+        # would then report as a certificate problem when it is not one. Pinning
+        # the SNI keeps this a clean "what does the mail server serve" check.
+        # Whether the ports answer from the internet is a different question and
+        # deliberately not what this probe claims to answer.
+        mail_implicit_tls:
+          prober: tcp
+          timeout: 10s
+          tcp:
+            preferred_ip_protocol: ip4
+            tls: true
+            tls_config:
+              server_name: mail.activescott.com
 
     # The ICMP prober sends raw packets, which requires NET_RAW.
     securityContext:

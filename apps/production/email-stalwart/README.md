@@ -492,3 +492,96 @@ standard defines.
 
 That shape is what lets Phase 8's webmail take `/` on this same hostname later: Traefik ranks
 routers by rule specificity, so all four beat `PathPrefix(/)`.
+
+## Metrics and alerting
+
+The Grafana dashboard is **Email** (`/d/email`). Its top row is one panel per alert, so anything
+that can page has somewhere to be looked at; logs are the three panels at the bottom.
+
+### Two evidence sources, deliberately
+
+| Source                           | Where it comes from                        | Survives                                      |
+| -------------------------------- | ------------------------------------------ | --------------------------------------------- |
+| `job="stalwart"` metrics         | Stalwart's own Prometheus exporter         | Nothing — it is a datastore setting           |
+| `loki_process_custom_stalwart_*` | Alloy counters over the container's stdout | The exporter being off, misconfigured or lost |
+
+The duplication is the point. The exporter is a setting **inside Stalwart's datastore**, which
+git does not describe: it can be switched off in the UI, or silently reverted by restoring an
+older backup, and no file in this repo would change. Container stdout cannot be switched off from
+inside the application. So every question that must still be answerable during an incident — is
+mail arriving, is it leaving, is the server locking people out — is answered from logs, and the
+exporter supplies only the richer detail that is nice to have on a dashboard.
+
+`StalwartLogFeedDown` is what tells you whether to trust the log-derived panels. While it is
+firing, "no inbound mail" means nothing was _recorded_, not that nothing arrived.
+
+### Enabling the exporter
+
+It is off by default and is **not** restored by redeploying this repo.
+
+1. Admin UI → **Settings › Telemetry › Metrics › Prometheus**
+2. **Enabled**, `authUsername` = `prometheus`
+3. `authSecret` → **Environment variable** → `STALWART_METRICS_PASSWORD`
+4. **Restart the pod.** Saving does not apply it — Stalwart builds its configuration at startup,
+   so the endpoint keeps returning 404 until it restarts. This is the same trap as the MTA
+   settings above, and it is the reason there is no window where the endpoint is live without a
+   password: the setting cannot take effect before the Secret that backs it is mounted.
+
+Authentication is not optional here. `/metrics/prometheus` is served on the **same HTTP listener
+as the admin UI**, which `stalwart-admin-ingress.yaml` publishes to the internet — there is no way
+to bind it separately. `stalwart-metrics-ingress.yaml` blocks the path at the edge as an
+independent second layer, because the auth setting lives in the datastore and the ingress rule
+lives in git, and each covers the other's blind spot.
+
+Note the failure direction: if Stalwart cannot resolve `STALWART_METRICS_PASSWORD` it degrades the
+endpoint to **unauthenticated** rather than failing loudly. That is the dangerous direction, and
+the whole reason the ingress block exists rather than relying on auth alone.
+
+The password lives in **two files that must hold the same value**, because they are in two
+namespaces and Secrets do not cross one:
+
+| File                                                                 | Key                         | Read by    |
+| -------------------------------------------------------------------- | --------------------------- | ---------- |
+| `apps/production/email-stalwart/.env.secret.stalwart`                | `STALWART_METRICS_PASSWORD` | Stalwart   |
+| `apps/production/monitoring/prometheus/.env.secret.stalwart-metrics` | `stalwart_metrics_password` | Prometheus |
+
+Changing one alone produces a 401 and fires `StalwartMetricsScrapeDown`, which looks identical to
+the exporter having been switched off (404). Check the status code before assuming which.
+
+### Metric names have no prefix and no labels
+
+Stalwart derives them from its internal event ids by replacing every non-alphanumeric character
+with `_`, so `queue.count` is exported as `queue_count` and `auth.failed` as `auth_failed`. There
+is no `stalwart_` prefix. Several therefore collide with names other exporters use
+(`http_request_time`, `auth_failed`, `dns_lookup_time`), so **every query must qualify with
+`{job="stalwart"}`**. The full id list is in the upstream source at
+`crates/trc/src/event/enums_impl.rs`; the documentation does not publish it.
+
+### The certificate alerts, and why there are three
+
+`StalwartServedCertExpiringSoon` and `StalwartCertificateNotRenewing` are the obvious pair —
+what is on the wire, and what cert-manager holds. Neither catches the failure this deployment
+actually has.
+
+Stalwart does not notice a rotated certificate file. cert-manager renews, the kubelet refreshes
+the mounted Secret, and the running server keeps serving the old certificate — see the TLS section
+above, where that was observed rather than theorised. cert-manager's metric goes green at the
+moment of renewal and stays green for the whole ~60 days the stale certificate is being served, so
+it cannot see this at all; the served-certificate threshold does see it, but not until 14 days
+before an outage.
+
+`StalwartServedCertNotRenewed` compares the two directly and fires on the gap, roughly a day after
+a renewal that did not reload and about 30 days before anything breaks. It is the one worth
+having. The **Reload lag** panel on the dashboard shows the same quantity continuously; flat at
+zero is correct.
+
+### Provisional thresholds
+
+Two rules were written against ~24 hours of history, because that is all that existed when the
+namespace was a day old. Both are deliberately loose — under-alerting was the right way to be
+wrong — and both should be retightened once there is a week of data:
+
+- `StalwartNoInboundMail` fires at 36h of silence. Measured inbound volume was **one message per
+  day**, so a shorter window would page on an ordinary quiet weekend.
+- `StalwartAuthFailures` fires above 20/hour. **Zero** `auth.failed` lines were observed, so this
+  is a ceiling picked to avoid noise, not a multiple of a real baseline.

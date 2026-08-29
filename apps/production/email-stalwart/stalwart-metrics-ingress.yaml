@@ -1,0 +1,86 @@
+# Keeps Stalwart's Prometheus exporter off the public internet.
+#
+# THE PROBLEM
+#
+# Stalwart serves /metrics/prometheus on the same HTTP surface as its admin UI and
+# JMAP — there is no way to bind it to a separate listener. stalwart-admin-ingress.yaml
+# publishes that surface at https://admin.mail.activescott.com/ with a `/` Prefix
+# rule, so enabling the exporter publishes it to the world in the same motion.
+#
+# The other Ingress in this namespace is not affected: mail-setup-ingress routes only
+# /setup, /robots.txt, /dav and /.well-known/{caldav,carddav} to stalwart-admin, so
+# mail.activescott.com has no path that reaches /metrics.
+#
+# THE ANSWER, AND WHY IT IS TWO ANSWERS
+#
+# The exporter also requires basic auth (Settings > Telemetry > Metrics > Prometheus,
+# authSecret -> EnvironmentVariable -> STALWART_METRICS_PASSWORD). This object is the
+# second, independent layer: metrics reveal mailbox counts, queue depth, delivery
+# volumes and auth-failure rates, which is reconnaissance for an attacker aiming at
+# the admin UI on the same hostname.
+#
+# One layer would not be enough on its own. The auth setting lives in Stalwart's
+# datastore, which git does not describe — restoring an older backup, or a fat finger
+# in the UI, silently unauthenticates it and nothing here would change. This Ingress
+# is a file in this repo and fails the other way: if it is wrong, Flux shows it. Each
+# covers the other's blind spot.
+#
+# Prometheus is unaffected. It scrapes stalwart-admin.email-stalwart.svc:8080 —
+# a ClusterIP, in-cluster, never through Traefik, so this rule never sees it.
+#
+# 127.0.0.1/32 is a deliberate deny-everything, not an attempt to enumerate cluster
+# CIDRs. Copied from apps/production/fernfiles/app-ops-middleware.yaml, including its
+# reasoning: klipper-lb and Traefik between them make the observed client address
+# unreliable, and an allow-list that accidentally matched SNAT'd external traffic
+# would silently publish the endpoint. Nothing legitimate needs this path through the
+# ingress, so the safe rule is "deny".
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: stalwart-metrics-deny
+  namespace: email-stalwart
+spec:
+  # Traefik 3.x. (2.x called this ipWhiteList; the cluster runs 3.3.6.)
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
+---
+# A second Ingress for the same host carrying only /metrics, because middleware
+# annotations are per-Ingress: stalwart-admin-ingress cannot gate one prefix
+# differently from the `/` rule it already serves. Traefik merges rules by host and
+# prefers the longer path match, so /metrics/* lands here and everything else keeps
+# using stalwart-admin-ingress.
+#
+# It intentionally keeps the redirect-https middleware as well. Losing it would leave
+# http://admin.mail.activescott.com/metrics/prometheus answering on plain HTTP, which
+# would put the basic-auth credential on the wire in cleartext — the same reasoning
+# that put redirectScheme on the admin Ingress in the first place. Middleware order
+# is the annotation's order: redirect first, then the deny.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stalwart-metrics-ingress
+  namespace: email-stalwart
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: email-stalwart-redirect-https@kubernetescrd,email-stalwart-stalwart-metrics-deny@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - admin.mail.activescott.com
+      # must match stalwart-admin-ingress.yaml's Certificate secretName
+      secretName: admin-mail-activescott-com-cert
+  rules:
+    - host: admin.mail.activescott.com
+      http:
+        paths:
+          # Prefix, not Exact: the endpoint is /metrics/prometheus, and Stalwart may
+          # add siblings under /metrics later. Blocking the whole subtree needs no
+          # revisit when it does.
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080

@@ -64,3 +64,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-email
+    namespace: monitoring
+    files:
+      - dashboards/email.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true

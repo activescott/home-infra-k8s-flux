@@ -35,6 +35,18 @@ spec:
           cpu: "1"
           memory: "2Gi"
 
+      # Basic-auth password for the stalwart scrape job below. Mounted as a file
+      # rather than written into the scrape config inline: serverFiles and
+      # extraScrapeConfigs render into a ConfigMap, which is not a Secret and is
+      # readable by anything that can read ConfigMaps in this namespace.
+      # basic_auth.password_file keeps the credential in the Secret and puts only a
+      # path in the ConfigMap.
+      extraSecretMounts:
+        - name: stalwart-metrics-auth
+          mountPath: /etc/prometheus/secrets
+          secretName: stalwart-metrics-auth
+          readOnly: true
+
       # Ingress managed separately via raw K8s Ingress + cert-manager Certificate
       ingress:
         enabled: false
@@ -605,6 +617,283 @@ spec:
                 annotations:
                   summary: 'Repeated failed authentications against email-relay.'
                   description: 'More than 3 SASL failures in an hour. Most likely an app password no longer matches SMTPD_SASL_USERS in the relay secret; also worth checking whether anything is reaching the port that should not be. Loki: {namespace="email-relay"} |= "authentication failed".'
+          # Stalwart, the self-hosted mailboxes for willeke.com
+          # (apps/production/email-stalwart). Every alert in this group has a
+          # matching panel on the "Email" dashboard, in the "Alerts" row at the top
+          # -- so anything that can page has somewhere to be looked at.
+          #
+          # Two independent evidence sources on purpose. Stalwart's own exporter is a
+          # setting in its datastore that git does not describe and that a restore
+          # could silently revert; the loki_process_custom_stalwart_* counters come
+          # from container stdout, which cannot be turned off from inside the app.
+          # Where a question can be answered by either, it is answered by the log
+          # counter, because that is the one that keeps working.
+          - name: email-stalwart
+            rules:
+              # THE CERTIFICATE ALERTS
+              #
+              # Three of them, because there are three distinct ways TLS breaks here
+              # and the first two cannot see each other's failure.
+              #
+              # Stalwart does not notice a rotated certificate file. cert-manager
+              # renews, the kubelet refreshes the mounted Secret, and the running
+              # server keeps serving the old one until something restarts it --
+              # stalwart-tls-reload.yaml exists solely to do that, and it is a
+              # CronJob comparing hashes, which is one more thing that can quietly
+              # stop working. 993 and 465 are internet-facing, so the failure lands
+              # on every mail client at once.
+              - alert: StalwartServedCertNotRenewed
+                # The precise detector for that failure, and the one worth having:
+                # it compares what the server SERVES against what cert-manager HAS.
+                # A gap means the reload did not happen, and it fires within a day of
+                # the renewal -- about 30 days before anything actually breaks --
+                # rather than waiting for the served certificate to approach expiry.
+                #
+                # min()/max() reduce both sides to label-less scalars, which is what
+                # makes the comparison possible at all: the two metrics share no
+                # labels (one is from blackbox, one from cert-manager) so a normal
+                # vector match would silently find nothing and never fire.
+                #
+                # 5 days of slack absorbs the ordinary lag between cert-manager
+                # writing the Secret and the reload CronJob's next daily run.
+                expr: >-
+                  min(probe_ssl_earliest_cert_expiry{job="blackbox_mail_tls"})
+                  < max(certmanager_certificate_expiration_timestamp_seconds{namespace="email-stalwart",name="mail-activescott-com"}) - 432000
+                for: 2h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Stalwart is serving an older certificate than cert-manager has issued
+                  description: >-
+                    cert-manager has renewed mail-activescott-com but the certificate offered on
+                    the mail ports is still the previous one, so the reload did not happen. Check
+                    the stalwart-tls-reload CronJob in email-stalwart; the fix is to restart the
+                    pod. Nothing is broken for users yet — this fires ~30 days before the served
+                    certificate expires, which is the entire point of it.
+              - alert: StalwartServedCertExpiringSoon
+                # Backstop for the above: whatever the reason, the certificate on the
+                # wire is about to lapse. Fires on the served certificate, so it
+                # covers a failed renewal AND a failed reload.
+                expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_mail_tls"} - time()) / 86400 < 14'
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    Stalwart is serving a certificate that expires in under 14 days on {{ $labels.instance }}
+                  description: >-
+                    {{ $value | printf "%.1f" }} days of validity left on the certificate actually
+                    served by {{ $labels.instance }}. cert-manager renews at 30 days, so reaching
+                    14 means either renewal or the reload is broken. When this expires, every mail
+                    client on 993 and 465 fails to connect.
+              - alert: StalwartCertificateNotRenewing
+                # cert-manager's own view. Catches the case the two probes above
+                # cannot: ACME renewal failing for the admin hostname as well, and
+                # any future certificate in this namespace, without needing a probe
+                # target added for each.
+                expr: '(certmanager_certificate_expiration_timestamp_seconds{namespace="email-stalwart"} - time()) / 86400 < 14'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    cert-manager has not renewed {{ $labels.name }} — under 14 days left
+                  description: >-
+                    {{ $value | printf "%.1f" }} days left on Certificate {{ $labels.name }} in
+                    email-stalwart. cert-manager renews at 30 days, so this means issuance is
+                    failing. Check the Certificate and CertificateRequest objects and the ACME
+                    HTTP-01 route through Traefik.
+              # THE MAIL-PATH ALERTS
+              - alert: StalwartMailPortDown
+                # IMAP and submission. A user experiences this as "my mail app stopped
+                # working" with no other symptom.
+                expr: 'probe_success{job="blackbox_mail_tls"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Stalwart is not answering TLS on {{ $labels.instance }}'
+                  description: >-
+                    The TLS handshake to {{ $labels.instance }} has failed for 5 minutes. Probed
+                    from inside the cluster against the Service, so this is the server itself
+                    rather than the firewall or WAN — which also means it does NOT rule out an
+                    external-only problem when it is quiet.
+              - alert: StalwartWebSurfaceDown
+                # Covers admin.mail.activescott.com and mail.activescott.com/setup.
+                # This is the alert that would have caught the 2026-08-28 outage,
+                # where Stalwart banned the Traefik pod's address and every request
+                # became a 502 with no HTTP log line to explain it.
+                expr: 'probe_success{job="blackbox_https",instance=~"https://(admin\\.)?mail\\.activescott\\.com/.*"} == 0'
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: '{{ $labels.instance }} is not answering its https probe'
+                  description: >-
+                    Five minutes of failures through the real ingress and TLS. If the admin host
+                    is the one failing while the mail ports are fine, suspect Stalwart having
+                    banned the ingress controller's address — it drops banned addresses at TCP
+                    accept, so there is no request log to find. Confirm with the "In-cluster
+                    addresses blocked" panel on the Email dashboard.
+              - alert: StalwartBlockingClusterAddress
+                # The direct detector for that ban, rather than its 502 symptom.
+                # Bans never expire here (no *BanPeriod is set), so this does not
+                # self-resolve and one occurrence is worth acting on.
+                expr: 'sum(increase(loki_process_custom_stalwart_ip_blocked_cluster_total[15m])) > 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Stalwart is refusing connections from inside the cluster
+                  description: >-
+                    Stalwart banned a 172.16/16 address, which is the ingress controller or
+                    another cluster pod, and is dropping its connections at TCP accept. The admin
+                    UI and CalDAV are down for everyone while this holds, and it will NOT expire
+                    on its own. Add the range under Security > Allowed IPs and restart the pod —
+                    deleting the block alone does not take effect, the running process keeps a
+                    stale copy. Full write-up in apps/production/email-stalwart/README.md.
+              - alert: StalwartNoInboundMail
+                # willeke.com's MX is still Google; this server receives a copy through
+                # a dual-delivery routing rule. That path crosses the firewall NAT
+                # rule, the LoadBalancer and Stalwart, and a break anywhere in it is
+                # completely silent — Google keeps delivering to its own mailbox, so
+                # nobody notices mail stopped arriving HERE until they go looking.
+                #
+                # THE THRESHOLD IS PROVISIONAL. Measured 2026-08-29: one inbound
+                # message in the only ~24h of history that exists, because the
+                # namespace is a day old. 36h is a deliberate over-estimate chosen so
+                # it cannot cry wolf on a genuinely quiet weekend; it is not a
+                # measured baseline and should be retightened once a week of data
+                # exists. Under-alerting was the right way to be wrong here.
+                #
+                # The heartbeat clause is load-bearing: without it, Alloy or Loki
+                # breaking would zero this counter and fire this alert, pointing at
+                # the mail path when the mail path is fine. The absent() arm covers
+                # first deployment, when the counter does not exist yet at all.
+                expr: >-
+                  (sum(increase(loki_process_custom_stalwart_inbound_queued_total[36h])) == 0
+                  or absent(loki_process_custom_stalwart_inbound_queued_total))
+                  and on() sum(increase(loki_process_custom_stalwart_heartbeat_total[1h])) > 6
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: No mail has arrived at Stalwart in 36 hours
+                  description: >-
+                    Nothing accepted on port 25 for 36 hours while the server is demonstrably
+                    alive. Suspect the Google Workspace dual-delivery routing rule, the OPNsense
+                    NAT rule for :25, or the source restriction to Google's egress ranges. Mail
+                    is NOT lost — Google remains the MX and retains its own copy — but the
+                    archive here is incomplete for as long as this holds.
+              - alert: StalwartDeliveryFailing
+                # Outbound leaves through the Google Workspace SMTP relay authenticated
+                # with an app password. Google revokes every app password whenever the
+                # owning account's password changes, so an unrelated password rotation
+                # on scott@willeke.com stops outbound mail for every mailbox here.
+                expr: 'sum(increase(loki_process_custom_stalwart_delivery_failed_total[1h])) > 5'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Stalwart is failing to deliver outbound mail
+                  description: >-
+                    More than 5 failed delivery attempts in an hour. The most likely cause is the
+                    Google app password having been revoked by a password change on the account
+                    that owns it. Note Stalwart falls back to UNAUTHENTICATED relay when it cannot
+                    resolve the credential rather than failing loudly, so a missing secret looks
+                    like a rejected one. Loki:
+                    {namespace="email-stalwart"} |~ "delivery\\.(connect-error|dsn-perm-fail)".
+              - alert: StalwartAuthFailures
+                # 993 and 465 are deliberately internet-facing, so some noise is
+                # expected and this is not a break-glass alert. Zero auth.failed lines
+                # were observed in the available history, so 20/hour is a ceiling
+                # rather than a measured multiple of normal — retune when there is a
+                # real baseline.
+                expr: 'sum(increase(loki_process_custom_stalwart_auth_failed_total[1h])) > 20'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Repeated failed logins against Stalwart
+                  description: >-
+                    More than 20 failed authentications in an hour on internet-facing IMAP and
+                    submission. Could be a misconfigured mail client retrying, or a password
+                    spray. Stalwart's auth-ban counts these, so this often precedes an address
+                    being banned. Loki: {namespace="email-stalwart"} |= "(auth.failed)".
+              # THE HEALTH AND META ALERTS
+              - alert: StalwartNotReady
+                expr: 'kube_statefulset_status_replicas_ready{namespace="email-stalwart",statefulset="stalwart"} == 0'
+                for: 2m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: Stalwart has no ready replicas — mail is down
+                  description: >-
+                    Single replica, so this is a total outage of IMAP, submission and inbound
+                    delivery. Inbound mail is not lost: Google is still the MX and will retry,
+                    and holds its own copy regardless.
+              - alert: StalwartPodRestarted
+                # Restarts are a normal part of operating this server — settings
+                # changes and certificate reloads both require one — so this is a
+                # warning that provides context for other alerts rather than a page.
+                expr: 'increase(kube_pod_container_status_restarts_total{namespace="email-stalwart",container="stalwart"}[15m]) > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Stalwart restarted
+                  description: >-
+                    The container restarted in the last 15 minutes. Expected after a settings
+                    change or a certificate reload; unexplained, it is worth checking
+                    `kubectl --context nas -n email-stalwart logs stalwart-0 --previous`. Note
+                    that a restart is also why `kubectl logs` can look empty for events you know
+                    happened — Loki has the previous container's output, kubectl does not.
+              - alert: StalwartQueueBacklog
+                # From Stalwart's own exporter. queue_count is the whole MTA queue;
+                # a couple of messages mid-retry is normal, a persistent pile is not.
+                expr: 'queue_count{job="stalwart"} > 25'
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Stalwart''s mail queue is backing up ({{ $value }} messages)'
+                  description: >-
+                    More than 25 messages queued for half an hour. Usually the outbound path:
+                    check StalwartDeliveryFailing and the Queue panel on the Email dashboard.
+              - alert: StalwartMetricsScrapeDown
+                # Meta-alert. StalwartQueueBacklog is the only rule above that reads
+                # the exporter, but the dashboard leans on it heavily, and its being
+                # a datastore setting rather than a file in this repo means it can go
+                # away without any git change to explain it.
+                expr: 'up{job="stalwart"} == 0'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Cannot scrape Stalwart's Prometheus exporter
+                  description: >-
+                    Two causes look identical from here. Either the exporter was switched off in
+                    the admin UI (Settings > Telemetry > Metrics > Prometheus) or lost in a
+                    datastore restore — it 404s — or the basic-auth password no longer matches,
+                    which 401s. Check the status code before assuming. The password lives in TWO
+                    files that must hold the same value: email-stalwart/.env.secret.stalwart and
+                    monitoring/prometheus/.env.secret.stalwart-metrics.
+              - alert: StalwartLogFeedDown
+                # The counterpart to the above for the other evidence source. Stalwart
+                # reschedules an internal task every 5 minutes no matter how quiet the
+                # server is, so ~12 heartbeat lines an hour is the floor. Zero means
+                # the log path is broken, and while it is, StalwartNoInboundMail and
+                # every other counter-based rule here is blind rather than reassuring.
+                expr: 'sum(increase(loki_process_custom_stalwart_heartbeat_total[30m])) == 0 or absent(loki_process_custom_stalwart_heartbeat_total)'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: No log lines from Stalwart for 30 minutes
+                  description: >-
+                    Stalwart emits a scheduling line every 5 minutes even when completely idle, so
+                    silence means the log pipeline is broken, not that the server is quiet. Check
+                    the Alloy pod and the loki.process "default" stages. Mail-flow alerting is
+                    inoperative until this clears.
           - name: tinkerbell-scrape-health
             rules:
               # Meta-alert: catches the case where /metrics is unreachable
@@ -760,6 +1049,22 @@ spec:
           # health route was.
           - targets:
               - "https://fernfiles.com/"
+              # The mail server's two web hostnames. Each has its own cert-manager
+              # Certificate (deliberately separate -- see stalwart-admin-ingress.yaml
+              # for why a shared SAN would restart the mail server on every renewal),
+              # so each needs its own probe.
+              #
+              # /setup is a static nginx page, not Stalwart: it is the mail-client
+              # setup instructions and the Apple .mobileconfig. Probing it covers that
+              # host's certificate and the mail-setup pod together.
+              - "https://mail.activescott.com/setup"
+              # The admin UI answers 302 to /account at the root, which the http_2xx
+              # module rejects (valid_status_codes: [200]). /robots.txt is served
+              # directly by Stalwart with a 200 and needs no session, so it is the
+              # stable 200 on this host. What matters here is the certificate and the
+              # fact that Traefik still reaches the pod -- both of which broke on
+              # 2026-08-28 when Stalwart banned the Traefik address and returned 502.
+              - "https://admin.mail.activescott.com/robots.txt"
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
@@ -804,6 +1109,72 @@ spec:
         metrics_path: "/metrics"
         static_configs:
           - targets: ["app.tinkerbell-prod.svc.cluster.local:3100"]
+      # Certificates that Stalwart actually SERVES on the mail ports, via a TLS
+      # handshake against each one. See the mail_implicit_tls module in
+      # blackbox/helmrelease.yaml for why this is not redundant with cert-manager's
+      # own expiry metric: cert-manager reports on the Certificate object, and the
+      # failure that happens here is Stalwart still serving the previous certificate
+      # after cert-manager renewed it.
+      #
+      # ClusterIP Service DNS rather than mail.activescott.com, so the probe does not
+      # depend on the firewall hairpinning a LAN connection back to its own WAN
+      # address. The module pins SNI to mail.activescott.com so verification still
+      # matches the certificate. Consequence worth stating plainly: this proves what
+      # the server serves, NOT that the ports answer from the internet.
+      #
+      # 465 and 993 are both here even though one Secret backs both listeners. They
+      # are separate listeners reading the same file, and the point of the check is
+      # that the running process picked the file up -- which is per-listener state,
+      # not per-file state.
+      - job_name: "blackbox_mail_tls"
+        metrics_path: /probe
+        params:
+          module: [mail_implicit_tls]
+        scrape_interval: 60s
+        scrape_timeout: 15s
+        static_configs:
+          - targets:
+              - "stalwart.email-stalwart.svc.cluster.local:465"
+              - "stalwart.email-stalwart.svc.cluster.local:993"
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+      # Stalwart's own exporter: queue depth, per-protocol connection counts,
+      # delivery outcomes, spam classification, auth results and latency histograms.
+      #
+      # Metric names carry no prefix and no labels -- Stalwart derives them from its
+      # internal event ids with non-alphanumerics replaced by underscores, so
+      # `queue.count` is exported as `queue_count`. Several are generic enough to
+      # collide with other exporters (`http_request_time`, `auth_failed`), so every
+      # query against these MUST qualify with {job="stalwart"}.
+      #
+      # Enabled by hand at Settings > Telemetry > Metrics > Prometheus in the admin
+      # UI, because Stalwart keeps its configuration in its datastore rather than in
+      # any file this repo controls. Two consequences:
+      #   - It is not restored by redeploying this repo. If the datastore is rebuilt
+      #     or rolled back, the endpoint 404s and this job reports up=0.
+      #   - Saving it in the UI does not apply it. Stalwart builds its configuration
+      #     at startup, so the endpoint keeps 404ing until the pod restarts.
+      #
+      # Authenticated because the exporter shares an HTTP listener with the admin UI,
+      # which is published to the internet -- see email-stalwart/stalwart-metrics-ingress.yaml,
+      # which blocks the path at the edge as the second layer. The scrape below goes
+      # to the ClusterIP and never traverses Traefik, so that block does not affect it.
+      - job_name: "stalwart"
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        metrics_path: "/metrics/prometheus"
+        basic_auth:
+          username: prometheus
+          # File, not an inline password: extraScrapeConfigs renders into a ConfigMap,
+          # which is not a Secret. Mounted by server.extraSecretMounts above.
+          password_file: /etc/prometheus/secrets/stalwart_metrics_password
+        static_configs:
+          - targets: ["stalwart-admin.email-stalwart.svc.cluster.local:8080"]
       # No job here for the Crossplane providers on purpose. Their :8080 metrics
       # are ALREADY collected by the chart's built-in `kubernetes-pods` job, and
       # adding a second scrape of the same endpoint would double every counter
