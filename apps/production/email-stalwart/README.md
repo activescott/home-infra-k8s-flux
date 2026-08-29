@@ -336,11 +336,33 @@ Verified 2026-08-29 after a restart: submission on 465 → queued → `delivery.
   removes this coupling; as of 2026-08-29 it is a personal account and this is a known risk.
 - **DSNs use a null envelope sender** (`MAIL FROM:<>`), and Google documents that the relay does
   not support multiple `RCPT TO` with one. Single-recipient DSNs are unaffected.
-- **Whether Google DKIM-signs relayed mail is unverified.** `google._domainkey.willeke.com`
-  exists, but Google's documentation is silent on whether the relay applies it, and third-party
-  sources contradict each other. It does not matter for DMARC — the envelope sender is at
-  `willeke.com` and the connection comes from a Google IP, so SPF alignment passes on its own.
-  Settle it by reading `Authentication-Results` on a received test message.
+- **Your residential WAN IP appears in the headers of every message sent from here.** The relay
+  records the submitting host: `Received: from mail.activescott.com ([<wan ip>]) by
+smtp-relay.gmail.com with ESMTPS`. Unavoidable for self-hosted mail and not a misconfiguration,
+  but every recipient can see the home address and that the hostname resolves to it.
+
+### DKIM on relayed mail — verified, and it is the good outcome
+
+Google's documentation never states whether the relay service applies a sending domain's DKIM
+key, and third-party sources contradict each other. Measured 2026-08-29 by reading the headers
+of a message received through the relay:
+
+```
+DKIM-Signature: v=1; a=rsa-sha256; d=willeke.com; s=google; darn=rapidsos.com
+Authentication-Results: mx.google.com;
+  dkim=pass header.i=@willeke.com header.s=google;
+  spf=pass smtp.mailfrom=scott@willeke.com;
+  dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=willeke.com
+```
+
+So Google signs with the domain's own `google._domainkey.willeke.com` selector — not a
+`*.gappssmtp.com` fallback — and adds a second `d=1e100.net` signature of its own. DKIM aligns on
+`willeke.com`, SPF passes on Google's egress IP, DMARC passes. `From:` and `Return-Path:` both
+arrived unmodified, which is the no-rewrite behaviour confirmed on the wire rather than inferred
+from documentation. Google also stamps `X-Relaying-Domain: willeke.com`.
+
+DMARC would have passed on SPF alignment alone, so nothing depended on this; it is recorded so
+the next person does not have to re-derive it.
 
 ## Onboarding a mail client — send people to `/setup`
 
