@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Run the declarative Stalwart configuration plan.
+#
+#   ./scripts/stalwart-apply plan            # dry run, sends nothing to the server
+#   ./scripts/stalwart-apply apply           # apply the plan
+#   ./scripts/stalwart-apply query <Object> [fields]
+#
+# The plan lives at apps/production/email-stalwart/stalwart-config/plan.ndjson and is
+# applied by stalwart-cli against the in-cluster admin service. Design and rationale:
+# docs/specs/stalwart-config-as-code/plan.md
+#
+# `plan` and `apply` materialise a Job from a suspended CronJob that Flux keeps current, so
+# they always run whatever plan is deployed — which is the committed plan, not the working
+# tree. Commit and let Flux reconcile before applying.
+set -euo pipefail
+
+context=nas
+namespace=email-stalwart
+image=ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+url=http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+
+usage() {
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-1}"
+}
+
+run_job() {
+  local cronjob=$1 job
+  # Job names must be unique; the suffix is a timestamp rather than a random string so a
+  # failed run is identifiable in `kubectl get jobs` by when it happened.
+  job="${cronjob}-$(date +%Y%m%d-%H%M%S)"
+
+  echo "==> creating job/${job} from cronjob/${cronjob}"
+  kubectl --context "$context" -n "$namespace" create job "$job" --from="cronjob/${cronjob}"
+
+  # Wait for either outcome, so a failure surfaces here instead of hanging until timeout.
+  echo "==> waiting"
+  if ! kubectl --context "$context" -n "$namespace" wait --for=condition=complete \
+    --timeout=180s "job/${job}" 2>/dev/null; then
+    kubectl --context "$context" -n "$namespace" logs "job/${job}" || true
+    echo "!! job/${job} did not complete. Left in place for inspection:" >&2
+    echo "   kubectl --context ${context} -n ${namespace} describe job/${job}" >&2
+    exit 1
+  fi
+
+  kubectl --context "$context" -n "$namespace" logs "job/${job}"
+  kubectl --context "$context" -n "$namespace" delete "job/${job}" >/dev/null
+  echo "==> done"
+}
+
+case "${1:-}" in
+plan) run_job stalwart-config-plan ;;
+apply) run_job stalwart-config-apply ;;
+query)
+  shift
+  [ $# -ge 1 ] || usage
+  object=$1
+  shift
+  # A one-off pod rather than a CronJob: queries are ad hoc and read-only, and the object
+  # and fields change every time. envFrom pulls the token straight from the Secret, so it
+  # is never passed on a command line or echoed.
+  kubectl --context "$context" -n "$namespace" run "stalwart-cli-query-$$" \
+    --rm --attach --restart=Never --quiet \
+    --image="$image" \
+    --overrides="$(
+      cat <<JSON
+{"spec":{"containers":[{
+  "name":"stalwart-cli-query-$$",
+  "image":"${image}",
+  "args":["query","${object}"$(for f in "$@"; do printf ',"%s"' "$f"; done)],
+  "env":[{"name":"STALWART_URL","value":"${url}"}],
+  "envFrom":[{"secretRef":{"name":"stalwart-cli-creds"}}]
+}]}}
+JSON
+    )"
+  ;;
+*) usage 0 ;;
+esac

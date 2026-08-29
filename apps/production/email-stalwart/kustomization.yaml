@@ -13,8 +13,23 @@ resources:
   # Self-contained: its own kustomization carries the manifests and the configMapGenerator for
   # the served content.
   - mail-setup
+  # Declarative Stalwart configuration applied by stalwart-cli. Suspended CronJobs, run on
+  # demand via ./scripts/stalwart-apply. See docs/specs/stalwart-config-as-code/plan.md.
+  - stalwart-config
 namespace: email-stalwart
 secretGenerator:
   - name: stalwart-creds
     envs:
       - .env.secret.stalwart.encrypted
+  # Management API key for stalwart-cli. Separate from stalwart-creds so the CLI Job mounts
+  # only what it needs and never sees the recovery admin or the smarthost password.
+  - name: stalwart-cli-creds
+    envs:
+      - .env.secret.stalwart-cli.encrypted
+    options:
+      # Stable name, unlike stalwart-creds. `./scripts/stalwart-apply query` builds a
+      # one-off pod outside kustomize, so it cannot resolve a generated name suffix. Safe
+      # here because nothing long-running mounts this Secret — each run is a fresh Job that
+      # reads whatever the Secret holds at pod start, so a rotated token is picked up
+      # without needing a spec change to trigger it.
+      disableNameSuffixHash: true
