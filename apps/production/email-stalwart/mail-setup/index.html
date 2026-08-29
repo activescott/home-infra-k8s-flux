@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Set up mail — mail.activescott.com</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font:
+          17px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          system-ui,
+          sans-serif;
+        max-width: 34rem;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: 1.6rem;
+        line-height: 1.25;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin: 2.25rem 0 0.5rem;
+      }
+      p.lede {
+        margin-top: 0;
+        opacity: 0.75;
+      }
+      ol {
+        padding-left: 1.25rem;
+      }
+      li {
+        margin: 0.6rem 0;
+      }
+      code {
+        font-size: 0.95em;
+      }
+      a.install {
+        display: block;
+        text-align: center;
+        text-decoration: none;
+        font-weight: 600;
+        background: #0a84ff;
+        color: #fff;
+        padding: 0.9rem 1rem;
+        border-radius: 0.7rem;
+        margin: 1.5rem 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.4rem 0.6rem 0.4rem 0;
+        vertical-align: top;
+      }
+      th {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      tbody tr + tr th,
+      tbody tr + tr td {
+        border-top: 1px solid rgba(128, 128, 128, 0.3);
+      }
+      .note {
+        font-size: 0.92rem;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Set up your mail</h1>
+    <p class="lede">Mailboxes on <code>mail.activescott.com</code>.</p>
+
+    <h2>1. Create an app password</h2>
+    <p>
+      Accounts here use two-factor authentication, and mail apps cannot do
+      two-factor logins. Each app needs its own <em>app password</em> instead of
+      your normal one.
+    </p>
+    <ol>
+      <li>
+        Sign in at
+        <a href="https://admin.mail.activescott.com/"
+          >admin.mail.activescott.com</a
+        >.
+      </li>
+      <li>
+        Open <strong>Account</strong> in the sidebar, then
+        <strong>App Passwords</strong>.
+      </li>
+      <li>
+        Create one, name it after the device (&ldquo;iPhone&rdquo;), and copy
+        it.
+      </li>
+    </ol>
+    <p class="note">
+      It is shown once. Save it in your password manager. Make a separate one
+      per device so you can revoke a lost phone without touching anything else.
+    </p>
+
+    <h2>2. iPhone, iPad or Mac</h2>
+    <p>
+      Install the configuration profile. It fills in the server names and ports,
+      which Apple Mail otherwise guesses wrong.
+    </p>
+
+    <a class="install" href="/apple.mobileconfig">Install the profile</a>
+
+    <ol>
+      <li>Tap the button. It downloads rather than opening.</li>
+      <li>
+        Open <strong>Settings</strong>. Near the top:
+        <strong>Profile Downloaded</strong>. On a Mac, it is
+        <strong
+          >System Settings &rsaquo; General &rsaquo; Device Management</strong
+        >.
+      </li>
+      <li>
+        Tap <strong>Install</strong>. It is unsigned, so you get a warning —
+        expected.
+      </li>
+      <li>
+        Enter your full email address when asked, and the app password from step
+        1.
+      </li>
+    </ol>
+    <p class="note">
+      Removing the profile later removes the mail account with it.
+    </p>
+
+    <h2>Any other mail app</h2>
+    <p>
+      Enter these by hand. Use your full email address as the username in both.
+    </p>
+    <table>
+      <tbody>
+        <tr>
+          <th>Incoming</th>
+          <td>
+            IMAP, <code>mail.activescott.com</code>, port <strong>993</strong>,
+            SSL/TLS on
+          </td>
+        </tr>
+        <tr>
+          <th>Outgoing</th>
+          <td>
+            SMTP, <code>mail.activescott.com</code>, port <strong>465</strong>,
+            SSL/TLS on
+          </td>
+        </tr>
+        <tr>
+          <th>Password</th>
+          <td>the app password from step 1, not your sign-in password</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">
+      Port 587 does not work here — nothing listens on it. Apps that pick their
+      own ports often land on 587 or 25 and then report a wrong password. Set
+      465 explicitly.
+    </p>
+  </body>
+</html>

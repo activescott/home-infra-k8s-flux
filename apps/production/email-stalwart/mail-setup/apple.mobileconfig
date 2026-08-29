@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Apple configuration profile for the mailboxes on mail.activescott.com.
+
+  Deliberately IDENTITY-FREE: no email address, no username, no password. Apple documents that
+  the device prompts for EmailAddress and the incoming/outgoing usernames when those keys are
+  absent from the payload, so this one file serves every user and nothing personal is published.
+  https://github.com/ProfileCreator/Configuration-Profile-Reference/blob/master/markdown/Email%20Payload.md
+
+  Do not add IncomingPassword or OutgoingPassword. Apple's own reference says to use them only in
+  encrypted profiles, and this one is served unauthenticated over the public internet.
+
+  PayloadUUID and PayloadIdentifier are fixed values. Reinstalling replaces the account on that
+  device rather than adding a second one; that is intended for a one-mailbox-per-person setup.
+-->
+<plist version="1.0">
+<dict>
+  <key>PayloadDisplayName</key>
+  <string>mail.activescott.com</string>
+  <key>PayloadDescription</key>
+  <string>IMAP and SMTP submission settings. You will be asked for your email address and password during installation.</string>
+  <key>PayloadIdentifier</key>
+  <string>com.activescott.mail.stalwart</string>
+  <key>PayloadOrganization</key>
+  <string>activescott</string>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadUUID</key>
+  <string>65A8E5FF-A21F-48ED-BFAD-F21020395296</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+  <key>PayloadRemovalDisallowed</key>
+  <false/>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key>
+      <string>com.apple.mail.managed</string>
+      <key>PayloadIdentifier</key>
+      <string>com.activescott.mail.stalwart.account</string>
+      <key>PayloadUUID</key>
+      <string>72B6B0CE-BF06-456C-B80C-AB888231DC95</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadDisplayName</key>
+      <string>mail.activescott.com</string>
+
+      <key>EmailAccountDescription</key>
+      <string>mail.activescott.com</string>
+      <key>EmailAccountType</key>
+      <string>EmailTypeIMAP</string>
+
+      <key>IncomingMailServerHostName</key>
+      <string>mail.activescott.com</string>
+      <key>IncomingMailServerPortNumber</key>
+      <integer>993</integer>
+      <key>IncomingMailServerUseSSL</key>
+      <true/>
+      <key>IncomingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+
+      <!-- 465, implicit TLS. Stalwart starts no STARTTLS listener on 587; stating the port here
+           is the entire reason this profile exists. -->
+      <key>OutgoingMailServerHostName</key>
+      <string>mail.activescott.com</string>
+      <key>OutgoingMailServerPortNumber</key>
+      <integer>465</integer>
+      <key>OutgoingMailServerUseSSL</key>
+      <true/>
+      <key>OutgoingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <!-- One password prompt instead of two. There is no equivalent key for usernames. -->
+      <key>OutgoingPasswordSameAsIncomingPassword</key>
+      <true/>
+
+      <key>PreventMove</key>
+      <false/>
+      <key>PreventAppSheet</key>
+      <false/>
+      <key>SMIMEEnabled</key>
+      <false/>
+    </dict>
+  </array>
+</dict>
+</plist>

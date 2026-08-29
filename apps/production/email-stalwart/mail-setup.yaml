@@ -1,0 +1,138 @@
+# Client setup page for the mailboxes on this server, at https://mail.activescott.com/setup.
+#
+# Exists because Apple Mail cannot be configured by hand on iOS until the account saves, and it
+# will not save against this server: iOS probes submission on 587, gets refused (Stalwart runs
+# submission on 465 with implicit TLS and starts no STARTTLS listener), then falls back to 25 --
+# the MTA listener, which advertises no AUTH. Mail reports that as "incorrect username or
+# password", which is a lie; there is no failed authentication in the server log because it never
+# attempted one. The port fields that would fix it are not shown until the account exists.
+#
+# An Apple configuration profile states the ports as fact, so Mail never probes. The profile and
+# the page live in mail-setup/ and are loaded by the configMapGenerator in kustomization.yaml --
+# generated, so kustomize hashes them into the ConfigMap names and editing either one rolls this
+# Deployment. Do not convert them to inline ConfigMaps; the content would then change under a
+# running pod without restarting it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mail-setup
+  namespace: email-stalwart
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mail-setup
+  template:
+    metadata:
+      labels:
+        app: mail-setup
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+      containers:
+        - name: nginx
+          # nginx-unprivileged, not nginx: the stock image needs root to bind :80 and to write its
+          # pid file. This one listens on 8080 as uid 101 and tolerates a read-only root.
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+            # nginx writes to both at runtime and the root filesystem is read-only.
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /setup
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+      volumes:
+        - name: content
+          configMap:
+            name: mail-setup-content
+        - name: nginx-conf
+          configMap:
+            name: mail-setup-nginx
+            items:
+              - key: nginx-default.conf
+                path: default.conf
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mail-setup
+  namespace: email-stalwart
+spec:
+  selector:
+    app: mail-setup
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Two exact paths on mail.activescott.com, not a prefix.
+#
+# Phase 8 puts Bulwark webmail on this same hostname at "/". Traefik ranks routers by rule
+# specificity, so Path(`/setup`) beats PathPrefix(`/`) and the two coexist -- but only because
+# these are pathType: Exact. Do not widen them to Prefix.
+#
+# Reuses the stalwart-tls Secret rather than issuing a second certificate for the same name. That
+# Secret is owned by stalwart-certificate.yaml and is mounted read-only by the mail server;
+# reading it from an Ingress adds no renewal coupling. The reverse is not true -- adding a SAN to
+# that certificate WOULD bounce the mail server, which is why admin.mail.activescott.com has its
+# own. See stalwart-admin-ingress.yaml.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mail-setup-ingress
+  namespace: email-stalwart
+spec:
+  tls:
+    - hosts:
+        - mail.activescott.com
+      secretName: stalwart-tls
+  rules:
+    - host: mail.activescott.com
+      http:
+        paths:
+          - path: /setup
+            pathType: Exact
+            backend:
+              service:
+                name: mail-setup
+                port:
+                  number: 80
+          - path: /apple.mobileconfig
+            pathType: Exact
+            backend:
+              service:
+                name: mail-setup
+                port:
+                  number: 80
