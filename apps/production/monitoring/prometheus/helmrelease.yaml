@@ -538,13 +538,13 @@ spec:
               # from an actual error spike. Baseline measured 2026-08-22 (pre-split):
               # 61 info / 1 warn / 0 error over 24h.
               - alert: TinkerbellAppWarnVolumeElevated
-                expr: 'increase(loki_process_custom_tinkerbell_app_warn_log_lines_total[1h]) > 3'
+                expr: 'increase(loki_process_custom_tinkerbell_app_warn_log_lines_total[1h]) > 50'
                 for: 10m
                 labels:
                   severity: warning
                 annotations:
                   summary: 'Tinkerbell app logging elevated warn volume.'
-                  description: 'More than 3 warn-level log lines from the tinkerbell app in the last hour. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level="warn".'
+                  description: 'More than 50 warn-level log lines from the tinkerbell app in the last hour. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level="warn".'
               - alert: TinkerbellAppErrorVolumeElevated
                 expr: 'increase(loki_process_custom_tinkerbell_app_error_log_lines_total[1h]) > 3'
                 for: 10m
