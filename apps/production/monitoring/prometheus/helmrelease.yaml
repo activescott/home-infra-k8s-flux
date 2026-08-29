@@ -549,8 +549,23 @@ spec:
               # search-provider results — ~14/hour is normal), indistinguishable
               # from an actual error spike. Baseline measured 2026-08-22 (pre-split):
               # 61 info / 1 warn / 0 error over 24h.
+              #
+              # Both expressions below MUST stay wrapped in sum(). These counters come from
+              # Alloy's loki.process, which attaches the ambient stream labels (namespace,
+              # pod, node, controller_revision_hash, ...) to each series — 16 labels, and 3
+              # live series for this one logical counter, since it forks on both pod and
+              # controller_revision_hash. An Alloy restart alone forks it, with no tinkerbell
+              # deploy involved. Without sum(), Prometheus evaluates the threshold PER SERIES
+              # and the alert under-detects: three pods emitting 20 warns/hour each is
+              # 60/hour in reality but 20 per series, so nothing fires. Both alerts had this
+              # bug until 2026-08-29; the tinkerbell dashboard panel already aggregated, so
+              # panel and alert disagreed about what they measured.
               - alert: TinkerbellAppWarnVolumeElevated
-                expr: 'increase(loki_process_custom_tinkerbell_app_warn_log_lines_total[1h]) > 50'
+                # 50 is measured, not guessed: across 3.5 days of aggregated data,
+                # sum(increase(...[1h])) had max 55.59, p99 43.7, p95 15.1. That max is an
+                # increase() extrapolation artifact from an Alloy restart, which `for: 10m`
+                # absorbs; genuine hourly spikes top out near 40.
+                expr: 'sum(increase(loki_process_custom_tinkerbell_app_warn_log_lines_total[1h])) > 50'
                 for: 10m
                 labels:
                   severity: warning
@@ -558,7 +573,10 @@ spec:
                   summary: 'Tinkerbell app logging elevated warn volume.'
                   description: 'More than 50 warn-level log lines from the tinkerbell app in the last hour. Check Loki in Grafana Explore: {namespace="tinkerbell-prod"} | level="warn".'
               - alert: TinkerbellAppErrorVolumeElevated
-                expr: 'increase(loki_process_custom_tinkerbell_app_error_log_lines_total[1h]) > 3'
+                # Threshold unchanged, but it now means 3 error lines from the app rather
+                # than 3 from any single pod-revision. Re-check it against aggregated data
+                # once a week of history exists under the new expression.
+                expr: 'sum(increase(loki_process_custom_tinkerbell_app_error_log_lines_total[1h])) > 3'
                 for: 10m
                 labels:
                   severity: warning
