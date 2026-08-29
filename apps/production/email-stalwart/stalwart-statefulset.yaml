@@ -55,6 +55,27 @@ spec:
                 secretKeyRef:
                   name: stalwart-creds
                   key: STALWART_RECOVERY_ADMIN
+            # Google app password for the outbound smarthost. The MtaRoute named "google"
+            # refers to this variable by name (authSecret -> EnvironmentVariable), so the
+            # credential stays in SOPS and never enters the admin UI or the datastore.
+            #
+            # Two consequences of how Stalwart resolves it, both worth knowing before
+            # debugging a delivery failure:
+            #
+            #   - It is read once when the configuration is built, not per delivery. Rotating
+            #     the value in the Secret does nothing until this pod restarts.
+            #   - If it cannot be resolved, the route falls back to *unauthenticated* relay
+            #     rather than failing. Google then rejects the connection, which reads like a
+            #     wrong credential rather than a missing one.
+            #
+            # Google revokes app passwords whenever the owning account's password changes, so
+            # a routine password rotation on that account stops outbound mail for every
+            # mailbox on this server. See README.md "Sending".
+            - name: STALWART_SMARTHOST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: stalwart-creds
+                  key: STALWART_SMARTHOST_PASSWORD
             - name: TZ
               value: America/Los_Angeles
           volumeMounts:

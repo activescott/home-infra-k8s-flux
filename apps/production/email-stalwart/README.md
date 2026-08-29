@@ -159,17 +159,115 @@ refuse. 995 refuses because the Service does not publish it, so klipper never fo
 Stalwart delivers **nothing** directly. Outbound :25 is blocked by Ziply (Phase 0e), so a
 message submitted here could never reach a recipient's MX.
 
-Instead it relays through an authenticated smarthost: `smtp.gmail.com:587`, as Scott's Google
-account, configured as a `Relay` route (`authUsername` + `authSecret`, STARTTLS).
+Instead it relays through Google Workspace's **SMTP relay service**, `smtp-relay.gmail.com:587`
+over STARTTLS, authenticated with a Google app password.
 
-This is what keeps `willeke.com`'s DNS untouched. Google remains the entity that sends, so the
-existing `v=spf1 include:aspmx.googlemail.com ~all` still passes and Google applies its own
-DKIM. **No SPF, MX, DMARC or DKIM change is needed for any of this** — which matters because
-that SPF record is domain-wide on a domain shared with Scott's father, and a mistake in it would
-break his outbound mail.
+This keeps `willeke.com`'s DNS untouched. Google remains the entity that sends, so the existing
+`v=spf1 include:aspmx.googlemail.com ~all` still passes. **No SPF, MX, DMARC or DKIM change is
+needed** — which matters because that SPF record is domain-wide on a domain shared with Scott's
+father, and a mistake in it would break his outbound mail.
 
 Sending through Stalwart is also what populates its Sent folder, so the archive covers outbound
 without a second Google routing rule.
+
+### `smtp-relay.gmail.com`, not `smtp.gmail.com`
+
+They are different services and the distinction is the whole design.
+
+`smtp.gmail.com` is _submission_ — you send as yourself, and Google rewrites `From:` to the
+authenticated account unless the address is a verified "Send mail as" alias. That is exactly the
+bug this whole project started from (`activescott/fernfiles#204`, where mail sent as
+`noreply@fernfiles.com` arrived as `scott@pingpoet.com`).
+
+`smtp-relay.gmail.com` is a _relay_, built for on-prem mail servers sending on behalf of many
+people. Its **Allowed senders** setting governs the From address at the domain level, not the
+account level. Google's documentation is explicit:
+
+> Message count is based on the sender address used in the SMTP relay transaction. If the
+> envelope sender is not a user registered with your Google Workspace account, the per-user
+> limits don't apply. **Addresses in the From: and Reply-to: fields are ignored.**
+
+Practical consequences, and the reason a second mailbox on this server is not a special case:
+
+- **Any address at `willeke.com` can send**, whether or not it is a Google Workspace user. Adding
+  a mailbox here is a Stalwart-only change; nothing on the Google side needs touching.
+- **The 10,000 messages/day quota is charged to the envelope sender**, not to the account that
+  authenticated. One shared credential does not become one shared quota bucket.
+- The only rewrite Google documents applies under _Any addresses_ for a domain you do not own,
+  and it rewrites to `postmaster@<your domain>` — never to the authenticating user.
+
+Google Admin console → Apps → Google Workspace → Gmail → Routing → **SMTP relay service**.
+Requires the _Gmail Settings_ admin privilege, is configurable at the top-level organization
+only, and changes can take up to 24 hours to apply.
+
+| Setting                                          | Value                        |
+| ------------------------------------------------ | ---------------------------- |
+| Allowed senders                                  | Only addresses in my domains |
+| Only accept mail from the specified IP addresses | unchecked                    |
+| Require SMTP Authentication                      | checked                      |
+| Require TLS encryption                           | checked                      |
+
+The IP-allowlist option is the one credential-free mode Google offers, and it is unusable here:
+this is a residential DHCP line with a 30-minute lease whose address changed twice in August
+2026, and the setting is click-ops with no API. There is no third option — no service account,
+no OAuth client, no domain-level token authenticates to `smtp-relay.gmail.com`. XOAUTH2 cannot
+be domain-level by construction, since its SASL response carries a named `user=` address.
+
+Port 587 with STARTTLS rather than 465: Google's documentation names only 587 for TLS, and
+mentions 465 solely in its "not using TLS encryption" paragraph, which also states that without
+TLS you cannot use SMTP authentication at all. 465 works in practice; 587 is what is documented.
+
+### The route lives in Stalwart's datastore, not in this repo
+
+Since v0.16 there is no TOML configuration — `/etc/stalwart/config.json` describes only the
+datastore, and everything else is a JMAP object inside it. So the two objects below are
+click-ops and this README is their only record.
+
+**Settings › MTA › Outbound › Routes**, a route of type `Relay`:
+
+| Property       | Value                                                 |
+| -------------- | ----------------------------------------------------- |
+| `name`         | `google`                                              |
+| `address`      | `smtp-relay.gmail.com`                                |
+| `port`         | `587`                                                 |
+| `protocol`     | `smtp`                                                |
+| `implicitTls`  | false (so STARTTLS is used)                           |
+| `authUsername` | the Google account holding the app password           |
+| `authSecret`   | `EnvironmentVariable` → `STALWART_SMARTHOST_PASSWORD` |
+
+`authSecret` supports an environment-variable reference, which is why the app password lives in
+`.env.secret.stalwart.encrypted` and is injected by `stalwart-statefulset.yaml` rather than being
+typed into a web form. Note that Stalwart resolves it **once at configuration-build time**: a
+rotated Secret needs a pod restart, and a value it cannot resolve degrades the route to
+_unauthenticated_ relay instead of erroring.
+
+**Settings › MTA › Outbound › Strategy**, the `route` expression. The shipped default is:
+
+```json
+{
+  "match": [{ "if": "is_local_domain(rcpt_domain)", "then": "'local'" }],
+  "else": "'mx'"
+}
+```
+
+Only `else` changes, from `'mx'` to `'google'`. Local recipients keep hitting the `local` route,
+so inbound dual delivery is unaffected; everything else goes to the smarthost instead of being
+handed to a recipient MX that this host cannot reach anyway.
+
+### Failure modes to know before debugging
+
+- **Rotating the Google account password revokes every app password on that account.** Google
+  documents this. A routine password change therefore stops outbound mail for every mailbox on
+  this server, and the symptom is an SMTP AUTH failure in the queue log rather than anything
+  naming the cause. Authenticating as a dedicated role account rather than a person's account
+  removes this coupling; as of 2026-08-29 it is a personal account and this is a known risk.
+- **DSNs use a null envelope sender** (`MAIL FROM:<>`), and Google documents that the relay does
+  not support multiple `RCPT TO` with one. Single-recipient DSNs are unaffected.
+- **Whether Google DKIM-signs relayed mail is unverified.** `google._domainkey.willeke.com`
+  exists, but Google's documentation is silent on whether the relay applies it, and third-party
+  sources contradict each other. It does not matter for DMARC — the envelope sender is at
+  `willeke.com` and the connection comes from a Google IP, so SPF alignment passes on its own.
+  Settle it by reading `Authentication-Results` on a received test message.
 
 ## Onboarding a mail client — send people to `/setup`
 
