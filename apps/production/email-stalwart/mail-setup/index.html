@@ -179,6 +179,45 @@
       Removing the profile later removes all three accounts with it.
     </p>
 
+    <h2>3. Two settings to change by hand</h2>
+    <p>
+      The profile cannot set these — Apple&rsquo;s configuration profile format
+      has no key for either, so there is no way to ship them for you. They are
+      per account and per device, so repeat them on each phone, iPad and Mac.
+    </p>
+    <p>
+      On iOS:
+      <strong
+        >Settings &rsaquo; Apps &rsaquo; Mail &rsaquo; Mail Accounts &rsaquo;
+        your account &rsaquo; Account &rsaquo; Advanced</strong
+      >. On older versions the path starts at
+      <strong>Settings &rsaquo; Mail &rsaquo; Accounts</strong>. On a Mac the
+      equivalents are under
+      <strong
+        >Mail &rsaquo; Settings &rsaquo; Accounts &rsaquo; Mailbox
+        Behaviours</strong
+      >.
+    </p>
+    <ol>
+      <li>
+        <strong>Remove &rarr; Never.</strong> This is the important one. The
+        default is <em>After one week</em>, which means your device permanently
+        deletes anything sitting in Trash after seven days. The server never
+        does this on its own, and once the device does it the message is gone.
+      </li>
+      <li>
+        <strong>Move Discarded Messages Into &rarr; Archive Mailbox.</strong>
+        Swiping a message then archives it instead of trashing it, the way Gmail
+        accounts behave. Without this, Apple Mail defaults to the Deleted
+        mailbox for any non-Google account.
+      </li>
+    </ol>
+    <p class="note">
+      Set the first one even if you skip the second. Archiving keeps mail out of
+      Trash, but only <em>Remove &rarr; Never</em> stops anything that does
+      reach Trash from being erased.
+    </p>
+
     <h2>Any other mail app</h2>
     <p>Enter these by hand. Use your full email address as the username.</p>
     <table>
