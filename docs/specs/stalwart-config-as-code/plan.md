@@ -225,10 +225,29 @@ Workflow for anything new: change it in the admin UI, `./scripts/stalwart-apply 
 
 - Minimum API-key permission set for the objects we manage. Currently `inherit` on the
   admin account, which is over-privileged; narrowing is a create-new-key-and-swap.
-- Whether a principal's `ActiveScriptId` is settable through a plan object, or only via
-  ManageSieve/JMAP-for-Sieve. Blocks the Sieve archive-all work.
-- Exact `include :global` semantics for pulling in a `SieveUserScript`.
 - Whether a message in two mailboxes counts once or twice against quota.
+- Whether `include :global` is worth using at all, now that per-account activation is a
+  manual import either way.
+
+Resolved 2026-08-29:
+
+- **`ActiveScriptId` is not settable through a plan.** `Account` has no script field, and
+  per-account Sieve scripts live in the account's JMAP data rather than the config
+  registry. Publishing a `SieveUserScript` and importing it per account is the supported
+  path — upstream describes it as "available for user imports".
+- **A system Sieve script cannot file into a mailbox.** No `Event::FileInto` in
+  `crates/smtp/src/scripts/event_loop.rs`; unhandled events return `NotSupported`.
+- **Nested map fields patch by JSON pointer and merge.**
+  `{"defaultFolders/archive/name": "All Mail"}` renamed one entry and left the other five
+  untouched — verified by snapshotting before and after. A restore plan was prepared first
+  in case it replaced the map instead; it was not needed, but preparing it was the right
+  call for a first use of an unfamiliar patch semantic.
+- **Sieve scripts are validated on create, not at startup.** A bad script fails the apply
+  rather than degrading delivery later. This caught a missing `relational` capability.
+- **`apply` does not restart Stalwart or reload configuration.** A restart is still needed
+  for anything that must take effect.
+- **The CLI is CRUD-only** — `get`, `query`, `create`, `update`, `delete`, `describe`,
+  `apply`, `snapshot`. No action verb, so `ReloadTlsCertificates` stays unreachable.
 
 Resolved: `apply` does **not** restart Stalwart or trigger a config reload, and Stalwart
 builds configuration at startup — so a restart is still required after applying anything

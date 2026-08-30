@@ -42,6 +42,50 @@ The `report` **virtual queue** is stock and would otherwise be omitted. It is he
 as the target of the `#vq-report` reference — `apply` resolves `#` references only against
 objects declared in the same plan. Upserting it is a no-op.
 
+## "All Mail" — what the plan does, and what it cannot
+
+Goal: every delivered message also lands in the user's archive folder, named `All Mail`,
+so deleting from the Inbox — or a mail client emptying Trash after its default seven days —
+does not destroy it.
+
+**Automated here:**
+
+- `Email` singleton, `defaultFolders/archive/name` → `All Mail`. New accounts get their
+  archive folder created with that name, still carrying the `\Archive` special-use role, so
+  Apple Mail's archive action and _Move Discarded Messages Into → Archive Mailbox_ target
+  it. Patched by JSON pointer, which **merges** — verified, all six default folders survive.
+- `SieveUserScript` `archive-all`, published server-wide.
+
+**Not automatable, and this was verified rather than assumed:**
+
+- **A system Sieve script cannot do it.** Trusted MTA-stage scripts handle `Keep`,
+  `Discard`, `Reject`, `SendMessage` and `SetEnvelope`; there is no `Event::FileInto` in
+  `crates/smtp/src/scripts/event_loop.rs`, and unhandled events return `NotSupported`. They
+  run during the SMTP conversation, before any mailbox exists.
+- **Per-account activation is not in the management API.** `Account` has no script field,
+  and per-account Sieve scripts live in the account's JMAP data rather than the config
+  registry this CLI drives. `SieveUserScript` is described upstream as "a global Sieve
+  script available for user **imports**" — publish centrally, import per account.
+
+So each account needs two manual steps, once: **rename its archive folder to `All Mail`**
+(existing accounts only; `defaultFolders` applies to new ones) and **import and activate
+`archive-all`**. An account that skips the second step is silently unprotected, which will
+matter at the fifth user rather than the second.
+
+## Sieve scripts are validated on create
+
+Stalwart compiles a script when the object is **created**, not when configuration is built
+at startup. A broken script fails the `apply` loudly:
+
+```
+✗ upsert SieveUserScript: error: invalidProperties |
+  Failed to compile user Sieve script: Undeclared capability 'relational' at line 10, column 13
+```
+
+That is exactly how the missing `relational` require was caught — `:value "ge"` is RFC 5231.
+It also means the plan **cannot publish an uncompilable script**, which removes the failure
+mode this work was most exposed to: a script that breaks delivery for whoever activates it.
+
 ## Adding to the plan
 
 Derive the JSON, never hand-write it. The encodings are not guessable — `expiry` and
