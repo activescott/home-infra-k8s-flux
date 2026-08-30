@@ -163,10 +163,29 @@ falls back to the OS hostname. `SystemSettings.services.jmap.hostname` is also `
 the more targeted knob — setting `defaultHostname` also changes SMTP greetings, MTA reports and
 `Received:` headers.
 
-Try the per-service hostname first, re-read the discovery document, and only fall back to
-`defaultHostname` if that does not move it. Setting `defaultHostname` is defensible either way
-(`stalwart-0` is a poor EHLO name), but it is a change to the mail path and should not be made
-accidentally while chasing a webmail problem.
+**Done 2026-08-30.** `defaultDomainId`, `defaultHostname` and `services.jmap.hostname` were all
+set; discovery now names `https://mail.activescott.com` in every endpoint, not just `issuer`.
+
+Both hostname fields were set in one apply, so **which of them fixed the issuer is not known** —
+if that ever matters, unset one and re-read the document.
+
+Two things went wrong on the way, both worth keeping:
+
+- **`SystemSettings` validates the whole object on write.** The first apply died with
+  `validationFailed | defaultDomainId: required` after updating 13 of 14 objects, because a
+  partial update that omits a required field is rejected however little it intended to change.
+  `defaultDomainId` was absent from the snapshot the line was derived from: snapshotting
+  `SystemSettings` refuses to run unless every referenced type is in the selection, and the
+  escape hatch `--allow-unresolved Domain` **drops the field rather than emitting it as a
+  dangling reference**. The snapshot looked complete and did not round-trip. Prefer naming the
+  referenced type in the selection over `--allow-unresolved`.
+- **`defaultHostname` does change the SMTP greeting**, contrary to what was written here first.
+  The reasoning was that `MtaStageConnect` derives `hostname` and `smtpGreeting` from
+  `system('hostname')` and so would be unaffected — but that expression resolves to the
+  *configured* hostname, not the OS one. The banner went from
+  `220 stalwart-0 Stalwart ESMTP at your service` to `220 mail.activescott.com ...`. That is an
+  improvement, since `stalwart-0` is not a resolvable name, but it was an unintended change to
+  the mail path and would have been a surprise if it had gone the other way.
 
 ### 2. Anyone could register an OAuth client
 
@@ -188,6 +207,11 @@ exposed, `plan.ndjson` must set:
 and declare the one `OAuthClient` that is allowed. **Sequence this ahead of the Ingress change,
 in a separate apply, and confirm it took effect** — configuration is built at startup, so it
 means a restart and a re-check, not just an apply.
+
+**Done 2026-08-30.** Both flags flipped and `bulwark-webmail` declared, applied and restarted.
+Verified after the restart: an unauthenticated `POST /auth/register` returns **401**. The route
+is additionally not exposed by the Ingress, so the setting and the routing are independent
+defences and either can be tested on its own.
 
 ## Routing, revised for OAuth
 
