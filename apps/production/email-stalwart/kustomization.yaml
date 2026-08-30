@@ -47,17 +47,11 @@ secretGenerator:
       - .env.secret.stalwart-bootstrap.encrypted
     options:
       disableNameSuffixHash: true
-  #
-  # COMMENTED OUT UNTIL THE ENCRYPTED FILE EXISTS — a generator pointing at a missing file
-  # fails the entire apps/production build, not just this app. Uncomment in the same commit
-  # that adds .env.secret.stalwart-automation.encrypted.
-  #
   # The automation principal, used only by stalwart-sieve-reconcile. Separate from the API
   # key because per-account Sieve needs a credential that CAN log in over a mail protocol,
   # which an API key deliberately cannot.
-  #
-  # - name: stalwart-automation-creds
-  #   envs:
-  #     - .env.secret.stalwart-automation.encrypted
-  #   options:
-  #     disableNameSuffixHash: true
+  - name: stalwart-automation-creds
+    envs:
+      - .env.secret.stalwart-automation.encrypted
+    options:
+      disableNameSuffixHash: true
