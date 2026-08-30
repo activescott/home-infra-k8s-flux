@@ -9,15 +9,26 @@
 # WHY A RESTART RATHER THAN THE DOCUMENTED RELOAD ACTION
 #
 # The docs and support forum describe a ReloadTlsCertificates action. It is not in this
-# version's admin UI (0.16.19), and the management API could not be found: /api/* returns
-# structured 404s, /admin/* is an SPA catch-all returning the same 965-byte HTML for any path,
-# and /api/discover/* serves an OIDC document regardless of suffix. The web UI's own bundle is
-# minified and builds its paths dynamically.
+# version's admin UI (0.16.19). Originally the management API could not be found at all, so
+# this was an open question.
 #
-# A restart, by contrast, is PROVEN. On 2026-08-28 a saved Certificate object was ignored --
+# SETTLED 2026-08-29: the management API was found -- it is JMAP, and stalwart-cli drives it
+# (see docs/specs/stalwart-config-as-code/plan.md). It still cannot do this. The CLI exposes
+# exactly eight subcommands -- get, query, create, update, delete, describe, apply, snapshot
+# -- all CRUD over registry objects. There is no action or invoke verb, so ReloadTlsCertificates
+# is not reachable through the same API the WebUI uses. Do not re-litigate this without new
+# evidence.
+#
+# Even if it were reachable, the trade favours the restart. This fires about 4 times a year and
+# costs seconds of dropped connections, which senders retry; a restart also rebuilds Stalwart's
+# startup-only configuration, which is a side benefit here. A reload that silently no-ops would
+# instead leave an expired certificate served on 993 and 465, caught by
+# StalwartServedCertNotRenewed roughly 30 days later. Cheap and loud beats elegant and silent.
+#
+# And the restart is PROVEN. On 2026-08-28 a saved Certificate object was ignored --
 # "WARN No TLS certificates available, total = 0", self-signed placeholder still served on every
 # port -- until the pod was deleted, after which all of 25, 465 and 993 served the real
-# certificate. Prefer a verified blunt mechanism over an elegant inferred one.
+# certificate.
 #
 # WHY IT DOES NOT RESTART ON A SCHEDULE
 #
