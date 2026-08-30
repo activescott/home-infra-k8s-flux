@@ -258,3 +258,56 @@ that must take effect.
 - Task #46. The Sieve archive-all design and its spam-equivalence proof are in
   `home-infra-private/docs/specs/email-infrastructure/summary.md`.
 - Task #44 (the `report` schedule) is the first thing this codifies.
+
+## Rebuild runbook
+
+The point of the rebuild is to prove the plan is complete: a server built only from
+git-committed configuration should be indistinguishable from the one we have. Anything that
+does not come back is click-ops we failed to capture.
+
+**Rollback at every point is the same single action**: stop the pod, move the old data
+directory back, start. The old directory is renamed aside, never deleted, and only removed
+after a soak.
+
+### Before starting
+
+- `./scripts/stalwart-apply plan` is clean, and `apply` reports `0 created`.
+- `.env.secret.stalwart-bootstrap.encrypted` exists and `stalwart-bootstrap-creds` resolves.
+- `stalwart-config-accounts` and `stalwart-bootstrap-config` ConfigMaps are deployed.
+- Note the current `Certificate` expiry, so the rebuilt server can be compared against it.
+
+### Steps
+
+1. `kubectl -n email-stalwart scale statefulset stalwart --replicas=0` and wait for the pod
+   to be gone. RocksDB has a live WAL; do not move a running store.
+2. On the node, in `/mnt/thedatapool/app-data/stalwart/prod`:
+   `mv data data-pre-rebuild-<date>` then `mkdir data`. The hostPath PV has no `type`, so
+   the directory must exist before the pod starts.
+3. Scale back to 1. Stalwart initialises an empty store from the ConfigMap-supplied
+   `config.json`. Expect an unconfigured server: no domain, no accounts, no certificate.
+4. `./scripts/stalwart-apply bootstrap` — creates `willeke.com`, `admin` and `automation`,
+   authenticating as the recovery admin because no API key can exist yet.
+5. **Scott**: set passwords for `admin` and `automation` in the admin UI, and mint a new API
+   key on `admin`. API key secrets are server-generated and unreadable, so the old one is
+   gone for good. Put the new one in `.env.secret.stalwart-cli`, encrypt, commit.
+6. `./scripts/stalwart-apply apply` — the whole configuration. Expect creates this time
+   rather than the usual no-op.
+7. Restart the pod. Configuration is built at startup.
+8. **Scott**: import `archive-all` on each account —
+   `require ["include"]; include :global "archive-all";` — and activate it.
+
+### Verifying it actually worked
+
+- `snapshot` the rebuilt server and diff against the pre-rebuild snapshot. Differences are
+  either intentional or a gap in the plan; there is no third category.
+- `up{job="stalwart"}` is 1 and both `blackbox_mail_tls` probes are 1.
+- Send through the full inbound path (`email-relay/send-test-email.sh --send-only`) and
+  confirm `message-ingest.ham` with **two** mailbox ids.
+- Outbound: send from the account and confirm it leaves via `smtp-relay.gmail.com`.
+- Zero alerts firing on the Email dashboard.
+
+### Known not to survive, by design
+
+The API key (server-generated), all passwords (write-only), and mailbox contents. Mail
+received during the window is retried by Google for days, and dual delivery means Gmail holds
+a copy regardless.
