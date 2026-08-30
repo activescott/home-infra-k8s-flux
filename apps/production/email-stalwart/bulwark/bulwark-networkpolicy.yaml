@@ -38,6 +38,16 @@ spec:
         - port: 53
           protocol: TCP
     # Traefik, for OIDC discovery and token exchange against https://mail.activescott.com.
+    #
+    # 8443, NOT 443. A NetworkPolicy port is the port on the destination POD, and the traefik
+    # Service maps 443 -> targetPort `websecure`, which is 8443 in the container. Service DNAT
+    # happens before the policy is evaluated, so a rule written for 443 never matches anything.
+    # The symptom is not a timeout, which is what a dropped packet usually looks like -- it is
+    # an immediate "connection refused", which reads like nothing is listening.
+    #
+    # Re-derive after any Traefik upgrade that changes its container ports:
+    #   kubectl --context nas -n kube-system get endpoints traefik \
+    #     -o jsonpath='{range .subsets[*].ports[*]}{.name}:{.port}{"\n"}{end}'
     - to:
         - namespaceSelector:
             matchLabels:
@@ -46,7 +56,7 @@ spec:
             matchLabels:
               app.kubernetes.io/name: traefik
       ports:
-        - port: 443
+        - port: 8443
           protocol: TCP
 ---
 # Only Traefik may reach it. Nothing in the cluster has any business calling this app, and
