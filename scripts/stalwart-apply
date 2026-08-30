@@ -3,6 +3,7 @@
 #
 #   ./scripts/stalwart-apply plan            # dry run, sends nothing to the server
 #   ./scripts/stalwart-apply apply           # apply the plan
+#   ./scripts/stalwart-apply bootstrap       # FRESH SERVER ONLY: create accounts
 #   ./scripts/stalwart-apply snapshot <Object> [<Object>...]
 #   ./scripts/stalwart-apply query <Object> [fields]
 #
@@ -54,27 +55,38 @@ run_job() {
 # envFrom pulls the token straight from the Secret, so it is never passed on a command line
 # where it would land in shell history or a process listing.
 run_pod() {
-  local name="stalwart-cli-$1-$$"
+  local name="stalwart-cli-$1-$$" overrides
   shift
+  # Build the whole override document with python rather than string-concatenating it.
+  # An earlier version used printf '"%s"' per argument, which silently corrupted any
+  # argument containing a quote — e.g. --field 'permissions={"@type":"Replace"}' arrived
+  # as broken JSON and the server rejected it as "Invalid JSON Patch", which looks like a
+  # schema error rather than a quoting bug.
+  overrides=$(NAME="$name" IMAGE="$image" URL="$url" python3 -c '
+import json, os, sys
+print(json.dumps({"spec": {"containers": [{
+    "name": os.environ["NAME"],
+    "image": os.environ["IMAGE"],
+    "args": sys.argv[1:],
+    "env": [{"name": "STALWART_URL", "value": os.environ["URL"]}],
+    "envFrom": [{"secretRef": {"name": "stalwart-cli-creds"}}],
+}]}}))
+' "$@")
+
   kubectl --context "$context" -n "$namespace" run "$name" \
     --rm --attach --restart=Never --quiet \
-    --image="$image" \
-    --overrides="$(
-      cat <<JSON
-{"spec":{"containers":[{
-  "name":"${name}",
-  "image":"${image}",
-  "args":[$(printf '"%s"' "$1"; shift; for a in "$@"; do printf ',"%s"' "$a"; done)],
-  "env":[{"name":"STALWART_URL","value":"${url}"}],
-  "envFrom":[{"secretRef":{"name":"stalwart-cli-creds"}}]
-}]}}
-JSON
-    )"
+    --image="$image" --overrides="$overrides"
 }
 
 case "${1:-}" in
 plan) run_job stalwart-config-plan ;;
 apply) run_job stalwart-config-apply ;;
+bootstrap)
+  # FRESH SERVERS ONLY. Creates the admin and automation accounts, authenticating as the
+  # recovery admin because no API key can exist yet. Running it against a populated server
+  # is not destructive — the accounts upsert by name — but it is never the right command.
+  run_job stalwart-config-bootstrap
+  ;;
 snapshot)
   shift
   [ $# -ge 1 ] || usage

@@ -10,6 +10,59 @@
 # current, and `kubectl create job --from=cronjob/...` produces a fresh Job per run.
 #
 # The container takes plain args and needs no shell, because the image may not have one.
+# Bootstrap only. Applies accounts.ndjson to a FRESH server, authenticating as the recovery
+# admin with basic auth rather than an API key — a key is a credential on an account, and a
+# fresh server has no accounts yet. Everything after this step uses the API key.
+#
+# Accounts are deliberately kept out of plan.ndjson: an upsert that omits `credentials`
+# could clear the admin password and the API key this tooling authenticates with, and that
+# is not a risk worth taking on every routine apply for the sake of one file fewer.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stalwart-config-bootstrap
+spec:
+  schedule: "0 0 31 2 *"
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+          containers:
+            - name: stalwart-cli
+              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+              args: ["apply", "--file", "/accounts/accounts.ndjson"]
+              env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+              envFrom:
+                # STALWART_USER and STALWART_PASSWORD — the recovery admin, split.
+                - secretRef:
+                    name: stalwart-bootstrap-creds
+              volumeMounts:
+                - name: accounts
+                  mountPath: /accounts
+                  readOnly: true
+                - name: cache
+                  mountPath: /home/nonroot/.cache
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+          volumes:
+            - name: accounts
+              configMap:
+                name: stalwart-config-accounts
+            - name: cache
+              emptyDir: {}
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:

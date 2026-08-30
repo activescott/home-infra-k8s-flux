@@ -33,3 +33,19 @@ secretGenerator:
       # reads whatever the Secret holds at pod start, so a rotated token is picked up
       # without needing a spec change to trigger it.
       disableNameSuffixHash: true
+  #
+  # COMMENTED OUT UNTIL THE ENCRYPTED FILE EXISTS. A secretGenerator pointing at a missing
+  # file fails the whole apps/production build, not just this app, which would stop Flux
+  # reconciling everything. Uncomment as part of the same commit that adds
+  # .env.secret.stalwart-bootstrap.encrypted -- see env.secret.stalwart-bootstrap.example.
+  #
+  # Recovery-admin credentials, split into user and password, used ONLY by the bootstrap
+  # job against a fresh server that has no account to hang an API key on. Same value as
+  # STALWART_RECOVERY_ADMIN in stalwart-creds; kept separate so the routine apply job never
+  # mounts a credential that can log in over mail protocols.
+  #
+  # - name: stalwart-bootstrap-creds
+  #   envs:
+  #     - .env.secret.stalwart-bootstrap.encrypted
+  #   options:
+  #     disableNameSuffixHash: true
