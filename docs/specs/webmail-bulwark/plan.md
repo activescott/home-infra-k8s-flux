@@ -283,6 +283,64 @@ Ordered so the security-relevant change lands and is proven *before* anything is
   Forwarded header* setting plus the allow-listed pod CIDR already exist for this reason, and
   webmail generates far more requests than DAV did.
 
+## Outcome — shipped 2026-08-30
+
+Live at <https://mail.activescott.com/>, OAuth login with real password plus 2FA, confirmed by
+signing in. Mail, calendar and contacts all work — the last two only because the scope fix
+requested `urn:ietf:params:oauth:scope:contacts` and `:calendars`. With Bulwark's default
+`openid email profile` the token would have carried none of the three, and the result would
+have read as a missing feature rather than a missing scope. Six things broke between "pod is Running" and "login works", and **only two of them
+came from sharing an origin with the mail server** — worth recording, because the obvious
+reaction to the sequence was to split the hostname, and that would have fixed a third of it.
+
+| Failure | Cause | Would a separate host have avoided it? |
+|---|---|---|
+| `SSO is enabled but the identity provider could not be reached` | Discovery is server-side; egress policy allowed only DNS and Stalwart:8080, and the issuer resolved to the WAN address | No |
+| `connection refused` to Traefik | NetworkPolicy ports match the **pod** port, not the Service port — 8443, not 443 | No |
+| `returned non-public or invalid endpoint URL` | Bulwark's SSRF guard rejects endpoints resolving to RFC-1918, which `hostAliases` makes them | No |
+| Wrong scopes | Bulwark asks for `openid email profile`; Stalwart grants neither `email` nor `profile`, and the **mail scope was never requested** | No |
+| `Temporary server failure`, http 404 | Stalwart's login page calls `fetch("/api/auth")` and loads `/logo`; both landed on Bulwark | Yes |
+| `/logo` still wrong after routing it | Traefik's default priority is **rule-string length**, so `Path(/logo)` (13) lost to `PathPrefix(/)` (15) | Yes |
+
+### The three worth remembering
+
+**A page rendering is not evidence its backend is routed.** `/login` returned 200 in the
+route-map check and was recorded as correct. It was not — only the document was reachable. The
+endpoint it calls at runtime, `/api/auth`, is not one discovery advertises, so no amount of
+checking the advertised endpoints could have found it. Check what a page *calls*, not just
+whether it loads.
+
+**Traefik ranks routers by rule-string length, not path specificity.** Every other rule on this
+host clears `PathPrefix(`/`)` = 15 characters by accident — `/setup`, `/dav`, `/jmap`, `/login`,
+`/auth/token` and the `.well-known` paths are all longer. `/logo` was the first that wasn't, and
+it failed by being quietly answered by the wrong backend. The catch-all now carries an explicit
+`router.priority: "1"` in its own Ingress, so this is no longer arithmetic.
+
+**A denied NetworkPolicy packet did not look like one.** It surfaced as an immediate
+`connection refused`, which reads like nothing is listening, rather than the timeout a drop
+usually produces.
+
+### Deviation from the plan above
+
+It runs in **`email-stalwart`**, not a new `email-webmail` namespace. TLS Secrets are namespaced
+and an Ingress can reference neither a Secret nor a backend Service across namespaces, so a
+webmail Ingress elsewhere could not use `stalwart-tls`; every alternative is worse (two
+Ingresses offering different certificates for one SNI name, or enabling cross-namespace
+references in Traefik). `mail-setup` already establishes this shape in that namespace. The cost
+— a compromise landing beside the mail server — is answered with
+`automountServiceAccountToken: false` and an egress policy permitting only DNS and Traefik:8443,
+not Stalwart's own ports.
+
+### Still open
+
+- **No monitoring.** No probe, no alert, nothing in the `email-stalwart` Grafana group. Step 8
+  of this plan is not done.
+- **Sent mail is still not archived** — unchanged by this phase; `APPEND` has no Sieve path.
+- The Traefik ClusterIP is hardcoded in `hostAliases`. Stable unless that Service is recreated;
+  the symptom and the re-derivation command are in the Deployment comment.
+- Bulwark is five months old and releases roughly weekly. The digest pin means upgrades are
+  deliberate, and nothing watches for them.
+
 ## Rollback
 
 Delete the `/` Ingress rule; `/setup`, `/dav` and the phone profiles are untouched by everything
