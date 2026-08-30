@@ -18,6 +18,11 @@ resources:
   # Declarative Stalwart configuration applied by stalwart-cli. Suspended CronJobs, run on
   # demand via ./scripts/stalwart-apply. See docs/specs/stalwart-config-as-code/plan.md.
   - stalwart-config
+  # Bulwark webmail at https://mail.activescott.com/, plus the Stalwart JMAP and OIDC routes it
+  # needs on that hostname. In this namespace rather than its own because TLS Secrets are
+  # namespaced and an Ingress can reference neither a Secret nor a backend Service across
+  # namespaces -- see bulwark/README.md.
+  - bulwark
 namespace: email-stalwart
 secretGenerator:
   - name: stalwart-creds

@@ -20,13 +20,20 @@ exists. Both changes land together:
             && sudo chown -R 1001:1001 /mnt/thedatapool/app-data/bulwark/prod'
    ```
 
-2. Make the secret — **you**, not the agent, for the reason in the template's banner:
+2. Make the secret. Copy and fill it in yourself — the agent must not create or read the real
+   path, for the reason in the template's banner. Encrypting it afterwards is safe for the
+   agent to run, since the script only ever prints file names. **From the repo root:**
 
    ```bash
-   cp env.secret.bulwark.example .env.secret.bulwark
-   $EDITOR .env.secret.bulwark
-   ../../../../scripts/encrypt-env-files.sh apps/production/email-stalwart/bulwark
+   cp apps/production/email-stalwart/bulwark/env.secret.bulwark.example \
+      apps/production/email-stalwart/bulwark/.env.secret.bulwark
+   $EDITOR apps/production/email-stalwart/bulwark/.env.secret.bulwark
+   ./scripts/encrypt-env-files.sh apps/production/email-stalwart/bulwark
    ```
+
+   The script resolves its argument against your current directory. Running it from inside
+   this directory with a repo-root-relative path exits `Directory not found` and encrypts
+   nothing — quietly, if you piped the output somewhere.
 
 3. Uncomment `secretGenerator` in `kustomization.yaml`, add `- bulwark` to
    `../kustomization.yaml`, commit.

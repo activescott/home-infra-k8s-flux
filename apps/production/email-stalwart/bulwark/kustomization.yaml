@@ -6,17 +6,18 @@ resources:
   - bulwark-networkpolicy.yaml
   - webmail-ingress.yaml
 namespace: email-stalwart
-# COMMENTED UNTIL THE SECRET EXISTS.
-#
-# secretGenerator fails the build when its `envs` file is missing, and that failure is not
-# local to this directory -- it takes down the whole `apps/production` kustomize build, and
-# with it every other app Flux reconciles from that tree. So this stays commented until
-# .env.secret.bulwark.encrypted is committed, and is uncommented in the same change.
-#
-# Until then this directory is also left out of ../kustomization.yaml, so nothing here is
-# deployed and the Deployment does not sit in prod CrashLooping on a Secret that is not there.
-#
-# secretGenerator:
-#   - name: bulwark-creds
-#     envs:
-#       - .env.secret.bulwark.encrypted
+secretGenerator:
+  # SESSION_SECRET and ADMIN_PASSWORD. No OAuth client secret exists -- Bulwark is registered
+  # as a public client using PKCE, see ../stalwart-config/plan.ndjson.
+  #
+  # Keep the name-suffix hash (i.e. do not set disableNameSuffixHash here, unlike the Stalwart
+  # secrets next door): the Deployment mounts this via envFrom, so the hash is what rolls the
+  # pod when the secret changes. Without it, rotating SESSION_SECRET would leave the running
+  # pod on the old value until something else happened to restart it.
+  #
+  # A secretGenerator whose `envs` file is missing does not fail locally -- it fails the whole
+  # apps/production build and takes every other app down with it. If this file is ever removed,
+  # comment this block and the `- bulwark` line in ../kustomization.yaml in the same change.
+  - name: bulwark-creds
+    envs:
+      - .env.secret.bulwark.encrypted
