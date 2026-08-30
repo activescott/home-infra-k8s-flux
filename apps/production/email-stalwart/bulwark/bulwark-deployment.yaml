@@ -41,6 +41,24 @@ spec:
       # Nothing here talks to the Kubernetes API. Without this the pod carries a mountable
       # token, which is the first thing worth having if this app is ever compromised.
       automountServiceAccountToken: false
+      # OIDC discovery and the token exchange happen SERVER-SIDE, from this pod -- only the
+      # authorization redirect is the browser's job. So the pod has to be able to fetch
+      # https://mail.activescott.com/.well-known/openid-configuration itself, and cluster DNS
+      # answers that name with the WAN address, which would need NAT hairpinning back into the
+      # house to work. Point it at Traefik instead, which is where that hostname is served.
+      #
+      # The name must stay mail.activescott.com rather than an internal URL: it is the OIDC
+      # `issuer`, and discovery returns public URLs for every endpoint, so a client configured
+      # with an internal issuer would still be sent to the public token endpoint. Keeping the
+      # name also keeps TLS valid -- Traefik answers this SNI with the stalwart-tls cert.
+      #
+      # The IP is Traefik's ClusterIP, which is stable unless that Service is recreated. If it
+      # ever is, this breaks with "the identity provider could not be reached" and the fix is:
+      #   kubectl --context nas -n kube-system get svc traefik -o jsonpath='{.spec.clusterIP}'
+      hostAliases:
+        - ip: "172.17.246.45"
+          hostnames:
+            - mail.activescott.com
       securityContext:
         # The image creates nextjs:nodejs as 1001:1001 and runs as it. hostPath volumes are NOT
         # chowned by the kubelet, so /mnt/thedatapool/app-data/bulwark/prod/data must already be

@@ -5,9 +5,17 @@
 # Egress is the one that matters. Bulwark is a five-month-old third-party app reachable from the
 # internet; if it is ever compromised, the interesting next move is reaching something else --
 # the other services in this namespace, the rest of the cluster, or an arbitrary host on the
-# internet. It genuinely needs exactly two destinations: DNS, and Stalwart's HTTP listener for
-# the server-side half of the OAuth flow (discovery and token exchange). Everything else is
-# denied, including the SMTP, IMAP and ManageSieve ports on that same pod.
+# internet. It genuinely needs exactly two destinations: DNS, and Traefik, for the server-side
+# half of the OAuth flow (discovery and token exchange). Everything else is denied.
+#
+# Traefik rather than Stalwart directly, because the pod resolves mail.activescott.com to
+# Traefik's ClusterIP -- see the hostAliases block in bulwark-deployment.yaml for why that name
+# has to be preserved rather than swapped for an internal URL. Reaching Stalwart's own ports is
+# therefore NOT permitted: not 8080, and not 25, 465, 587, 993 or 4190 on that same pod.
+#
+# The first version of this file allowed only DNS and Stalwart:8080, which broke SSO outright --
+# the pod could not fetch its own discovery document and the login page reported "SSO is enabled
+# but the identity provider could not be reached".
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -29,13 +37,16 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
-    # Stalwart's HTTP listener only. Not 25/465/587/993/4190 on the same pod.
+    # Traefik, for OIDC discovery and token exchange against https://mail.activescott.com.
     - to:
-        - podSelector:
+        - namespaceSelector:
             matchLabels:
-              app: stalwart
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
       ports:
-        - port: 8080
+        - port: 443
           protocol: TCP
 ---
 # Only Traefik may reach it. Nothing in the cluster has any business calling this app, and
