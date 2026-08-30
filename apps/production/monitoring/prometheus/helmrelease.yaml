@@ -737,7 +737,15 @@ spec:
                     rather than the firewall or WAN — which also means it does NOT rule out an
                     external-only problem when it is quiet.
               - alert: StalwartWebSurfaceDown
-                # Covers admin.mail.activescott.com and mail.activescott.com/setup.
+                # Three probes, three different backends behind one hostname pattern:
+                # admin.mail.activescott.com (Stalwart), mail.activescott.com/setup
+                # (the mail-setup nginx) and mail.activescott.com/api/health (Bulwark
+                # webmail). The instance label says which.
+                #
+                # One alert rather than one per app on purpose: the regex already
+                # matched every path on these hosts, so a separate webmail alert would
+                # fire alongside this one for the same failure.
+                #
                 # This is the alert that would have caught the 2026-08-28 outage,
                 # where Stalwart banned the Traefik pod's address and every request
                 # became a 502 with no HTTP log line to explain it.
@@ -748,11 +756,15 @@ spec:
                 annotations:
                   summary: '{{ $labels.instance }} is not answering its https probe'
                   description: >-
-                    Five minutes of failures through the real ingress and TLS. If the admin host
-                    is the one failing while the mail ports are fine, suspect Stalwart having
-                    banned the ingress controller's address — it drops banned addresses at TCP
-                    accept, so there is no request log to find. Confirm with the "In-cluster
-                    addresses blocked" panel on the Email dashboard.
+                    Five minutes of failures through the real ingress and TLS. Check the instance
+                    label first — /api/health is the webmail, /setup is the nginx setup page, and
+                    the admin host is Stalwart itself; they share a hostname but not a backend.
+                    If the admin host is the one failing while the mail ports are fine, suspect
+                    Stalwart having banned the ingress controller's address — it drops banned
+                    addresses at TCP accept, so there is no request log to find. Confirm with the
+                    "In-cluster addresses blocked" panel on the Email dashboard. If only
+                    /api/health is failing, mail delivery is unaffected and nothing else will
+                    alert; that is the webmail alone.
               - alert: StalwartBlockingClusterAddress
                 # The direct detector for that ban, rather than its 502 symptom.
                 # Bans never expire here (no *BanPeriod is set), so this does not
@@ -1083,6 +1095,18 @@ spec:
               # fact that Traefik still reaches the pod -- both of which broke on
               # 2026-08-28 when Stalwart banned the Traefik address and returned 502.
               - "https://admin.mail.activescott.com/robots.txt"
+              # Bulwark webmail. /api/health is its own health route, served at the
+              # root rather than under a locale prefix, so it is a stable 200 that
+              # needs no session.
+              #
+              # This is the only monitoring the webmail has, and it is deliberately
+              # end-to-end rather than a pod check: it exercises the certificate,
+              # Traefik's routing (which is where every failure in this phase
+              # actually was), and the pod, in one probe. A dead webmail is
+              # otherwise invisible -- mail keeps flowing and every other alert
+              # stays green, so the first symptom would be a person trying to read
+              # their mail.
+              - "https://mail.activescott.com/api/health"
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target

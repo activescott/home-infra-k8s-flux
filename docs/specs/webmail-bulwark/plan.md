@@ -272,9 +272,9 @@ Ordered so the security-relevant change lands and is proven *before* anything is
   `client_id` is refused. Test both — the setting and the route are independent defences and
   either could be wrong on its own.
 - Log in with the real account password **and 2FA**, confirming no app password is involved.
-- Log in as `scott@willeke.com`, read a message, send one, confirm it lands in Archive as well
-  as Sent behaviour matches the Sieve script's coverage (Sent is **not** archived — `APPEND` has
-  no Sieve path).
+- Log in as `scott@willeke.com`, read a message, send one. Sent is **not** archived, by design —
+  `APPEND` has no Sieve path, and archive-everything exists so *delivered* mail survives a
+  client deleting it.
 - Calendar and contacts load, against the same CalDAV/CardDAV the phone profile uses.
 - Confirm no `Access-Control-Allow-Origin` is needed, i.e. every JMAP request is same-origin.
 - Confirm the admin dashboard is not reachable without the admin password, and that
@@ -331,11 +331,22 @@ references in Traefik). `mail-setup` already establishes this shape in that name
 `automountServiceAccountToken: false` and an egress policy permitting only DNS and Traefik:8443,
 not Stalwart's own ports.
 
+### Monitoring
+
+One blackbox probe on `https://mail.activescott.com/api/health`, added to the existing
+`blackbox_https` job. `StalwartWebSurfaceDown` already matched every path on these hostnames, so
+it covers the webmail without a second alert firing for the same failure; its description now
+says which backend each instance is.
+
+Deliberately end-to-end rather than a pod readiness check: it exercises the certificate,
+Traefik's routing — which is where every failure in this phase actually was — and the pod, in
+one probe. Without it a dead webmail is invisible, because mail keeps flowing and every other
+alert stays green.
+
+Not done, and not planned: a Grafana panel, and any alert on Bulwark's own logs.
+
 ### Still open
 
-- **No monitoring.** No probe, no alert, nothing in the `email-stalwart` Grafana group. Step 8
-  of this plan is not done.
-- **Sent mail is still not archived** — unchanged by this phase; `APPEND` has no Sieve path.
 - The Traefik ClusterIP is hardcoded in `hostAliases`. Stable unless that Service is recreated;
   the symptom and the re-derivation command are in the Deployment comment.
 - Bulwark is five months old and releases roughly weekly. The digest pin means upgrades are

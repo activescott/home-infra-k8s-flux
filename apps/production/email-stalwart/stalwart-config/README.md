@@ -103,8 +103,9 @@ is deliberately _not_ archived, so emptying Junk actually frees it.
 show special-use mailboxes under their own standard names. Marking it `\All` would let it
 show as "All Mail" the way Gmail does, but Stalwart's `SpecialUse` enum has no `All` variant.
 
-Still uncovered: **Sent**. `APPEND` has no Sieve path, so mail you compose lives in one
-mailbox only.
+**Sent is deliberately not covered.** `APPEND` has no Sieve path, so mail you compose lives in
+its Sent mailbox only. That is a non-goal rather than a gap: the point of archive-everything is
+that *delivered* mail survives a client deleting it, and nothing deletes Sent behind your back.
 
 ## Sieve scripts are validated on create
 
