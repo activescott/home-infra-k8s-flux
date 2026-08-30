@@ -1,0 +1,81 @@
+# Keeps every account's active Sieve script in sync with git.
+#
+# This exists because per-account Sieve scripts are the one thing the management API cannot
+# reach: the Account object has no script field, and a user's scripts live in their own JMAP
+# data rather than the configuration registry. So a plan cannot declare them, and without
+# this job every new account is silently unprotected until somebody remembers to click.
+#
+# Unlike the other CronJobs here it is NOT suspended -- it runs daily and is idempotent, so
+# it fixes drift rather than only acting at account-creation time. Run it on demand with
+# `./scripts/stalwart-apply sieve-reconcile`.
+#
+# The initContainer lists accounts with stalwart-cli (which needs sysAccountQuery) and the
+# main container talks ManageSieve as `<target>%automation`. Both use the same credential.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stalwart-sieve-reconcile
+spec:
+  schedule: "43 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+          initContainers:
+            - name: list-accounts
+              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+              args: ["query", "Account", "--fields", "name,emailAddress", "--json"]
+              env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+              envFrom:
+                - secretRef:
+                    name: stalwart-automation-creds
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: cache
+                  mountPath: /home/nonroot/.cache
+          containers:
+            - name: reconcile
+              image: python:3.12-alpine
+              command: ["python3", "/script/sieve-reconcile.py"]
+              env:
+                - name: SIEVE_HOST
+                  value: stalwart-sieve.email-stalwart.svc.cluster.local
+                # Accounts that never receive mail, so an archive copy is pointless.
+                - name: SIEVE_SKIP_ACCOUNTS
+                  value: admin,automation
+              envFrom:
+                - secretRef:
+                    name: stalwart-automation-creds
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                - name: script
+                  mountPath: /script
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+          volumes:
+            - name: work
+              emptyDir: {}
+            - name: cache
+              emptyDir: {}
+            - name: script
+              configMap:
+                name: stalwart-sieve-reconcile-script

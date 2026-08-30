@@ -5,6 +5,7 @@
 #   ./scripts/stalwart-apply apply           # apply the plan
 #   ./scripts/stalwart-apply bootstrap       # FRESH SERVER ONLY: create accounts
 #   ./scripts/stalwart-apply apply-recovery  # FRESH SERVER ONLY: apply config pre-API-key
+#   ./scripts/stalwart-apply sieve-reconcile # sync every account's active Sieve script
 #   ./scripts/stalwart-apply snapshot <Object> [<Object>...]
 #   ./scripts/stalwart-apply query <Object> [fields]
 #
@@ -97,6 +98,11 @@ bootstrap)
   # recovery admin because no API key can exist yet. Running it against a populated server
   # is not destructive — the accounts upsert by name — but it is never the right command.
   run_job stalwart-config-bootstrap
+  ;;
+sieve-reconcile)
+  # Sets each account's active Sieve script to match git, by impersonating over ManageSieve.
+  # Also runs daily on its own; this is for when you do not want to wait.
+  run_job stalwart-sieve-reconcile
   ;;
 snapshot)
   shift

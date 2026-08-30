@@ -1,0 +1,23 @@
+# ManageSieve, cluster-internal only.
+#
+# Stalwart listens on 4190 but it was on no Service at all, so nothing could reach it. This
+# is deliberately a separate ClusterIP rather than another port on the `stalwart` Service:
+# that one is a LoadBalancer whose :25 is port-forwarded from the internet, and ManageSieve
+# is unauthenticated-in-the-clear on this listener (tls = false in the pod logs). It has no
+# business being reachable from anywhere except inside the cluster.
+#
+# Used by the sieve-reconcile CronJob, which authenticates as `<target>%automation` to set
+# each account's active script -- the one thing the management API cannot do.
+apiVersion: v1
+kind: Service
+metadata:
+  name: stalwart-sieve
+spec:
+  type: ClusterIP
+  selector:
+    app: stalwart
+  ports:
+    - name: managesieve
+      port: 4190
+      targetPort: 4190
+      protocol: TCP
