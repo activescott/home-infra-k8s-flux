@@ -4,7 +4,9 @@ Per-account Sieve scripts are not in Stalwart's configuration registry -- the Ac
 has no script field -- so stalwart-cli cannot set them and they cannot be declared in
 plan.ndjson. The only way in is to authenticate *as* the user, which is what the
 `automation` principal's `impersonate` permission is for: ManageSieve accepts a composite
-login `<target>%<impersonator>` with the impersonator's password.
+login `<target>%<impersonator>` with the impersonator's password. Both halves must be full
+addresses -- bare account names are rejected with "localhost.local", because the domain
+cannot be inferred.
 
 The account list is fetched over the management JMAP API with the same credentials. That
 used to be an initContainer running `stalwart-cli query Account --json`, which cannot work:
@@ -21,6 +23,7 @@ import base64
 import json
 import os
 import socket
+import ssl
 import sys
 import urllib.request
 
@@ -51,6 +54,28 @@ class Sieve:
         self.sock = socket.create_connection((host, port), timeout=20)
         self.buf = b""
         self.read_response()  # server greeting and capabilities
+        self.starttls()
+
+    def starttls(self):
+        """Stalwart refuses AUTHENTICATE on an unencrypted ManageSieve connection --
+        `NO (ENCRYPT-NEEDED) "Cannot authenticate over plain-text."` -- so this is required,
+        not optional hardening.
+
+        Certificate verification is off deliberately. The connection is a single in-cluster
+        hop to a ClusterIP, and the certificate is issued for mail.activescott.com while we
+        dial a .svc.cluster.local name, so it could never validate as-addressed. What is
+        being satisfied here is the server's requirement that the channel be encrypted; we
+        are not crossing a network where the server's identity is in question.
+        """
+        status, _ = self.cmd("STARTTLS")
+        if status != "OK":
+            raise SieveError("STARTTLS refused")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        self.sock = ctx.wrap_socket(self.sock, server_hostname="mail.activescott.com")
+        self.buf = b""
+        self.read_response()  # capabilities are re-sent after the TLS handshake
 
     def _line(self):
         while b"\r\n" not in self.buf:
