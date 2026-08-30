@@ -3,6 +3,7 @@
 #
 #   ./scripts/stalwart-apply plan            # dry run, sends nothing to the server
 #   ./scripts/stalwart-apply apply           # apply the plan
+#   ./scripts/stalwart-apply snapshot <Object> [<Object>...]
 #   ./scripts/stalwart-apply query <Object> [fields]
 #
 # The plan lives at apps/production/email-stalwart/stalwart-config/plan.ndjson and is
@@ -48,31 +49,43 @@ run_job() {
   echo "==> done"
 }
 
-case "${1:-}" in
-plan) run_job stalwart-config-plan ;;
-apply) run_job stalwart-config-apply ;;
-query)
+# Read-only ad-hoc commands run as a one-off pod rather than a CronJob: the subcommand and
+# its arguments change every time, and `kubectl create job --from` cannot override args.
+# envFrom pulls the token straight from the Secret, so it is never passed on a command line
+# where it would land in shell history or a process listing.
+run_pod() {
+  local name="stalwart-cli-$1-$$"
   shift
-  [ $# -ge 1 ] || usage
-  object=$1
-  shift
-  # A one-off pod rather than a CronJob: queries are ad hoc and read-only, and the object
-  # and fields change every time. envFrom pulls the token straight from the Secret, so it
-  # is never passed on a command line or echoed.
-  kubectl --context "$context" -n "$namespace" run "stalwart-cli-query-$$" \
+  kubectl --context "$context" -n "$namespace" run "$name" \
     --rm --attach --restart=Never --quiet \
     --image="$image" \
     --overrides="$(
       cat <<JSON
 {"spec":{"containers":[{
-  "name":"stalwart-cli-query-$$",
+  "name":"${name}",
   "image":"${image}",
-  "args":["query","${object}"$(for f in "$@"; do printf ',"%s"' "$f"; done)],
+  "args":[$(printf '"%s"' "$1"; shift; for a in "$@"; do printf ',"%s"' "$a"; done)],
   "env":[{"name":"STALWART_URL","value":"${url}"}],
   "envFrom":[{"secretRef":{"name":"stalwart-cli-creds"}}]
 }]}}
 JSON
     )"
+}
+
+case "${1:-}" in
+plan) run_job stalwart-config-plan ;;
+apply) run_job stalwart-config-apply ;;
+snapshot)
+  shift
+  [ $# -ge 1 ] || usage
+  # Emits exactly what `apply` consumes, with #-references wired. Keep only the objects
+  # that differ from Stalwart's defaults — see stalwart-config/README.md.
+  run_pod snap snapshot "$@"
+  ;;
+query)
+  shift
+  [ $# -ge 1 ] || usage
+  run_pod query query "$@"
   ;;
 *) usage 0 ;;
 esac

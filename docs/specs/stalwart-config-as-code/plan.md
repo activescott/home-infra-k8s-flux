@@ -63,6 +63,22 @@ Scott's framing, and the reason this is worth doing now rather than later:
 
 ## Decisions
 
+0. **Only deltas from Stalwart's defaults are declared.** A fresh server seeds its own
+   defaults at first boot, so the plan carries only what we deliberately differ on. It
+   stays a statement of intent rather than a mirror of the server, and it will not fight
+   upstream if their defaults change in a future release. A rebuild is: install, let it
+   seed, then apply. Scott's call, 2026-08-29, correcting an earlier draft of this plan
+   that declared all four virtual queues — every one of them stock.
+
+   The corollary is that **`reconcile` becomes actively dangerous**: against a delta-only
+   plan it would destroy every stock object on the server. Decision 1 already forbids it;
+   this makes it non-negotiable.
+
+   The one admitted exception is a reference target. `apply` resolves `#` references only
+   against objects declared in the same plan, so the stock `report` virtual queue is
+   upserted purely so `#vq-report` resolves. Upserting it is a no-op, and it is annotated
+   as such in `stalwart-config/README.md`.
+
 1. **`upsert` only.** No `reconcile` and no `destroy` in any committed plan. `reconcile`
    deletes every object of a type the plan does not declare; on a mail server that is a
    footgun with no upside. Approved by Scott 2026-08-29.
@@ -180,14 +196,43 @@ Per `AGENTS.md` tenet #1 and the mail-durability rules in the email-infrastructu
 - **This improves recoverability**: after a datastore loss, configuration becomes
   `apply`-able rather than reconstructed from memory.
 
+## `snapshot` — derive plans, never hand-write them
+
+Settled 2026-08-29, and it removes the largest authoring risk. `stalwart-cli snapshot
+<Object>...` reads live objects and emits **exactly the NDJSON `apply` consumes**, with `#`
+references already wired. It also refuses to emit a dangling reference, naming the type to
+add to the selection.
+
+This matters because the encodings are not guessable. `expiry` and `retry` are
+`@type`-tagged unions, durations are milliseconds, and **`intervals` is a map keyed by
+stringified index, not an array**:
+
+```json
+"retry":{"@type":"Custom","intervals":{"0":{"duration":900000},"1":{"duration":1800000}}}
+"expiry":{"@type":"Ttl","expire":259200000}
+"expiry":{"@type":"Attempts","maxAttempts":10}
+```
+
+Workflow for anything new: change it in the admin UI, `./scripts/stalwart-apply snapshot
+<Object>`, diff against the stock default, and keep only what differs.
+
+**The CLI is CRUD only** — `get`, `query`, `create`, `update`, `delete`, `describe`,
+`apply`, `snapshot`. There is no action or invoke verb, so server actions such as
+`ReloadTlsCertificates` are not reachable through it; see the comment in
+`stalwart-tls-reload.yaml`.
+
 ## Open questions
 
-- Minimum API-key permission set for the objects we manage.
-- Whether `apply` triggers a configuration reload, or a pod restart is still required.
+- Minimum API-key permission set for the objects we manage. Currently `inherit` on the
+  admin account, which is over-privileged; narrowing is a create-new-key-and-swap.
 - Whether a principal's `ActiveScriptId` is settable through a plan object, or only via
-  ManageSieve/JMAP-for-Sieve.
+  ManageSieve/JMAP-for-Sieve. Blocks the Sieve archive-all work.
 - Exact `include :global` semantics for pulling in a `SieveUserScript`.
 - Whether a message in two mailboxes counts once or twice against quota.
+
+Resolved: `apply` does **not** restart Stalwart or trigger a config reload, and Stalwart
+builds configuration at startup — so a restart is still required after applying anything
+that must take effect.
 
 ## Related
 
