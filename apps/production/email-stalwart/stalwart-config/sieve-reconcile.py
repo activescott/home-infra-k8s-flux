@@ -176,15 +176,19 @@ def reconcile(address):
 def fetch_accounts():
     """List accounts over the management JMAP API.
 
-    Shape taken from the CLI's own source rather than guessed: a Foo/query chained into a
-    Foo/get by a #ids back-reference, with Stalwart's own capability URN alongside core.
+    Shape taken from the CLI's own source rather than guessed: an x:Foo/query chained into
+    an x:Foo/get by a #ids back-reference, with Stalwart's own capability URN alongside core.
+
+    The `x:` prefix is not decoration. Registry object names are canonicalised with it
+    (canonicalise_with_prefix in the CLI's schema resolver), and a bare "Account/query" comes
+    back as unknownMethod.
     """
     body = json.dumps({
         "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
         "methodCalls": [
-            ["Account/query", {}, "q"],
-            ["Account/get", {
-                "#ids": {"resultOf": "q", "name": "Account/query", "path": "/ids"},
+            ["x:Account/query", {}, "q"],
+            ["x:Account/get", {
+                "#ids": {"resultOf": "q", "name": "x:Account/query", "path": "/ids"},
                 "properties": ["name", "emailAddress"],
             }, "g"],
         ],
@@ -200,9 +204,9 @@ def fetch_accounts():
     with urllib.request.urlopen(req, timeout=30) as resp:
         payload = json.load(resp)
     for name, args, _tag in payload.get("methodResponses", []):
-        if name == "Account/get":
+        if name == "x:Account/get":
             return args.get("list", [])
-    raise SieveError("no Account/get response: %s" % json.dumps(payload)[:300])
+    raise SieveError("no x:Account/get response: %s" % json.dumps(payload)[:300])
 
 
 def main():
