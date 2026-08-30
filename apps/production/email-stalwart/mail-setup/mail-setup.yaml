@@ -7,7 +7,7 @@
 # password", which is a lie; there is no failed authentication in the server log because it never
 # attempted one. The port fields that would fix it are not shown until the account exists.
 #
-# An Apple configuration profile states the ports as fact, so Mail never probes. The profiles and
+# An Apple configuration profile states the ports as fact, so Mail never probes. The profile and
 # the page live alongside this file and are loaded by the configMapGenerator in this directory's
 # own kustomization.yaml -- generated, so kustomize hashes them into the ConfigMap names and
 # editing any of them rolls this Deployment. Do not convert them to inline ConfigMaps; the

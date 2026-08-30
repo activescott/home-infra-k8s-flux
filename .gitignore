@@ -25,3 +25,7 @@
 /.validation-outputs/
 
 .DS_Store
+
+# Byte-compiled Python, left behind by running stalwart-config/sieve-reconcile.py locally.
+__pycache__/
+*.pyc

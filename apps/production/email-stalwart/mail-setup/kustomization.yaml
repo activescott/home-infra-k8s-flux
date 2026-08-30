@@ -4,12 +4,11 @@ resources:
   - mail-setup.yaml
 configMapGenerator:
   # Generated rather than declared inline so kustomize hashes the content into the ConfigMap
-  # names; editing the page or either profile then rolls the mail-setup Deployment.
+  # names; editing the page or the profile then rolls the mail-setup Deployment.
   - name: mail-setup-content
     files:
       - index.html
       - robots.txt
-      - apple.mobileconfig
       - apple-templated.mobileconfig
   - name: mail-setup-nginx
     files:

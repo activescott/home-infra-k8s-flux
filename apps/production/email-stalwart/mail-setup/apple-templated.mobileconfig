@@ -3,19 +3,33 @@
 <!--
   Apple configuration profile: mail, calendar and contacts for mail.activescott.com.
 
-  A TEMPLATE. Served only from /setup/profiles/<address>/apple.mobileconfig, where nginx substitutes every
-  occurrence of __EMAIL__ with the address captured from the path (see nginx-default.conf). It is
-  never served raw -- a request that does not match the address regex is redirected to the blank
-  apple.mobileconfig instead, so nobody receives a profile containing the literal placeholder.
+  A TEMPLATE. Served only from /setup/profiles/<address>/apple.mobileconfig, or
+  /setup/profiles/<address>/name/<display name>/apple.mobileconfig, where nginx substitutes every
+  occurrence of __EMAIL__ and __NAME__ with the values captured from the path (see
+  nginx-default.conf). It is never served raw -- a request that does not match the address regex is
+  redirected back to the form instead, so nobody receives a profile containing the literal
+  placeholder. When the name segment is absent, __NAME__ falls back to the address.
 
-  Keep in sync with apple.mobileconfig, which is the identity-free fallback. That one is
-  deliberately mail-only: CalDAVUsername and CardDAVUsername are documented as required rather
-  than prompted, so a DAV payload without a username may fail to install rather than ask for one.
-  Here the address is known, so all three payloads are safe to include.
+  This is now the ONLY profile. An identity-free fallback used to sit at /setup/apple.mobileconfig
+  for anyone who preferred typing their address into the device, but it could only ever carry the
+  mail payload: CalDAVUsername and CardDAVUsername are documented as required rather than
+  prompted, so a DAV payload without a username may fail to install rather than ask for one.
+  Silently setting up two of the three services is a worse outcome than being sent back to the
+  form, so it was removed.
 
-  Still no passwords. Apple's reference restricts the password keys to encrypted profiles, and
-  this is served in the clear. The consequence is three password prompts on install -- mail,
-  calendar, contacts -- all taking the same app password. There is no "same as" key for it.
+  Still no passwords. Apple's reference marks IncomingPassword, OutgoingPassword, CalDAVPassword
+  and CardDAVPassword "Encrypted profiles only", and this is served in the clear. The consequence
+  is three password prompts on install -- mail, calendar, contacts -- all taking the same app
+  password. OutgoingPasswordSameAsIncomingPassword collapses the two mail prompts into one but is
+  scoped to its own payload; nothing spans payloads, so the DAV pair cannot be folded in. Getting
+  to one prompt would mean carrying the password through the URL and into a cleartext file in
+  Downloads, which is a worse trade than two extra taps.
+
+  PayloadUUID and PayloadIdentifier are fixed, so installing a second address on the same device
+  REPLACES the first rather than adding to it. Deliberate for one-mailbox-per-person. Making the
+  identifier address-derived would be a one-line sub_filter, but the UUIDs cannot be generated in
+  nginx, and whether iOS tolerates two profiles sharing a UUID is untested -- so the display
+  strings below carry the address purely to make the installed profile identifiable.
 
   CalDAV and CardDAV carry no PrincipalURL on purpose. Stalwart answers /.well-known/caldav and
   /.well-known/carddav with a 307 to /dav/cal and /dav/card (verified 2026-08-28), which is the
@@ -25,9 +39,18 @@
 <plist version="1.0">
 <dict>
   <key>PayloadDisplayName</key>
-  <string>mail.activescott.com</string>
+  <string>__EMAIL__ (mail.activescott.com)</string>
   <key>PayloadDescription</key>
   <string>Mail, calendar and contacts for __EMAIL__. You will be asked for your app password three times, once per service.</string>
+  <!-- Shown on its own screen before Install, so the three-prompt surprise arrives as a warning
+       rather than as a bug report. Keyed by language; "default" covers every locale we serve. -->
+  <key>ConsentText</key>
+  <dict>
+    <key>default</key>
+    <string>This sets up mail, calendar and contacts for __EMAIL__ on mail.activescott.com.
+
+You will be asked for your app password three times — once each for mail, calendar and contacts. It is the same password every time. Use the app password created at admin.mail.activescott.com, not your sign-in password.</string>
+  </dict>
   <key>PayloadIdentifier</key>
   <string>com.activescott.mail.stalwart</string>
   <key>PayloadOrganization</key>
@@ -55,12 +78,19 @@
       <key>PayloadDisplayName</key>
       <string>Mail</string>
 
+      <!-- The address, not the hostname: this is the label in Settings and in Mail's mailbox
+           list, and every account on this server would otherwise read identically. -->
       <key>EmailAccountDescription</key>
-      <string>mail.activescott.com</string>
+      <string>__EMAIL__</string>
       <key>EmailAccountType</key>
       <string>EmailTypeIMAP</string>
       <key>EmailAddress</key>
       <string>__EMAIL__</string>
+      <!-- The display name on outgoing mail. Absent, iOS prompts for it at install and sends
+           with no display name if skipped. Falls back to the address when the setup page's
+           name field is left empty. -->
+      <key>EmailAccountName</key>
+      <string>__NAME__</string>
 
       <key>IncomingMailServerHostName</key>
       <string>mail.activescott.com</string>
@@ -96,6 +126,12 @@
       <false/>
       <key>SMIMEEnabled</key>
       <false/>
+      <!-- Defaults to false, which silently removes the Mail Drop option for this account.
+           Worth turning on precisely because this server is small: a large attachment would
+           otherwise be refused outright, and Mail Drop routes it through iCloud instead.
+           Requires the device to be signed into iCloud; harmless when it is not. -->
+      <key>allowMailDrop</key>
+      <true/>
     </dict>
 
     <dict>
@@ -111,7 +147,7 @@
       <string>Calendar</string>
 
       <key>CalDAVAccountDescription</key>
-      <string>mail.activescott.com</string>
+      <string>__EMAIL__</string>
       <key>CalDAVHostName</key>
       <string>mail.activescott.com</string>
       <key>CalDAVPort</key>
@@ -135,7 +171,7 @@
       <string>Contacts</string>
 
       <key>CardDAVAccountDescription</key>
-      <string>mail.activescott.com</string>
+      <string>__EMAIL__</string>
       <key>CardDAVHostName</key>
       <string>mail.activescott.com</string>
       <key>CardDAVPort</key>
