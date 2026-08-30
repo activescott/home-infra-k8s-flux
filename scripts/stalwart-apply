@@ -87,5 +87,14 @@ query)
   [ $# -ge 1 ] || usage
   run_pod query query "$@"
   ;;
+cli)
+  # Escape hatch: any stalwart-cli subcommand, e.g.
+  #   ./scripts/stalwart-apply cli describe MtaDeliverySchedule
+  # Read-only ones are safe; note create/update/delete bypass the plan and so bypass
+  # review. Prefer editing plan.ndjson.
+  shift
+  [ $# -ge 1 ] || usage
+  run_pod cli "$@"
+  ;;
 *) usage 0 ;;
 esac
