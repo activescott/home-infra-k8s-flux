@@ -9,8 +9,10 @@
 # it fixes drift rather than only acting at account-creation time. Run it on demand with
 # `./scripts/stalwart-apply sieve-reconcile`.
 #
-# The initContainer lists accounts with stalwart-cli (which needs sysAccountQuery) and the
-# main container talks ManageSieve as `<target>%automation`. Both use the same credential.
+# One container: it lists accounts over the management JMAP API and then talks ManageSieve
+# as `<target>%automation`, using the same credential for both. An earlier design had an
+# initContainer run `stalwart-cli query Account --json` -- that cannot work, because the CLI
+# writes to stdout and its image is distroless, so there is no shell to redirect with.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -31,26 +33,13 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 65532
-          initContainers:
-            - name: list-accounts
-              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
-              args: ["query", "Account", "--fields", "name,emailAddress", "--json"]
-              env:
-                - name: STALWART_URL
-                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
-              envFrom:
-                - secretRef:
-                    name: stalwart-automation-creds
-              volumeMounts:
-                - name: work
-                  mountPath: /work
-                - name: cache
-                  mountPath: /home/nonroot/.cache
           containers:
             - name: reconcile
               image: python:3.12-alpine
               command: ["python3", "/script/sieve-reconcile.py"]
               env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
                 - name: SIEVE_HOST
                   value: stalwart-sieve.email-stalwart.svc.cluster.local
                 # Accounts that never receive mail, so an archive copy is pointless.
@@ -60,8 +49,6 @@ spec:
                 - secretRef:
                     name: stalwart-automation-creds
               volumeMounts:
-                - name: work
-                  mountPath: /work
                 - name: script
                   mountPath: /script
                   readOnly: true
@@ -72,10 +59,6 @@ spec:
                 limits:
                   memory: 128Mi
           volumes:
-            - name: work
-              emptyDir: {}
-            - name: cache
-              emptyDir: {}
             - name: script
               configMap:
                 name: stalwart-sieve-reconcile-script

@@ -6,8 +6,10 @@ plan.ndjson. The only way in is to authenticate *as* the user, which is what the
 `automation` principal's `impersonate` permission is for: ManageSieve accepts a composite
 login `<target>%<impersonator>` with the impersonator's password.
 
-The account list comes from /work/accounts.json, written by an initContainer running
-`stalwart-cli query Account --json` with the same credentials.
+The account list is fetched over the management JMAP API with the same credentials. That
+used to be an initContainer running `stalwart-cli query Account --json`, which cannot work:
+the CLI writes to stdout and its image is distroless, so there is no shell to redirect with
+and no way to hand the output to the next container.
 
 SAFETY. This never overwrites a script somebody else wrote. An account whose active script
 is not ours is reported and skipped. The only writes are:
@@ -20,7 +22,11 @@ import json
 import os
 import socket
 import sys
+import urllib.request
 
+API_URL = os.environ.get(
+    "STALWART_URL", "http://stalwart-admin.email-stalwart.svc.cluster.local:8080"
+)
 HOST = os.environ.get("SIEVE_HOST", "stalwart-sieve.email-stalwart.svc.cluster.local")
 PORT = int(os.environ.get("SIEVE_PORT", "4190"))
 IMPERSONATOR = os.environ["STALWART_USER"]
@@ -167,16 +173,40 @@ def reconcile(address):
         sieve.close()
 
 
-def main():
-    with open("/work/accounts.json") as handle:
-        raw = json.load(handle)
+def fetch_accounts():
+    """List accounts over the management JMAP API.
 
-    # `stalwart-cli query --json` shape is not contractual, so accept the plausible forms
-    # rather than assuming one and failing obscurely at 03:00.
-    items = raw.get("items", raw) if isinstance(raw, dict) else raw
-    if not isinstance(items, list):
-        print("unexpected accounts.json shape: %r" % type(items).__name__, file=sys.stderr)
-        return 2
+    Shape taken from the CLI's own source rather than guessed: a Foo/query chained into a
+    Foo/get by a #ids back-reference, with Stalwart's own capability URN alongside core.
+    """
+    body = json.dumps({
+        "using": ["urn:ietf:params:jmap:core", "urn:stalwart:jmap"],
+        "methodCalls": [
+            ["Account/query", {}, "q"],
+            ["Account/get", {
+                "#ids": {"resultOf": "q", "name": "Account/query", "path": "/ids"},
+                "properties": ["name", "emailAddress"],
+            }, "g"],
+        ],
+    }).encode()
+    auth = base64.b64encode(
+        ("%s:%s" % (IMPERSONATOR, PASSWORD)).encode("utf-8")
+    ).decode("ascii")
+    req = urllib.request.Request(
+        API_URL.rstrip("/") + "/jmap",
+        data=body,
+        headers={"Content-Type": "application/json", "Authorization": "Basic " + auth},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        payload = json.load(resp)
+    for name, args, _tag in payload.get("methodResponses", []):
+        if name == "Account/get":
+            return args.get("list", [])
+    raise SieveError("no Account/get response: %s" % json.dumps(payload)[:300])
+
+
+def main():
+    items = fetch_accounts()
 
     addresses = []
     for item in items:
