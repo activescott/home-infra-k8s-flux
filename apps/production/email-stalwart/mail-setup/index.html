@@ -179,43 +179,31 @@
       Removing the profile later removes all three accounts with it.
     </p>
 
-    <h2>3. Two settings to change by hand</h2>
+    <h2>3. Deleting mail does not lose it</h2>
     <p>
-      The profile cannot set these — Apple&rsquo;s configuration profile format
-      has no key for either, so there is no way to ship them for you. They are
-      per account and per device, so repeat them on each phone, iPad and Mac.
+      Your device empties Trash on its own after about a week, and on an account
+      installed from a profile there is no setting to stop it &mdash; iOS does
+      not expose <em>Advanced</em> for profile-provisioned accounts at all. The
+      swipe action stays &ldquo;Trash&rdquo; too, for the same reason.
     </p>
     <p>
-      On iOS:
-      <strong
-        >Settings &rsaquo; Apps &rsaquo; Mail &rsaquo; Mail Accounts &rsaquo;
-        your account &rsaquo; Account &rsaquo; Advanced</strong
-      >. On older versions the path starts at
-      <strong>Settings &rsaquo; Mail &rsaquo; Accounts</strong>. On a Mac the
-      equivalents are under
-      <strong
-        >Mail &rsaquo; Settings &rsaquo; Accounts &rsaquo; Mailbox
-        Behaviours</strong
-      >.
+      That is fine here, because the server keeps the copy instead of relying on
+      the client. Every message delivered to you is filed into
+      <strong>Archive</strong> as well as the Inbox &mdash; not a second copy,
+      the same message in two places. Deleting it from the Inbox, and your
+      device later emptying the Trash, both just remove it from those mailboxes.
+      It stays in Archive.
     </p>
-    <ol>
-      <li>
-        <strong>Remove &rarr; Never.</strong> This is the important one. The
-        default is <em>After one week</em>, which means your device permanently
-        deletes anything sitting in Trash after seven days. The server never
-        does this on its own, and once the device does it the message is gone.
-      </li>
-      <li>
-        <strong>Move Discarded Messages Into &rarr; Archive Mailbox.</strong>
-        Swiping a message then archives it instead of trashing it, the way Gmail
-        accounts behave. Without this, Apple Mail defaults to the Deleted
-        mailbox for any non-Google account.
-      </li>
-    </ol>
     <p class="note">
-      Set the first one even if you skip the second. Archiving keeps mail out of
-      Trash, but only <em>Remove &rarr; Never</em> stops anything that does
-      reach Trash from being erased.
+      So the only way to actually destroy a message is to delete it out of
+      <strong>Archive</strong>. Everything else is reversible &mdash; go and
+      look in Archive, it will be there.
+    </p>
+    <p class="note">
+      On a Mac, where <em>Mail &rsaquo; Settings &rsaquo; Accounts &rsaquo;
+      Mailbox Behaviours</em> is available, you can set
+      <em>Move discarded messages into: Archive</em> if you prefer archiving to
+      trashing. It changes where mail goes first, not whether it survives.
     </p>
 
     <h2>Any other mail app</h2>
