@@ -122,9 +122,15 @@ spec:
               mountPath: /etc/stalwart-tls
               readOnly: true
       volumes:
+        # /etc/stalwart holds one file, config.json, naming the data store. It used to be a
+        # PVC written by the setup wizard on first boot, which made it the only piece of
+        # configuration that git did not describe — a rebuild would have recreated it by
+        # hand. It is now generated from stalwart-config/config.json and mounted read-only.
+        # Safe to keep read-only: Stalwart reads this file at startup and writes everything
+        # else into the data store.
         - name: config
-          persistentVolumeClaim:
-            claimName: stalwart-config
+          configMap:
+            name: stalwart-bootstrap-config
         - name: data
           persistentVolumeClaim:
             claimName: stalwart-data
