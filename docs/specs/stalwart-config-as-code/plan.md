@@ -226,15 +226,25 @@ Workflow for anything new: change it in the admin UI, `./scripts/stalwart-apply 
 - Minimum API-key permission set for the objects we manage. Currently `inherit` on the
   admin account, which is over-privileged; narrowing is a create-new-key-and-swap.
 - Whether a message in two mailboxes counts once or twice against quota.
-- Whether `include :global` is worth using at all, now that per-account activation is a
-  manual import either way.
+- Whether an `upsert` that omits `credentials` clears them. Never tested, because the only
+  safe moment to find out is against an account nobody depends on. Until it is, accounts
+  stay out of the routinely-applied plan and `accounts.ndjson` is bootstrap-only.
 
 Resolved 2026-08-29:
 
 - **`ActiveScriptId` is not settable through a plan.** `Account` has no script field, and
   per-account Sieve scripts live in the account's JMAP data rather than the config
   registry. Publishing a `SieveUserScript` and importing it per account is the supported
-  path — upstream describes it as "available for user imports".
+  path — upstream describes it as "available for user imports". **Superseded 2026-08-30**:
+  it is now automated instead, by impersonating over ManageSieve. See the reconciler
+  section below.
+- **Registry JMAP methods need an `x:` prefix.** `x:Account/query`, not `Account/query`;
+  `canonicalise_with_prefix` in the CLI's schema resolver. A bare name returns
+  `unknownMethod`, which points nowhere near the cause.
+- **`Account/User` is a view.** `Object/Variant` is the `create` CLI form; a plan names the
+  underlying object and selects the variant with `@type` inside the value.
+- **The CLI image has no shell.** `/bin/sh` is absent, so a container running it cannot
+  redirect output, pipe, or chain commands. Anything needing that has to happen elsewhere.
 - **A system Sieve script cannot file into a mailbox.** No `Event::FileInto` in
   `crates/smtp/src/scripts/event_loop.rs`; unhandled events return `NotSupported`.
 - **Nested map fields patch by JSON pointer and merge.**
@@ -248,10 +258,6 @@ Resolved 2026-08-29:
   for anything that must take effect.
 - **The CLI is CRUD-only** — `get`, `query`, `create`, `update`, `delete`, `describe`,
   `apply`, `snapshot`. No action verb, so `ReloadTlsCertificates` stays unreachable.
-
-Resolved: `apply` does **not** restart Stalwart or trigger a config reload, and Stalwart
-builds configuration at startup — so a restart is still required after applying anything
-that must take effect.
 
 ## Related
 
@@ -311,3 +317,66 @@ after a soak.
 The API key (server-generated), all passwords (write-only), and mailbox contents. Mail
 received during the window is retried by Google for days, and dual delivery means Gmail holds
 a copy regardless.
+
+## Per-account Sieve: the one thing a plan cannot declare
+
+`Account` has no script field and a user's scripts live in their own JMAP data, so
+`stalwart-cli` cannot set them and `plan.ndjson` cannot describe them. Left there, every new
+account is silently unprotected until somebody remembers to click — fine at two users, a
+latent data-loss bug at five.
+
+`stalwart-sieve-reconcile` closes it. A **daily** CronJob (the only one here that is not
+suspended, because the value is fixing drift rather than acting once at creation) lists
+accounts over JMAP and then talks ManageSieve as `<target>%<impersonator>` to set each
+account's active script.
+
+**It cannot destroy anyone's filters**, and that is enforced twice over:
+
+- The reconciler skips any account whose active script is not the one it manages. Its only
+  writes are installing ours where nothing is active, and updating our own script when its
+  body has drifted from git.
+- `automation` holds `sieveList/Get/Put/SetActive` but **not `sieveDeleteScript`**, and no
+  `sysAccountUpdate/Create/Destroy` or `sysAccountPassword*` at all. A bug in the logic
+  still cannot delete a script or touch an account.
+
+### Four things that were wrong first, all worth knowing
+
+1. **ManageSieve refuses authentication without TLS** — `NO (ENCRYPT-NEEDED) "Cannot
+authenticate over plain-text."` STARTTLS is mandatory, not hardening. Certificate
+   verification is deliberately off: one in-cluster hop to a ClusterIP, and the certificate
+   is for `mail.activescott.com` while we dial a `.svc.cluster.local` name, so it could
+   never validate as addressed.
+2. **Both halves of the composite login must be full addresses.** `scott%automation` is
+   rejected with `localhost.local` because the domain cannot be inferred, so the job builds
+   the login from `emailAddress`, never from `name`.
+3. **The initContainer design could not work.** It ran `stalwart-cli query Account --json`
+   and was expected to leave the result in a shared volume; the CLI writes to stdout and its
+   image is distroless. Replaced by a direct JMAP call from the reconciler.
+4. **ManageSieve is on its own ClusterIP**, not another port on the `stalwart` LoadBalancer
+   whose `:25` is forwarded from the internet. The listener runs without implicit TLS and
+   has no business being externally reachable.
+
+The debugging lesson worth carrying: when several genuinely different attempts fail
+_identically_, the cause is upstream of everything that differs between them. Four login
+forms — including a plain login with a password already proven good over HTTP — all failed
+the same way, which was the signal that the login form was never the problem.
+
+## What the rebuild actually found
+
+The rebuild was done to prove the plan complete. It proved it incomplete, four times, and
+every one of them was invisible by inspection:
+
+| Gap                                                                               | How it would have shown up                                                                          |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `defaultFolders` reduced to `archive` alone by a pointer patch into an absent map | Every future account created with no Inbox, Sent, Drafts, Trash or Junk                             |
+| `Account/User` used as a plan object                                              | Bootstrap fails — the only one that failed loudly                                                   |
+| **No stdout tracer**, so the server logged nothing at all                         | Every Loki-derived counter and `StalwartLogFeedDown` silently dead, on a server that looked healthy |
+| Stock file tracer cannot write in a container                                     | A warning on every boot, training the eye to skip startup warnings                                  |
+
+Final state: a server built only from git-committed configuration, snapshot-diffed against
+the pre-rebuild server at **11 object types, 11 identical, 0 differ**, with mail flowing and
+archiving automatically.
+
+Two things deliberately do not survive a rebuild and never will: **API key secrets** are
+server-generated and unreadable, and **passwords** are write-only. Both are re-set by hand
+afterwards, which is what the docs mean by filling in secrets through a separate channel.

@@ -5,13 +5,33 @@ rationale: [`docs/specs/stalwart-config-as-code/plan.md`](../../../../docs/specs
 
 ```bash
 ./scripts/stalwart-apply plan                      # dry run, sends nothing
-./scripts/stalwart-apply apply
+./scripts/stalwart-apply apply                     # config, via the API key
+./scripts/stalwart-apply sieve-reconcile           # sync every account's Sieve script
 ./scripts/stalwart-apply snapshot <Object> [...]   # derive plan JSON from live state
 ./scripts/stalwart-apply query <Object> --fields name,...
+./scripts/stalwart-apply cli <any-subcommand>      # escape hatch
+
+# Fresh server only, before an API key can exist:
+./scripts/stalwart-apply bootstrap                 # accounts, recovery-admin auth
+./scripts/stalwart-apply apply-recovery            # config, recovery-admin auth
+STALWART_APPLY_SECRET=stalwart-bootstrap-creds ./scripts/stalwart-apply query Account
 ```
 
 `plan` and `apply` run whatever plan is **deployed**, not what is in your working tree.
 Commit and let Flux reconcile first.
+
+## Rebuilding this server from scratch
+
+Runbook: [`docs/specs/stalwart-config-as-code/plan.md`](../../../../docs/specs/stalwart-config-as-code/plan.md).
+Done once, on 2026-08-30, and the resulting server snapshot-diffed against the pre-rebuild
+one at 11 object types, 11 identical, 0 differ.
+
+The chicken-and-egg to remember: an API key is a credential **on an account**, so a fresh
+store has no way to mint one. The first two applies authenticate as the recovery admin
+(`bootstrap`, then `apply-recovery`); everything after that uses the key.
+
+What never survives, by design: **API key secrets** (server-generated, unreadable) and
+**passwords** (write-only). Both are re-set by hand afterwards.
 
 ## Only deltas from Stalwart's defaults belong here
 
@@ -42,35 +62,49 @@ The `report` **virtual queue** is stock and would otherwise be omitted. It is he
 as the target of the `#vq-report` reference — `apply` resolves `#` references only against
 objects declared in the same plan. Upserting it is a no-op.
 
-## "All Mail" — what the plan does, and what it cannot
+## Archive-everything: what it does and how it is kept in place
 
-Goal: every delivered message also lands in the user's archive folder, named `All Mail`,
-so deleting from the Inbox — or a mail client emptying Trash after its default seven days —
-does not destroy it.
+Goal: every delivered message also lands in the account's archive mailbox, so deleting from
+the Inbox — or iOS emptying Trash after its default seven days — does not destroy it. That
+is not belt-and-braces: **iOS does not expose _Advanced_ at all for accounts installed from
+a configuration profile**, so `Remove → Never` cannot be set by the people this server is
+set up for. The server-side copy is the entire mechanism.
 
-**Automated here:**
+It costs no storage. `ingest.rs` takes a `Vec` of mailbox ids on a _single_ document, so
+this is one message in two mailboxes, verified live as `mailboxId = [5, 0]`. Deleting from
+the Inbox only untags one — `expunge.rs` destroys a message solely when
+`mailboxes.len() == 1`.
 
-- `Email` singleton, `defaultFolders/archive/name` → `All Mail`. New accounts get their
-  archive folder created with that name, still carrying the `\Archive` special-use role, so
-  Apple Mail's archive action and _Move Discarded Messages Into → Archive Mailbox_ target
-  it. Patched by JSON pointer, which **merges** — verified, all six default folders survive.
-- `SieveUserScript` `archive-all`, published server-wide.
+**Declared here:** `Email.defaultFolders` (archive named `Archive`) and the `archive-all`
+`SieveUserScript`.
 
-**Not automatable, and this was verified rather than assumed:**
+**Applied per account by `stalwart-sieve-reconcile`**, a daily CronJob, because per-account
+Sieve is the one thing the management API cannot reach — `Account` has no script field. It
+impersonates over ManageSieve as `<target>%<impersonator>`.
 
-- **A system Sieve script cannot do it.** Trusted MTA-stage scripts handle `Keep`,
-  `Discard`, `Reject`, `SendMessage` and `SetEnvelope`; there is no `Event::FileInto` in
-  `crates/smtp/src/scripts/event_loop.rs`, and unhandled events return `NotSupported`. They
-  run during the SMTP conversation, before any mailbox exists.
-- **Per-account activation is not in the management API.** `Account` has no script field,
-  and per-account Sieve scripts live in the account's JMAP data rather than the config
-  registry this CLI drives. `SieveUserScript` is described upstream as "a global Sieve
-  script available for user **imports**" — publish centrally, import per account.
+The script targets the archive by **special-use role**, not by name:
 
-So each account needs two manual steps, once: **rename its archive folder to `All Mail`**
-(existing accounts only; `defaultFolders` applies to new ones) and **import and activate
-`archive-all`**. An account that skips the second step is silently unprotected, which will
-matter at the fifth user rather than the second.
+```sieve
+fileinto :copy :specialuse "\\Archive" :create "Archive";
+```
+
+Name-matching would silently create a _second_ mailbox for anyone who renamed theirs, and
+start filing into that instead — a failure that looks like nothing at all.
+
+The spam branch is load-bearing, not cosmetic. Stalwart files spam to Junk at
+`ingest.rs:357` behind `mailbox_ids == [INBOX_ID]`, an **exact vector equality**, so any
+`fileinto` breaks it and spam would land in the Inbox. The script therefore makes the Junk
+decision itself, reproducing Stalwart's threshold exactly: `is_spam()` is
+`spam_percentage >= 50`, and `spam_status()` maps Ham→1, MaybeSpam(pct)→`((pct*10) as
+i64).clamp(2,9)`, Spam→10, Unknown→0 — so `spamtest >= 5` matches at every boundary. Spam
+is deliberately _not_ archived, so emptying Junk actually frees it.
+
+**Apple Mail displays it as "Archive" regardless of the server-side name**, because clients
+show special-use mailboxes under their own standard names. Marking it `\All` would let it
+show as "All Mail" the way Gmail does, but Stalwart's `SpecialUse` enum has no `All` variant.
+
+Still uncovered: **Sent**. `APPEND` has no Sieve path, so mail you compose lives in one
+mailbox only.
 
 ## Sieve scripts are validated on create
 
@@ -105,6 +139,22 @@ differs.
 
 `snapshot` emits exactly what `apply` consumes, with `#` references already wired, and
 refuses to emit a dangling reference — it will tell you which type to add to the selection.
+
+## Two exceptions to delta-only, both deliberate
+
+- **`Email.defaultFolders` declares all six folders**, not just the archive rename. A
+  JSON-pointer patch merges into an existing map but _creates_ one when nothing is stored —
+  and a fresh server stores nothing, since the folders come from code defaults. The pointer
+  patch therefore produced a map containing `archive` alone, which would have given every
+  future account no Inbox, Sent, Drafts, Trash or Junk. Silently: the apply succeeded and
+  the UI looked right.
+- **Both tracers are declared.** A fresh server has only the stock `Log` tracer writing to a
+  file, so nothing reaches stdout, nothing reaches Loki, and every log-derived alert is dead
+  while the server looks healthy and quiet. The stdout tracer is added and the file one
+  disabled — it cannot write anyway, because `/var/log/stalwart` does not exist in the image.
+
+Both were found by rebuilding, not by reading. Neither was visible in a diff of the running
+server against the plan, because the running server already had them.
 
 ## Rules
 
