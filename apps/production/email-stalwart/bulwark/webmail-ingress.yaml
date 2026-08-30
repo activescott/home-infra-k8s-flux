@@ -133,7 +133,39 @@ spec:
                 port:
                   number: 8080
 
-          # --- Bulwark: everything else.
+---
+# Bulwark's catch-all, deliberately in its own Ingress so it can carry an explicit priority.
+#
+# Traefik's DEFAULT router priority is the LENGTH OF THE RULE STRING, not how specific the path
+# is. That makes the obvious mental model wrong:
+#
+#   Path(`/api/auth`)  = 17  beats  PathPrefix(`/`) = 15   <- works
+#   Path(`/logo`)      = 13  loses to PathPrefix(`/`)      <- silently served by Bulwark
+#
+# Which is exactly what happened: every route above worked except /logo, and it failed by being
+# quietly answered by the wrong backend rather than by erroring. Relying on rule length means any
+# future path shorter than "PathPrefix(`/`)" is a latent bug.
+#
+# An explicit priority of 1 puts this router below every other rule on this host regardless of
+# length. It is on a separate Ingress because the annotation applies to every router an Ingress
+# produces -- putting it on the file above would demote the Stalwart routes too, which is the
+# opposite of the intent.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webmail-catchall-ingress
+  namespace: email-stalwart
+  annotations:
+    traefik.ingress.kubernetes.io/router.priority: "1"
+spec:
+  tls:
+    - hosts:
+        - mail.activescott.com
+      secretName: stalwart-tls
+  rules:
+    - host: mail.activescott.com
+      http:
+        paths:
           - path: /
             pathType: Prefix
             backend:
