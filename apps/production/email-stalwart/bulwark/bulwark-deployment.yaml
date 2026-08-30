@@ -104,6 +104,19 @@ spec:
               value: "true"
             - name: OAUTH_ISSUER_URL
               value: https://mail.activescott.com
+            # Bulwark refuses discovered endpoints that resolve to RFC-1918 or loopback
+            # addresses, as an SSRF guard. The hostAliases above make this issuer resolve to
+            # Traefik's ClusterIP, which is exactly that -- so discovery is rejected with
+            # "returned non-public or invalid endpoint URL" until this is set. Upstream
+            # documents the flag for precisely this split-DNS shape.
+            #
+            # What the guard is worth here: little. It protects against an attacker choosing
+            # the issuer, and the issuer is fixed in this file. ALLOW_CUSTOM_JMAP_ENDPOINT is
+            # off and JMAP_SERVERS is unset, so there is no path by which a request can steer
+            # server-side fetches at an address of its choosing. If either of those is ever
+            # enabled, this trade stops being free and should be revisited.
+            - name: OAUTH_ALLOW_PRIVATE_ENDPOINTS
+              value: "true"
             # Declared in stalwart-config/plan.ndjson as an OAuthClient. No client secret: the
             # server advertises PKCE S256 and an auth method of "none", so this is a public
             # client and there is no secret to hold, rotate or leak.
