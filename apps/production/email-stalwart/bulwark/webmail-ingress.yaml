@@ -105,6 +105,34 @@ spec:
                 port:
                   number: 8080
 
+          # --- Stalwart: what its login page itself calls.
+          #
+          # /login is server-rendered but not static -- its inline JS does fetch("/api/auth")
+          # to submit the credentials, and it loads /logo. Both were landing on Bulwark, so the
+          # page rendered, accepted a password, and then failed with "Temporary server failure"
+          # and an http 404 in the console. The page working is not evidence its backend is
+          # routed.
+          #
+          # EXACT, not a prefix, and the distinction is load-bearing: Bulwark's own API lives at
+          # /api/auth/sso/start, /api/auth/token, /api/auth/session and so on. It has no route
+          # at bare /api/auth -- everything under app/api/auth is a subdirectory -- so exactly
+          # one path can be handed to Stalwart without shadowing any of Bulwark's. A prefix rule
+          # here would take the whole OAuth client half of the flow with it.
+          - path: /api/auth
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+          - path: /logo
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+
           # --- Bulwark: everything else.
           - path: /
             pathType: Prefix
