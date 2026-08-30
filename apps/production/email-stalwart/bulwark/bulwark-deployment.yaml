@@ -117,6 +117,23 @@ spec:
             # enabled, this trade stops being free and should be revisited.
             - name: OAUTH_ALLOW_PRIVATE_ENDPOINTS
               value: "true"
+            # Bulwark's defaults are "openid email profile", which is the generic OIDC set and
+            # not what this server speaks. Stalwart advertises exactly:
+            #   openid, offline_access,
+            #   urn:ietf:params:oauth:scope:{mail,contacts,calendars}
+            # so "email" and "profile" are not supported, and -- the part that matters -- the
+            # mail scope was not being requested at all. A token without it is not obviously
+            # useless at the authorize step, which is how this would have shipped unnoticed:
+            # the login page renders, the redirect happens, and the failure only appears later
+            # as an empty or forbidden mailbox.
+            #
+            # offline_access is included so there is a refresh token; without it the session
+            # ends when the access token expires (OidcProvider.accessTokenExpiry, 1 hour).
+            #
+            # The email and preferred_username claims still arrive: they are in Stalwart's
+            # claims_supported and come with openid, not with a "profile" scope.
+            - name: OAUTH_SCOPES
+              value: openid offline_access urn:ietf:params:oauth:scope:mail urn:ietf:params:oauth:scope:contacts urn:ietf:params:oauth:scope:calendars
             # Declared in stalwart-config/plan.ndjson as an OAuthClient. No client secret: the
             # server advertises PKCE S256 and an auth method of "none", so this is a public
             # client and there is no secret to hold, rotate or leak.
