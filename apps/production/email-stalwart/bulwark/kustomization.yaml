@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - bulwark-pv.yaml
+  - bulwark-deployment.yaml
+  - bulwark-networkpolicy.yaml
+  - webmail-ingress.yaml
+namespace: email-stalwart
+# COMMENTED UNTIL THE SECRET EXISTS.
+#
+# secretGenerator fails the build when its `envs` file is missing, and that failure is not
+# local to this directory -- it takes down the whole `apps/production` kustomize build, and
+# with it every other app Flux reconciles from that tree. So this stays commented until
+# .env.secret.bulwark.encrypted is committed, and is uncommented in the same change.
+#
+# Until then this directory is also left out of ../kustomization.yaml, so nothing here is
+# deployed and the Deployment does not sit in prod CrashLooping on a Secret that is not there.
+#
+# secretGenerator:
+#   - name: bulwark-creds
+#     envs:
+#       - .env.secret.bulwark.encrypted

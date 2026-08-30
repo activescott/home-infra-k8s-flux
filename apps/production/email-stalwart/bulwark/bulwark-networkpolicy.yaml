@@ -1,0 +1,62 @@
+# Bulwark shares a namespace with the mail server (see the note in bulwark-deployment.yaml for
+# why), so the namespace boundary is doing none of the isolation work here. These two policies
+# are what replaces it.
+#
+# Egress is the one that matters. Bulwark is a five-month-old third-party app reachable from the
+# internet; if it is ever compromised, the interesting next move is reaching something else --
+# the other services in this namespace, the rest of the cluster, or an arbitrary host on the
+# internet. It genuinely needs exactly two destinations: DNS, and Stalwart's HTTP listener for
+# the server-side half of the OAuth flow (discovery and token exchange). Everything else is
+# denied, including the SMTP, IMAP and ManageSieve ports on that same pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bulwark-egress
+  namespace: email-stalwart
+spec:
+  podSelector:
+    matchLabels:
+      app: bulwark
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Stalwart's HTTP listener only. Not 25/465/587/993/4190 on the same pod.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: stalwart
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# Only Traefik may reach it. Nothing in the cluster has any business calling this app, and
+# leaving the port open to the whole namespace would let a compromise elsewhere use it as a
+# confused deputy against the mail server.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bulwark-ingress
+  namespace: email-stalwart
+spec:
+  podSelector:
+    matchLabels:
+      app: bulwark
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 3000
+          protocol: TCP

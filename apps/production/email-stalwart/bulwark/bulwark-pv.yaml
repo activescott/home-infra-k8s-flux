@@ -1,0 +1,46 @@
+# One volume, not four. The compose file upstream declares a named volume per state directory,
+# but the image declares no VOLUME instructions, so a single mount at /app/data covers all of
+# them. That is the opposite of the Stalwart PVs next door, where two mounts are mandatory
+# precisely because the image DOES declare VOLUME for both paths -- see stalwart-pv.yaml.
+#
+# Telemetry is deliberately not persisted. It is opt-in and left off, so /app/data/telemetry
+# stays empty; the upstream compose file mounts it only to preserve a consent choice we never
+# make.
+#
+# Under /mnt/thedatapool/app-data/, which is what puts it in the backup set -- the B2 include
+# list is an allowlist and /app-data/** is already on it. Note the offsite sync is currently
+# failing at the tail and copies live files rather than a snapshot (task #31), so being in the
+# include list is necessary but not yet sufficient.
+#
+# What is actually in here: encrypted per-user settings, the admin config, and admin runtime
+# state. No mail -- that lives in Stalwart. Losing this volume costs preferences and the admin
+# password hash, not messages.
+#
+# Retain, so deleting the PVC leaves the directory behind.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: email-webmail-prod-pv-data
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/app-data/bulwark/prod/data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bulwark-data
+  namespace: email-stalwart
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  volumeName: email-webmail-prod-pv-data
+  resources:
+    requests:
+      storage: 2Gi

@@ -1,0 +1,115 @@
+# The routes Phase 8 adds to mail.activescott.com. The rest of that hostname is in
+# ../mail-setup/mail-setup.yaml, which carries /setup, /robots.txt, /dav and the two DAV
+# .well-known paths; Traefik merges rules across Ingresses for the same host, and ranks routers
+# by rule specificity, so every narrow rule there and here beats the "/" catch-all below.
+#
+# Same TLS Secret as the other Ingress on this host. Two Secrets for one SNI name would be a
+# coin toss over which certificate gets served.
+#
+# WHY BULWARK CAN SAFELY OWN "/"
+#
+# The published image is built with NEXT_PUBLIC_LOCALE_PREFIX=always -- verified by running it,
+# not by reading the source, where the default is "never". Every page is therefore under a
+# locale segment: "/" redirects to "/en", and the login page is "/en/login", NOT "/login".
+# That is what leaves "/login" free for Stalwart's OAuth authorization endpoint. If a future
+# image is ever built with a different prefix mode, that collision comes back and the symptom
+# will be a login loop.
+#
+# Not locale-prefixed, and so genuinely at the root: /api/**, /_next/**, /sw.js. None of them
+# collide with anything Stalwart serves here.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: webmail-ingress
+  namespace: email-stalwart
+spec:
+  tls:
+    - hosts:
+        - mail.activescott.com
+      secretName: stalwart-tls
+  rules:
+    - host: mail.activescott.com
+      http:
+        paths:
+          # --- Stalwart: JMAP. The browser speaks it directly; this app has no JMAP proxy.
+          # Covers /jmap/session, /jmap/ws, /jmap/eventsource, /jmap/upload/... and
+          # /jmap/download/...
+          - path: /jmap
+            pathType: Prefix
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+          - path: /.well-known/jmap
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+
+          # --- Stalwart: OpenID Connect discovery.
+          - path: /.well-known/openid-configuration
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+          - path: /.well-known/oauth-authorization-server
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+
+          # --- Stalwart: the OAuth authorization endpoint, which is where the user actually
+          # authenticates. This is the one path whose ownership is not obvious; see the note
+          # about the locale prefix above.
+          - path: /login
+            pathType: Prefix
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+
+          # --- Stalwart: token exchange, userinfo and signing keys.
+          #
+          # Exact, deliberately, rather than a /auth prefix: Bulwark serves its own OAuth
+          # callback under /auth/callback (which 307s to /en/auth/callback), and a prefix rule
+          # would swallow it. Exact rules also leave /auth/register and /auth/device pointing at
+          # Bulwark, i.e. NOT reachable on Stalwart -- a second layer behind
+          # requireClientRegistration, which is already true.
+          - path: /auth/token
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+          - path: /auth/userinfo
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+          - path: /auth/jwks.json
+            pathType: Exact
+            backend:
+              service:
+                name: stalwart-admin
+                port:
+                  number: 8080
+
+          # --- Bulwark: everything else.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bulwark
+                port:
+                  number: 80

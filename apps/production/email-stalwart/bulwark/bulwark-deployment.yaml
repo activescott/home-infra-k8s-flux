@@ -1,0 +1,160 @@
+# Bulwark: JMAP webmail for the mailboxes on this server, at https://mail.activescott.com/.
+#
+# WHY THIS LIVES IN email-stalwart AND NOT email-webmail
+#
+# The plan said email-webmail. It cannot be, without adding a moving part that buys nothing.
+# TLS Secrets are namespaced and an Ingress can only reference a Secret and a backend Service in
+# its own namespace, so a webmail Ingress in another namespace could not use `stalwart-tls`. The
+# alternatives are all worse: a second cert-manager Certificate for the same hostname means two
+# Ingresses offering different Secrets for one SNI name; ExternalName backends need
+# `allowexternalnameservices` on Traefik; cross-namespace IngressRoute needs `allowCrossNamespace`.
+#
+# There is already precedent in this namespace for exactly this shape -- `mail-setup` is a
+# separate nginx Deployment sharing the hostname and the certificate. Bulwark is the same shape,
+# so it follows the same pattern rather than inventing a third one.
+#
+# The cost is that a compromise of this app lands in the mail server's namespace. That is
+# mitigated by automountServiceAccountToken: false (so no API access and no reading Secrets) and
+# by the NetworkPolicy alongside this file. It is a real cost, not a nil one, and it is the main
+# reason to keep the image digest pinned and the version deliberate -- this is a five-month-old
+# project on the public internet.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bulwark
+  namespace: email-stalwart
+spec:
+  replicas: 1
+  # The settings volume is ReadWriteOnce on a single-node cluster, and two replicas would both
+  # write the same admin state directory. Recreate rather than RollingUpdate so the old pod is
+  # gone before the new one mounts it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bulwark
+  template:
+    metadata:
+      labels:
+        app: bulwark
+    spec:
+      # Nothing here talks to the Kubernetes API. Without this the pod carries a mountable
+      # token, which is the first thing worth having if this app is ever compromised.
+      automountServiceAccountToken: false
+      securityContext:
+        # The image creates nextjs:nodejs as 1001:1001 and runs as it. hostPath volumes are NOT
+        # chowned by the kubelet, so /mnt/thedatapool/app-data/bulwark/prod/data must already be
+        # owned by 1001:1001 on the NAS -- see README.md. Getting this wrong shows up as the
+        # setup wizard being unable to write its config, which reads like a broken image.
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: bulwark
+          # Pinned to a digest, not a tag. This is an AGPL project created 2026-03-13 that
+          # releases roughly weekly and will hold every mailbox session; an upgrade should be a
+          # commit somebody reviewed, never something that happens because a pod restarted.
+          image: ghcr.io/bulwarkmail/webmail:1.9.2@sha256:0e8d1339277033b6569a76c6f8192396e6edd66fd917d64d9ed505e8b81dac6d
+          ports:
+            - name: http
+              containerPort: 3000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: APP_NAME
+              value: Mail
+            # The browser speaks JMAP to Stalwart directly -- this app has no JMAP proxy route.
+            # Same origin as the page itself, which is the whole reason Bulwark serves "/" on
+            # this hostname: cross-origin would put a CORS policy on Stalwart in the critical
+            # path of every request.
+            - name: JMAP_SERVER_URL
+              value: https://mail.activescott.com
+            # Password changes and Sieve filter editing from inside the client.
+            - name: STALWART_FEATURES
+              value: "true"
+            # OAUTH_ONLY hides the username/password form entirely. Basic JMAP auth cannot carry
+            # a second factor, so leaving it reachable would offer a weaker way in to accounts
+            # that have 2FA -- and would put app passwords back into browsers, which choosing
+            # OAuth was meant to avoid.
+            - name: OAUTH_ENABLED
+              value: "true"
+            - name: OAUTH_ONLY
+              value: "true"
+            - name: OAUTH_ISSUER_URL
+              value: https://mail.activescott.com
+            # Declared in stalwart-config/plan.ndjson as an OAuthClient. No client secret: the
+            # server advertises PKCE S256 and an auth method of "none", so this is a public
+            # client and there is no secret to hold, rotate or leak.
+            - name: OAUTH_CLIENT_ID
+              value: bulwark-webmail
+            # An environment variable always wins over the admin-managed value and hides the
+            # field from the setup wizard, which is what keeps this configuration in git rather
+            # than in a volume nobody can review.
+            - name: ADMIN_CONFIG_READONLY
+              value: "true"
+            - name: SETTINGS_SYNC_ENABLED
+              value: "true"
+            # Only Traefik sits in front. mail.activescott.com is a grey-cloud (DNS-only) record
+            # -- it has to be, because Cloudflare's proxy does not carry :25, :465 or :993 -- so
+            # there is no second proxy appending to X-Forwarded-For. Set this too high and the
+            # app trusts a client-supplied address as the real one.
+            - name: TRUSTED_PROXY_DEPTH
+              value: "1"
+          # SESSION_SECRET encrypts remember-me sessions and synced settings; ADMIN_PASSWORD
+          # gates the admin dashboard. Both from SOPS -- see env.secret.bulwark.example.
+          envFrom:
+            - secretRef:
+                name: bulwark-creds
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            # Next.js writes both at runtime and the root filesystem is read-only. If this pod
+            # ever crash-loops on a permissions error, these are the first thing to widen --
+            # readOnlyRootFilesystem is the setting most likely to need a third path.
+            - name: cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: bulwark-data
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bulwark
+  namespace: email-stalwart
+spec:
+  selector:
+    app: bulwark
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
