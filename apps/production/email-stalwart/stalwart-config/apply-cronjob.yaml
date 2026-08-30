@@ -1,15 +1,17 @@
-# Two suspended CronJobs, identical except for `--dry-run`. They never fire on a schedule
-# — the schedule is 31 February, which does not exist — and exist only so that a Job can be
-# materialised from them on demand:
+# Four suspended CronJobs. They never fire on a schedule — 31 February does not exist — and
+# exist only so a Job can be materialised from them on demand:
 #
-#   ./scripts/stalwart-apply plan     # dry run, changes nothing
-#   ./scripts/stalwart-apply apply
+#   ./scripts/stalwart-apply plan            # dry run, changes nothing
+#   ./scripts/stalwart-apply apply           # routine: config, authenticated by API key
+#   ./scripts/stalwart-apply bootstrap       # fresh server: accounts, recovery-admin auth
+#   ./scripts/stalwart-apply apply-recovery  # fresh server: config, recovery-admin auth
 #
-# Why a suspended CronJob rather than a Job: a Job's `spec.template` is immutable, so every
+# Why suspended CronJobs rather than Jobs: a Job's `spec.template` is immutable, so every
 # edit to the plan would make Flux fail to patch it. A CronJob is mutable, Flux keeps it
 # current, and `kubectl create job --from=cronjob/...` produces a fresh Job per run.
 #
-# The container takes plain args and needs no shell, because the image may not have one.
+# The containers take plain args and need no shell, because the image may not have one.
+#
 # Bootstrap only. Applies accounts.ndjson to a FRESH server, authenticating as the recovery
 # admin with basic auth rather than an API key — a key is a credential on an account, and a
 # fresh server has no accounts yet. Everything after this step uses the API key.
@@ -141,6 +143,59 @@ spec:
                     secretKeyRef:
                       name: stalwart-cli-creds
                       key: STALWART_TOKEN
+              volumeMounts:
+                - name: plans
+                  mountPath: /plans
+                  readOnly: true
+                - name: cache
+                  mountPath: /home/nonroot/.cache
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+          volumes:
+            - name: plans
+              configMap:
+                name: stalwart-config-plans
+            - name: cache
+              emptyDir: {}
+---
+# Same plan as stalwart-config-apply, but authenticating as the recovery admin instead of the
+# API key. Only needed on a freshly rebuilt server: an API key is a credential attached to an
+# account, so between "empty store" and "a human has minted a key" there is a window where the
+# normal apply cannot authenticate at all. Without this the rebuild stalls at a configuration-
+# less server until someone logs in.
+#
+# Prefer stalwart-config-apply everywhere else — it uses a credential that structurally cannot
+# touch mail, whereas this one can.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stalwart-config-apply-recovery
+spec:
+  schedule: "0 0 31 2 *"
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+          containers:
+            - name: stalwart-cli
+              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+              args: ["apply", "--file", "/plans/plan.ndjson"]
+              env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+              envFrom:
+                - secretRef:
+                    name: stalwart-bootstrap-creds
               volumeMounts:
                 - name: plans
                   mountPath: /plans

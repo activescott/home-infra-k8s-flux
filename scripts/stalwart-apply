@@ -4,6 +4,7 @@
 #   ./scripts/stalwart-apply plan            # dry run, sends nothing to the server
 #   ./scripts/stalwart-apply apply           # apply the plan
 #   ./scripts/stalwart-apply bootstrap       # FRESH SERVER ONLY: create accounts
+#   ./scripts/stalwart-apply apply-recovery  # FRESH SERVER ONLY: apply config pre-API-key
 #   ./scripts/stalwart-apply snapshot <Object> [<Object>...]
 #   ./scripts/stalwart-apply query <Object> [fields]
 #
@@ -18,6 +19,11 @@ set -euo pipefail
 
 context=nas
 namespace=email-stalwart
+# Which Secret supplies credentials to the ad-hoc read commands. Defaults to the API key.
+# Override with the recovery admin when no API key exists — immediately after a rebuild, for
+# example, since an API key is a credential on an account and the store starts empty:
+#   STALWART_APPLY_SECRET=stalwart-bootstrap-creds ./scripts/stalwart-apply query Account
+secret=${STALWART_APPLY_SECRET:-stalwart-cli-creds}
 image=ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
 url=http://stalwart-admin.email-stalwart.svc.cluster.local:8080
 
@@ -62,14 +68,14 @@ run_pod() {
   # argument containing a quote — e.g. --field 'permissions={"@type":"Replace"}' arrived
   # as broken JSON and the server rejected it as "Invalid JSON Patch", which looks like a
   # schema error rather than a quoting bug.
-  overrides=$(NAME="$name" IMAGE="$image" URL="$url" python3 -c '
+  overrides=$(NAME="$name" IMAGE="$image" URL="$url" SECRET="$secret" python3 -c '
 import json, os, sys
 print(json.dumps({"spec": {"containers": [{
     "name": os.environ["NAME"],
     "image": os.environ["IMAGE"],
     "args": sys.argv[1:],
     "env": [{"name": "STALWART_URL", "value": os.environ["URL"]}],
-    "envFrom": [{"secretRef": {"name": "stalwart-cli-creds"}}],
+    "envFrom": [{"secretRef": {"name": os.environ["SECRET"]}}],
 }]}}))
 ' "$@")
 
@@ -81,6 +87,11 @@ print(json.dumps({"spec": {"containers": [{
 case "${1:-}" in
 plan) run_job stalwart-config-plan ;;
 apply) run_job stalwart-config-apply ;;
+apply-recovery)
+  # Applies the same plan as `apply`, but as the recovery admin. Only for the window on a
+  # freshly rebuilt server between an empty store and a human minting an API key.
+  run_job stalwart-config-apply-recovery
+  ;;
 bootstrap)
   # FRESH SERVERS ONLY. Creates the admin and automation accounts, authenticating as the
   # recovery admin because no API key can exist yet. Running it against a populated server
