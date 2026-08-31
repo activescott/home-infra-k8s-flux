@@ -255,18 +255,27 @@ as those addresses come and go.
 
 **Acceptance is not delivery — a second, separate bug.** `allowRelaying` and `relay-guard` only
 govern whether Stalwart accepts a `@willeke.com` RCPT; they say nothing about where the message
-goes afterward. That's `MtaOutboundStrategy.route` (see the main `README.md`'s "Sending"
-section), and its condition was still the stock `is_local_domain(rcpt_domain)` — true for the
-whole domain, mailbox or not. First deploy of `allowRelaying: true` fixed the client-side
-`Mailbox does not exist` rejection, then immediately produced a *different* failure: the message
-was accepted, queued, and then Stalwart's own `local` delivery queue bounced it right back with
-a DSN, because `micah@willeke.com` genuinely isn't a local mailbox. Confirmed in the queue log —
-`queueName = "local"` for `micah@willeke.com` while the other three recipients went out
-`queueName = "remote"` via `smtp-relay.gmail.com` in the same delivery attempt. The route
-condition now also checks `willeke-local-mailboxes` — the same list `relay-guard` uses — so
-`'local'` only fires for addresses that are real mailboxes here; the two mechanisms guard the
-same set for two different reasons (RCPT-time relay-abuse vs. outbound routing) but share one
-source of truth instead of drifting.
+goes afterward. That's `MtaOutboundStrategy` (see the main `README.md`'s "Sending" section), and
+**two** of its fields were still the stock `is_local_domain(rcpt_domain)` — true for the whole
+domain, mailbox or not:
+
+- **`schedule`** buckets a message into a delivery queue *before* any relay is picked — its
+  possible outputs are `'local'` / `'dsn'` / `'report'` / else `'remote'`. This is what actually
+  decides whether a message gets local JMAP-store delivery attempted at all.
+- **`route`** then picks the next hop *within* whichever bucket `schedule` chose — `'local'`
+  (a reserved pseudo-route, not a real `MtaRoute`) or a named route like
+  `google-willeke-com-relay`.
+
+First deploy fixed only `route`, on the assumption it gated local-vs-remote. It didn't: the next
+resend was accepted at RCPT, queued, and then bounced right back with a DSN, because `schedule`
+still filed `micah@willeke.com` into the `local` queue and nothing ever consulted `route` for it.
+Confirmed in the queue log by the field that actually matters — `queueName = "local"` for
+`micah@willeke.com` versus `queueName = "remote"` for the other three recipients in the same
+delivery attempt, a vocabulary that belongs to `schedule`, not `route`. Both fields' `match`
+conditions now also check `willeke-local-mailboxes` — the same list `relay-guard` uses — so
+`'local'` only fires for addresses that are real mailboxes here; three mechanisms (RCPT-time
+relay-abuse, queue bucketing, next-hop selection) guard the same set for three different reasons,
+sharing one source of truth instead of drifting three ways.
 
 ## Rules
 

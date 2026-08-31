@@ -319,13 +319,21 @@ The stock condition was `is_local_domain(rcpt_domain)` alone, which routes **eve
 `@willeke.com` address to `'local'` — the whole domain is local, not just
 `scott@willeke.com`. First shipped that way 2026-08-31 and it broke a real send: the RCPT
 stage accepted `micah@willeke.com` fine (see `stalwart-config/README.md`'s "Split-delivery
-relay" section for that half), but delivery then tried the `local` route anyway, found no
-such mailbox, and bounced with a DSN back to Scott instead of the immediate client-side
-rejection the first bug produced — same underlying cause, different symptom, one fix
-missed the other. The condition now also checks `willeke-local-mailboxes` (the same
-`MemoryLookupKey` list the RCPT-stage guard uses), so `'local'` only fires for addresses
-that are real mailboxes on this server; every other `@willeke.com` address falls to
-`else` and goes out through the smarthost like any other domain.
+relay" section for that half), but the message still bounced with a DSN back to Scott
+instead of the immediate client-side rejection the first bug produced.
+
+**`route` alone wasn't enough — `MtaOutboundStrategy.schedule` gates local-vs-remote before
+`route` is ever consulted.** `schedule` buckets a message into a queue (`'local'` / `'dsn'` /
+`'report'` / else `'remote'`) that determines whether local JMAP-store delivery is attempted
+at all; `route` only picks the next hop *inside* whatever bucket `schedule` chose. Confirmed
+from the queue log by which field's vocabulary actually appeared: `queueName = "local"` for
+`micah@willeke.com`, `queueName = "remote"` for the other three recipients in the same
+delivery attempt — `"remote"` isn't a value `route` ever produces (its else-value is the named
+route `google-willeke-com-relay`), only `schedule`'s. Both `schedule` and `route` now carry the
+same `&& key_exists('willeke-local-mailboxes', to_lowercase(rcpt))` condition, so `'local'`
+only fires — in either field — for addresses that are real mailboxes on this server; every
+other `@willeke.com` address falls to `else` and goes out through the smarthost like any other
+domain.
 
 The value is the route's `name`, and the inner single quotes are part of the expression syntax —
 it is a string literal inside a string. A name that does not resolve to a route is not an error:
