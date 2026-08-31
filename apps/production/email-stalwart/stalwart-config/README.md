@@ -213,33 +213,46 @@ send as itself, not who's allowed to relay through Stalwart or who the recipient
 spammer using their own legitimately-authenticated domain sails through all three while
 abusing the relay.
 
-**The fix: gate the relay on authentication, not on an address allowlist.** The
+**The fix: gate the relay on authentication, not on a family-address allowlist.** The
 `relay-guard` `SieveSystemScript`, wired via `MtaStageRcpt.script`, rejects any RCPT for
-`willeke.com` where the address is not a real local account/alias **and** the session is
-unauthenticated:
+`willeke.com` where the address is not one of this server's own real mailboxes **and** the
+session is unauthenticated:
 
 ```sieve
 if envelope :domain :is "to" "willeke.com" {
-    if eval "!is_local_address(envelope.to) && is_empty(env.authenticated_as)" {
+    if eval "!key_exists('willeke-local-mailboxes', to_lowercase(envelope.to)) && is_empty(env.authenticated_as)" {
         reject "550 5.7.1 Relaying denied";
     }
 }
 ```
 
 (`eval` runs in the Sieve `env.*`/`envelope.*` namespace, not the bare `rcpt`/`authenticated_as`
-names used by `MtaStageRcpt`'s own JSON `Expression` fields — different context, same server. Cost
-one failed `apply` to learn: `Invalid variable or function name "rcpt_domain"`.)
+names used by `MtaStageRcpt`'s own JSON `Expression` fields — different context, same server. Two
+failed `apply`s to learn this the hard way: `Invalid variable or function name "rcpt_domain"`,
+then `"is_local_address"`. The latter is real, but only in the *other* expression engine —
+`stalw.art/docs/sieve/reference` lists Sieve's own function set, which has `is_local_domain` but
+no address-level equivalent. `key_exists` against a `MemoryLookupKey` list is the Sieve-native way
+to do a membership check that isn't baked into the script text.)
 
-This works because Stalwart's own default `MtaStageAuth` policy already splits the two
-paths that matter here: SASL AUTH is **disabled on port 25** (`require` defaults to
-`local_port != 25`), so `authenticated_as` is always empty there — covering both Google's
-dual-delivery copy (unauthenticated by nature, but `is_local_address` covers
-`scott@willeke.com` so it's unaffected) and anonymous internet senders (rejected, since
-they're neither local nor authenticated). Scott's own clients authenticate on the
-submission port (465, the app-password prompt in the mobile config profile), so
-`authenticated_as` is always non-empty there, the rule never fires, and the RCPT falls
-through to `allowRelaying` → the Google relay — for *any* `@willeke.com` address, with no
-per-recipient allowlist to maintain as family addresses come and go.
+**`willeke-local-mailboxes`** is a `MemoryLookupKey` list — "small, slow-changing set, consulted
+from Sieve filters," per Stalwart's own description of the feature. Today it holds one record,
+`scott@willeke.com`. **Provisioning a second real mailbox on this domain means adding a matching
+`MemoryLookupKey` record in the same namespace — the Sieve script itself never needs to change
+again.** Forgetting that step doesn't silently misbehave either: the new mailbox would just keep
+getting `550 Relaying denied` from anonymous senders (including Google's dual-delivery, if ever
+extended to it) until the record is added, which is a loud, obvious failure rather than a subtle
+one.
+
+This works because Stalwart's own default `MtaStageAuth` policy already splits the two paths
+that matter here: SASL AUTH is **disabled on port 25** (`require` defaults to `local_port !=
+25`), so `authenticated_as` is always empty there — covering both Google's dual-delivery copy
+(unauthenticated by nature, but addressed to `scott@willeke.com`, which is in the list, so it's
+unaffected) and anonymous internet senders (rejected, since they're neither local nor
+authenticated). Scott's own clients authenticate on the submission port (465, the app-password
+prompt in the mobile config profile), so `authenticated_as` is always non-empty there, the rule
+never fires, and the RCPT falls through to `allowRelaying` → the Google relay — for *any*
+`@willeke.com` address, with no per-*family*-recipient allowlist to maintain as those addresses
+come and go.
 
 ## Rules
 
