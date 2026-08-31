@@ -250,9 +250,23 @@ that matter here: SASL AUTH is **disabled on port 25** (`require` defaults to `l
 unaffected) and anonymous internet senders (rejected, since they're neither local nor
 authenticated). Scott's own clients authenticate on the submission port (465, the app-password
 prompt in the mobile config profile), so `authenticated_as` is always non-empty there, the rule
-never fires, and the RCPT falls through to `allowRelaying` → the Google relay — for *any*
-`@willeke.com` address, with no per-*family*-recipient allowlist to maintain as those addresses
-come and go.
+never fires, and the RCPT is *accepted* — with no per-*family*-recipient allowlist to maintain
+as those addresses come and go.
+
+**Acceptance is not delivery — a second, separate bug.** `allowRelaying` and `relay-guard` only
+govern whether Stalwart accepts a `@willeke.com` RCPT; they say nothing about where the message
+goes afterward. That's `MtaOutboundStrategy.route` (see the main `README.md`'s "Sending"
+section), and its condition was still the stock `is_local_domain(rcpt_domain)` — true for the
+whole domain, mailbox or not. First deploy of `allowRelaying: true` fixed the client-side
+`Mailbox does not exist` rejection, then immediately produced a *different* failure: the message
+was accepted, queued, and then Stalwart's own `local` delivery queue bounced it right back with
+a DSN, because `micah@willeke.com` genuinely isn't a local mailbox. Confirmed in the queue log —
+`queueName = "local"` for `micah@willeke.com` while the other three recipients went out
+`queueName = "remote"` via `smtp-relay.gmail.com` in the same delivery attempt. The route
+condition now also checks `willeke-local-mailboxes` — the same list `relay-guard` uses — so
+`'local'` only fires for addresses that are real mailboxes here; the two mechanisms guard the
+same set for two different reasons (RCPT-time relay-abuse vs. outbound routing) but share one
+source of truth instead of drifting.
 
 ## Rules
 

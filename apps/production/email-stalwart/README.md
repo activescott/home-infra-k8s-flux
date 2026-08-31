@@ -298,18 +298,27 @@ _unauthenticated_ relay instead of erroring.
 }
 ```
 
-Only `else` changes, from `'mx'` to `'google-willeke-com-relay'`. Local recipients keep hitting
-the `local` route, so inbound dual delivery is unaffected; everything else goes to the smarthost
-instead of being handed to a recipient MX that this host cannot reach anyway.
+Both `match.0.if` and `else` are overridden from the shipped default, and the live plan (not
+click-ops — `stalwart-config/plan.ndjson`) is now:
 
-**"Local recipients" means every `@willeke.com` address, not just `scott@willeke.com`** — this
-strategy branches on `is_local_domain(rcpt_domain)`, and the whole domain is local. That is what
-caused the `micah@willeke.com` bounce this section doesn't cover: `willeke.com` siblings never
-even reach this outbound-routing decision, because Stalwart's RCPT stage rejects them as unknown
-local recipients before a route is ever chosen. Fixing that — and doing it without opening
-Stalwart up as an open relay for the domain — is `stalwart-config/README.md`'s "Split-delivery
-relay for willeke.com family addresses" section; `Domain.allowRelaying` and the `relay-guard`
-Sieve script live there, in git, not as click-ops.
+```json
+{
+  "match": [{ "if": "is_local_domain(rcpt_domain) && key_exists('willeke-local-mailboxes', to_lowercase(rcpt))", "then": "'local'" }],
+  "else": "'google-willeke-com-relay'"
+}
+```
+
+The stock condition was `is_local_domain(rcpt_domain)` alone, which routes **every**
+`@willeke.com` address to `'local'` — the whole domain is local, not just
+`scott@willeke.com`. First shipped that way 2026-08-31 and it broke a real send: the RCPT
+stage accepted `micah@willeke.com` fine (see `stalwart-config/README.md`'s "Split-delivery
+relay" section for that half), but delivery then tried the `local` route anyway, found no
+such mailbox, and bounced with a DSN back to Scott instead of the immediate client-side
+rejection the first bug produced — same underlying cause, different symptom, one fix
+missed the other. The condition now also checks `willeke-local-mailboxes` (the same
+`MemoryLookupKey` list the RCPT-stage guard uses), so `'local'` only fires for addresses
+that are real mailboxes on this server; every other `@willeke.com` address falls to
+`else` and goes out through the smarthost like any other domain.
 
 The value is the route's `name`, and the inner single quotes are part of the expression syntax —
 it is a string literal inside a string. A name that does not resolve to a route is not an error:
