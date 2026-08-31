@@ -219,10 +219,16 @@ abusing the relay.
 unauthenticated:
 
 ```sieve
-if eval "rcpt_domain == 'willeke.com' && !is_local_address(rcpt) && is_empty(authenticated_as)" {
-    reject "550 5.7.1 Relaying denied";
+if envelope :domain :is "to" "willeke.com" {
+    if eval "!is_local_address(envelope.to) && is_empty(env.authenticated_as)" {
+        reject "550 5.7.1 Relaying denied";
+    }
 }
 ```
+
+(`eval` runs in the Sieve `env.*`/`envelope.*` namespace, not the bare `rcpt`/`authenticated_as`
+names used by `MtaStageRcpt`'s own JSON `Expression` fields — different context, same server. Cost
+one failed `apply` to learn: `Invalid variable or function name "rcpt_domain"`.)
 
 This works because Stalwart's own default `MtaStageAuth` policy already splits the two
 paths that matter here: SASL AUTH is **disabled on port 25** (`require` defaults to
