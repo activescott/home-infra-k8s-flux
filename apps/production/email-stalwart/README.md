@@ -302,6 +302,15 @@ Only `else` changes, from `'mx'` to `'google-willeke-com-relay'`. Local recipien
 the `local` route, so inbound dual delivery is unaffected; everything else goes to the smarthost
 instead of being handed to a recipient MX that this host cannot reach anyway.
 
+**"Local recipients" means every `@willeke.com` address, not just `scott@willeke.com`** — this
+strategy branches on `is_local_domain(rcpt_domain)`, and the whole domain is local. That is what
+caused the `micah@willeke.com` bounce this section doesn't cover: `willeke.com` siblings never
+even reach this outbound-routing decision, because Stalwart's RCPT stage rejects them as unknown
+local recipients before a route is ever chosen. Fixing that — and doing it without opening
+Stalwart up as an open relay for the domain — is `stalwart-config/README.md`'s "Split-delivery
+relay for willeke.com family addresses" section; `Domain.allowRelaying` and the `relay-guard`
+Sieve script live there, in git, not as click-ops.
+
 The value is the route's `name`, and the inner single quotes are part of the expression syntax —
 it is a string literal inside a string. A name that does not resolve to a route is not an error:
 delivery falls back, so mail keeps attempting direct MX and expiring, which looks identical to

@@ -181,6 +181,60 @@ It stayed hidden because Phase 8's verification exercised webmail login, where t
 against one client.** After changing anything on `OidcProvider`, log in through every UI that
 speaks OIDC to this server, not just the one the change was for.
 
+## Split-delivery relay for willeke.com family addresses
+
+`willeke.com` is a shared family domain: `scott@willeke.com` is the only real mailbox on
+this server, but Scott routinely sends to other `@willeke.com` addresses (his dad,
+stepmom, wife, Micah's mailing list) that only exist on Google Workspace, the domain's
+actual MX. Discovered 2026-08-31: Mail.app bounced a send to `micah@willeke.com` with
+`Mailbox does not exist`, straight from Stalwart, before the message ever reached Google.
+
+**Root cause.** `Domain.allowRelaying` (default `false`) governs what happens when a RCPT
+address is in a domain Stalwart hosts (`willeke.com`) but doesn't resolve to a local
+account. `false` means "reject outright" — correct for a domain Stalwart fully owns, wrong
+here, because Stalwart deliberately owns only one mailbox on a domain Google is
+authoritative for. The `google-willeke-com-relay` `MtaRoute` + `MtaOutboundStrategy
+route/else` above already exist to handle exactly this kind of address, via
+`smtp-relay.gmail.com` — but `route/else` only fires for domains Stalwart does *not*
+consider local, so willeke.com siblings never reached it. `allowRelaying: true` is what
+routes them there instead of rejecting.
+
+**Why `allowRelaying: true` alone would be unsafe.** It has no authentication condition —
+unlike the *other* `allowRelaying` field (`MtaStageRcpt.allowRelaying`, for domains
+Stalwart doesn't host at all), which defaults to `!is_empty(authenticated_as)`. Port 25 is
+internet-reachable with no SMTP-level IP restriction (it has to be — that's how Google's
+dual-delivery copy of Scott's own mail arrives). Flipping the domain flag alone would let
+any anonymous sender on the internet `RCPT TO` a made-up `@willeke.com` address and have
+Stalwart relay it out through `smtp-relay.gmail.com` using Scott's own smart-host
+credentials — an open relay scoped to this domain, risking Google flagging/suspending that
+relay account and delivering spam to real family mailboxes. DMARC/SPF/DKIM verification
+does not cover this: those validate whether a *sender's claimed domain* is authorized to
+send as itself, not who's allowed to relay through Stalwart or who the recipient is. A
+spammer using their own legitimately-authenticated domain sails through all three while
+abusing the relay.
+
+**The fix: gate the relay on authentication, not on an address allowlist.** The
+`relay-guard` `SieveSystemScript`, wired via `MtaStageRcpt.script`, rejects any RCPT for
+`willeke.com` where the address is not a real local account/alias **and** the session is
+unauthenticated:
+
+```sieve
+if eval "rcpt_domain == 'willeke.com' && !is_local_address(rcpt) && is_empty(authenticated_as)" {
+    reject "550 5.7.1 Relaying denied";
+}
+```
+
+This works because Stalwart's own default `MtaStageAuth` policy already splits the two
+paths that matter here: SASL AUTH is **disabled on port 25** (`require` defaults to
+`local_port != 25`), so `authenticated_as` is always empty there — covering both Google's
+dual-delivery copy (unauthenticated by nature, but `is_local_address` covers
+`scott@willeke.com` so it's unaffected) and anonymous internet senders (rejected, since
+they're neither local nor authenticated). Scott's own clients authenticate on the
+submission port (465, the app-password prompt in the mobile config profile), so
+`authenticated_as` is always non-empty there, the rule never fires, and the RCPT falls
+through to `allowRelaying` → the Google relay — for *any* `@willeke.com` address, with no
+per-recipient allowlist to maintain as family addresses come and go.
+
 ## Rules
 
 - **`upsert` only.** Never `reconcile` (destroys every object of a type the plan does not
