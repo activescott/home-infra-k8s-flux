@@ -173,6 +173,10 @@ against an identifier Stalwart derives from the alarm rather than from `$.uid`. 
 derivation is **not** established — worth pinning down before assuming it cannot affect anything
 larger.
 
+The same three failed again on a later export **into an empty calendar**, which narrows it: the
+collision is _within a single export run_, not against pre-existing server state. The first event
+carrying a reused alarm UID is created; every later one presenting the same UID is rejected.
+
 Scott declined two of them (duplicate "Family Meeting & Dinner" weekly series from 2020, the
 usual artifact of re-creating rather than editing a recurrence). The third, a yearly all-day
 "Wedding Anniversary", was replaced rather than repaired: the Takeout series started **2018**,
@@ -180,8 +184,47 @@ ten years after the actual date. A corrected row was inserted into the archive w
 `uuidgen` UID, `start` `2008-10-11`, and `iCalendar`/`alerts` removed so nothing could carry the
 colliding identifier, then exported — `created=1`.
 
-Final state, read back from the server: **`Calendar 0 create / 1 matched`,
-`CalendarEvent 3 create / 2961 matched`.** The outstanding 3 are the declined ones.
+### Consolidating onto one calendar — the default cannot be deleted
+
+The import created a **second** calendar (`SW gCal`) alongside the account's stock
+`Stalwart Calendar (scott@willeke.com)`. The obvious fix — delete the stock one, keep the
+import — is not available:
+
+```
+DELETE /dav/cal/<account>/default/  →  403
+<A:default-calendar-needed/>
+```
+
+So it had to go the other way: the **imported** collection is the disposable one, and its objects
+belong in `default`.
+
+What made that cheap is that vandelay's `sync_id_jmap` / `sync_state_jmap` tables are **empty** —
+it is not pinned to the collection it created. It resolves the target calendar **by display
+name**, so:
+
+1. rename `default` to the archive's calendar name (`SW gCal`);
+2. `DELETE` the imported collection, so its events stop matching by content;
+3. re-export — `Calendar 0 create / 1 matched`, `CalendarEvent 2964 create / 0 matched`;
+4. **rename `default` last**, to `Stalwart (scott@willeke.com)`.
+
+Order matters: renaming before step 3 makes the name no longer match and vandelay creates a third
+calendar. Nothing re-creates it afterwards, because 9e exports `--objects mailbox,email` and
+never touches calendars.
+
+Final state, read back from the server: **one calendar**,
+`/dav/cal/scott%40willeke.com/default/` named `Stalwart (scott@willeke.com)`, holding
+**2,961 events**, enumerating without a `507`. The outstanding 3 are the declined ones.
+
+### `WebDav.maxResults` had to be raised before clients could see the calendar
+
+2,961 events in one collection exceeded the stock DAV cap of 2000, so every enumeration came back
+truncated with `507` + `<D:number-of-matches-within-limits/>`. Raised to **4000** in
+`plan.ndjson` (`7ff6473`), applied, and Stalwart restarted — it builds configuration at startup,
+so `apply` alone would not have taken effect.
+
+Verified after: `Max Results: 4000`, and a `PROPFIND Depth: 1` returns 2,962 hrefs with **no**
+truncation element. Detail and the failure mode it causes are in
+[`stalwart-config/README.md`](../../../apps/production/email-stalwart/stalwart-config/README.md).
 
 ### Rate limiting is a real constraint for 9e
 
