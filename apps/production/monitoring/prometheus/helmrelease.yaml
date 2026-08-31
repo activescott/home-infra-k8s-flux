@@ -301,6 +301,33 @@ spec:
                 annotations:
                   summary: No successful Amazon searches in over 2 hours
                   description: Amazon searching has not succeeded in over 2 hours. Check amazon-searcher pod logs.
+              # ProbeFailure above only sees the app's own /ops/metrics being
+              # scraped -- it says nothing about whether the public URL actually
+              # answers through DNS, TLS and the ingress. This is that check,
+              # same shape as FernfilesSiteProbeFailing.
+              - alert: GpupoetSiteProbeFailing
+                expr: 'probe_success{job="blackbox_https",instance=~"https://gpupoet.com/.*"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    gpupoet.com is not answering its https probe.
+                  description: >-
+                    The https probe to {{ $labels.instance }} has failed for 5
+                    minutes.
+              - alert: GpupoetCertExpiringSoon
+                expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://gpupoet.com/.*"} - time()) / 86400 < 14'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    gpupoet.com TLS certificate expires in under 14 days — cert-manager renewal is likely broken.
+                  description: >-
+                    {{ $value | printf "%.1f" }} days of validity left on
+                    {{ $labels.instance }}. cert-manager normally renews at 30
+                    days, so reaching 14 means renewal is not happening.
           - name: gpu-poet-collector
             rules:
               - alert: CollectorDown
@@ -461,6 +488,63 @@ spec:
                     days, so reaching 14 means renewal is not happening. Check
                     the Certificate and CertificateRequest objects in the
                     fernfiles-prod namespace.
+          - name: cloudflare-proxied-sites
+            rules:
+              # Site-down / redirect-loop coverage for the Cloudflare-proxied
+              # domains pointed at k8s.activescott.com. See the blackbox_https
+              # job comment for why this specifically catches a Cloudflare
+              # SSL/TLS mode misconfiguration (e.g. "Flexible" against an
+              # origin that force-redirects to https), not just a pod outage.
+              - alert: RamblefeedSiteProbeFailing
+                expr: 'probe_success{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    ramblefeed.com is not answering its https probe.
+                  description: >-
+                    The https probe to {{ $labels.instance }} has failed for 5
+                    minutes. Could be a pod/ingress problem, or Cloudflare's
+                    SSL/TLS mode drifting away from Full -- see
+                    tinkerbellbot.com's 2026-08-30 incident.
+              - alert: RamblefeedCertExpiringSoon
+                expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} - time()) / 86400 < 14'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    ramblefeed.com TLS certificate expires in under 14 days — cert-manager renewal is likely broken.
+                  description: >-
+                    {{ $value | printf "%.1f" }} days of validity left on
+                    {{ $labels.instance }}. cert-manager normally renews at 30
+                    days, so reaching 14 means renewal is not happening.
+              - alert: TinkerbellbotSiteProbeFailing
+                expr: 'probe_success{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    tinkerbellbot.com is not answering its https probe.
+                  description: >-
+                    The https probe to {{ $labels.instance }} has failed for 5
+                    minutes. Could be a pod/ingress problem, or Cloudflare's
+                    SSL/TLS mode drifting away from Full -- see the
+                    2026-08-30 flexible-mode redirect-loop incident.
+              - alert: TinkerbellbotCertExpiringSoon
+                expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"} - time()) / 86400 < 14'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    tinkerbellbot.com TLS certificate expires in under 14 days — cert-manager renewal is likely broken.
+                  description: >-
+                    {{ $value | printf "%.1f" }} days of validity left on
+                    {{ $labels.instance }}. cert-manager normally renews at 30
+                    days, so reaching 14 means renewal is not happening.
           - name: tinkerbell-llm-providers
             rules:
               # Critical: an LLM provider rejected requests with a payment
@@ -1079,6 +1163,7 @@ spec:
           # health route was.
           - targets:
               - "https://fernfiles.com/"
+              - "https://gpupoet.com/"
               # The mail server's two web hostnames. Each has its own cert-manager
               # Certificate (deliberately separate -- see stalwart-admin-ingress.yaml
               # for why a shared SAN would restart the mail server on every renewal),
@@ -1107,6 +1192,27 @@ spec:
               # stays green, so the first symptom would be a person trying to read
               # their mail.
               - "https://mail.activescott.com/api/health"
+              # Cloudflare-proxied domains pointed at k8s.activescott.com. These
+              # sit behind Cloudflare's SSL/TLS encryption mode, which is a
+              # dashboard-only setting this repo does not manage (see
+              # tinkerbellbot.com.yaml).
+              #
+              # Broke 2026-08-30 on tinkerbellbot.com: its mode was "Flexible"
+              # (Cloudflare talks plain HTTP to the origin) and had sat that way,
+              # untouched, for 594 days -- harmless until ab54e12 ("redirect HTTP
+              # to HTTPS for every ingress in the cluster", 2026-08-28) made
+              # Traefik redirect every :80 request to :443. After that, Cloudflare's
+              # plaintext request to the origin got redirected to https, Cloudflare
+              # relayed that redirect to the browser, and the cycle repeated
+              # forever (ERR_TOO_MANY_REDIRECTS). Cloudflare's "Automatic SSL/TLS"
+              # mode would have caught the drift, but its rescan cadence is weeks
+              # (next one wasn't due until Sep 3), so it did not save this.
+              #
+              # http_2xx follows redirects and fails probe_success after 10 hops,
+              # so this alerts on that class of bug the same way it alerts on any
+              # other site-down failure -- no special-casing needed.
+              - "https://ramblefeed.com/"
+              - "https://tinkerbellbot.com/"
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
