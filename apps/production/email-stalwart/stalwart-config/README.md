@@ -105,7 +105,7 @@ show as "All Mail" the way Gmail does, but Stalwart's `SpecialUse` enum has no `
 
 **Sent is deliberately not covered.** `APPEND` has no Sieve path, so mail you compose lives in
 its Sent mailbox only. That is a non-goal rather than a gap: the point of archive-everything is
-that *delivered* mail survives a client deleting it, and nothing deletes Sent behind your back.
+that _delivered_ mail survives a client deleting it, and nothing deletes Sent behind your back.
 
 ## Sieve scripts are validated on create
 
@@ -172,12 +172,12 @@ INFO  Authentication successful (auth.success) ... accountName = "scott@willeke.
 ERROR Authentication error   (auth.error)   ... details = "Invalid client registration."
 ```
 
-Authentication succeeds; the *authorization* step then rejects the unregistered client, and the
+Authentication succeeds; the _authorization_ step then rejects the unregistered client, and the
 SPA falls back to basic auth, which the browser renders as a credential prompt. Anyone reading
 that dialog will debug the password, TOTP, or the ingress — none of which is involved.
 
 It stayed hidden because Phase 8's verification exercised webmail login, where the client
-(`bulwark-webmail`) *was* registered. **Turning on a registration requirement is not testable
+(`bulwark-webmail`) _was_ registered. **Turning on a registration requirement is not testable
 against one client.** After changing anything on `OidcProvider`, log in through every UI that
 speaks OIDC to this server, not just the one the change was for.
 
@@ -195,12 +195,12 @@ account. `false` means "reject outright" — correct for a domain Stalwart fully
 here, because Stalwart deliberately owns only one mailbox on a domain Google is
 authoritative for. The `google-willeke-com-relay` `MtaRoute` + `MtaOutboundStrategy
 route/else` above already exist to handle exactly this kind of address, via
-`smtp-relay.gmail.com` — but `route/else` only fires for domains Stalwart does *not*
+`smtp-relay.gmail.com` — but `route/else` only fires for domains Stalwart does _not_
 consider local, so willeke.com siblings never reached it. `allowRelaying: true` is what
 routes them there instead of rejecting.
 
 **Why `allowRelaying: true` alone would be unsafe.** It has no authentication condition —
-unlike the *other* `allowRelaying` field (`MtaStageRcpt.allowRelaying`, for domains
+unlike the _other_ `allowRelaying` field (`MtaStageRcpt.allowRelaying`, for domains
 Stalwart doesn't host at all), which defaults to `!is_empty(authenticated_as)`. Port 25 is
 internet-reachable with no SMTP-level IP restriction (it has to be — that's how Google's
 dual-delivery copy of Scott's own mail arrives). Flipping the domain flag alone would let
@@ -208,7 +208,7 @@ any anonymous sender on the internet `RCPT TO` a made-up `@willeke.com` address 
 Stalwart relay it out through `smtp-relay.gmail.com` using Scott's own smart-host
 credentials — an open relay scoped to this domain, risking Google flagging/suspending that
 relay account and delivering spam to real family mailboxes. DMARC/SPF/DKIM verification
-does not cover this: those validate whether a *sender's claimed domain* is authorized to
+does not cover this: those validate whether a _sender's claimed domain_ is authorized to
 send as itself, not who's allowed to relay through Stalwart or who the recipient is. A
 spammer using their own legitimately-authenticated domain sails through all three while
 abusing the relay.
@@ -229,7 +229,7 @@ if envelope :domain :is "to" "willeke.com" {
 (`eval` runs in the Sieve `env.*`/`envelope.*` namespace, not the bare `rcpt`/`authenticated_as`
 names used by `MtaStageRcpt`'s own JSON `Expression` fields — different context, same server. Two
 failed `apply`s to learn this the hard way: `Invalid variable or function name "rcpt_domain"`,
-then `"is_local_address"`. The latter is real, but only in the *other* expression engine —
+then `"is_local_address"`. The latter is real, but only in the _other_ expression engine —
 `stalw.art/docs/sieve/reference` lists Sieve's own function set, which has `is_local_domain` but
 no address-level equivalent. `key_exists` against a `MemoryLookupKey` list is the Sieve-native way
 to do a membership check that isn't baked into the script text.)
@@ -250,7 +250,7 @@ that matter here: SASL AUTH is **disabled on port 25** (`require` defaults to `l
 unaffected) and anonymous internet senders (rejected, since they're neither local nor
 authenticated). Scott's own clients authenticate on the submission port (465, the app-password
 prompt in the mobile config profile), so `authenticated_as` is always non-empty there, the rule
-never fires, and the RCPT is *accepted* — with no per-*family*-recipient allowlist to maintain
+never fires, and the RCPT is _accepted_ — with no per-_family_-recipient allowlist to maintain
 as those addresses come and go.
 
 **Acceptance is not delivery — a second, separate bug.** `allowRelaying` and `relay-guard` only
@@ -260,10 +260,10 @@ relay" section), and
 **two** of its fields were still the stock `is_local_domain(rcpt_domain)` — true for the whole
 domain, mailbox or not:
 
-- **`schedule`** buckets a message into a delivery queue *before* any relay is picked — its
+- **`schedule`** buckets a message into a delivery queue _before_ any relay is picked — its
   possible outputs are `'local'` / `'dsn'` / `'report'` / else `'remote'`. This is what actually
   decides whether a message gets local JMAP-store delivery attempted at all.
-- **`route`** then picks the next hop *within* whichever bucket `schedule` chose — `'local'`
+- **`route`** then picks the next hop _within_ whichever bucket `schedule` chose — `'local'`
   (a reserved pseudo-route, not a real `MtaRoute`) or a named route like
   `google-willeke-com-relay`.
 
@@ -277,6 +277,31 @@ conditions now also check `willeke-local-mailboxes` — the same list `relay-gua
 `'local'` only fires for addresses that are real mailboxes here; three mechanisms (RCPT-time
 relay-abuse, queue bucketing, next-hop selection) guard the same set for three different reasons,
 sharing one source of truth instead of drifting three ways.
+
+## `WebDav.maxResults` has to exceed the largest collection
+
+Stock is **2000**. The calendar backfill put 2,961 events in one collection, and every DAV
+enumeration of it then returned a truncated list ending in:
+
+```
+<D:status>HTTP/1.1 507 Insufficient Storage</D:status>
+<D:error><D:number-of-matches-within-limits/></D:error>
+<D:responsedescription>The number of matches exceeds the limit of 2000</D:responsedescription>
+```
+
+The objects all exist — a JMAP readback found every one. Only the DAV view is capped, so the
+symptom is a **client** (iOS Calendar, Apple Mail's CalDAV account) showing part of a calendar
+while the server looks healthy. Raised to **4000** here.
+
+It is a per-response match limit, not a per-account one, so what matters is the largest single
+collection. Revisit if any one calendar or address book approaches the value.
+
+## The default calendar cannot be deleted
+
+`DELETE` on `/dav/cal/<account>/default/` returns **403** with `<A:default-calendar-needed/>`.
+An account must always retain one. So "import into a new calendar, then delete the old one" is
+not available — the imported collection is the one that has to go, with its objects exported
+into `default` instead.
 
 ## Rules
 
