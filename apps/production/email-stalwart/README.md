@@ -303,10 +303,17 @@ click-ops — `stalwart-config/plan.ndjson`) is now:
 
 ```json
 {
-  "match": [{ "if": "is_local_domain(rcpt_domain) && key_exists('willeke-local-mailboxes', to_lowercase(rcpt))", "then": "'local'" }],
+  "match": { "0": { "if": "is_local_domain(rcpt_domain) && key_exists('willeke-local-mailboxes', to_lowercase(rcpt))", "then": "'local'" } },
   "else": "'google-willeke-com-relay'"
 }
 ```
+
+Note `match` is a **map keyed by stringified index** (`"0"`, `"1"`, ...), not a JSON array —
+same encoding as `retry.intervals` elsewhere in this file. Sending it as an array produces
+`error: invalidPatch | Invalid value for object property | Properties: route/match` from
+`apply`, caught before touching the live server. `./scripts/stalwart-apply snapshot
+MtaOutboundStrategy` is what confirmed the correct shape — per `stalwart-config/README.md`,
+derive this JSON from a live snapshot, never hand-write it.
 
 The stock condition was `is_local_domain(rcpt_domain)` alone, which routes **every**
 `@willeke.com` address to `'local'` — the whole domain is local, not just
