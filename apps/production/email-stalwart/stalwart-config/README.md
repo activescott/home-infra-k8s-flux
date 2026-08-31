@@ -255,7 +255,8 @@ as those addresses come and go.
 
 **Acceptance is not delivery — a second, separate bug.** `allowRelaying` and `relay-guard` only
 govern whether Stalwart accepts a `@willeke.com` RCPT; they say nothing about where the message
-goes afterward. That's `MtaOutboundStrategy` (see the main `README.md`'s "Sending" section), and
+goes afterward. That's `MtaOutboundStrategy` (see the main `README.md`'s "Configuring the outbound
+relay" section), and
 **two** of its fields were still the stock `is_local_domain(rcpt_domain)` — true for the whole
 domain, mailbox or not:
 
