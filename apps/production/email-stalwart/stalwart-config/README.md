@@ -157,6 +157,30 @@ refuses to emit a dangling reference — it will tell you which type to add to t
 Both were found by rebuilding, not by reading. Neither was visible in a diff of the running
 server against the plan, because the running server already had them.
 
+## `requireClientRegistration` covers Stalwart's own UI too
+
+`OidcProvider.requireClientRegistration` is `true`, so **every** OAuth client must be declared
+here — including `stalwart-webui`, the client Stalwart's own admin and account UI uses against
+its own OIDC provider. It is not exempt for being built in.
+
+Setting that flag in Phase 8 without registering `stalwart-webui` broke admin login, and the
+symptom pointed away from the cause: the password and TOTP were accepted, then the browser
+raised a **native basic-auth dialog**. The log says exactly what happened, on adjacent lines:
+
+```
+INFO  Authentication successful (auth.success) ... accountName = "scott@willeke.com", accountId = 3
+ERROR Authentication error   (auth.error)   ... details = "Invalid client registration."
+```
+
+Authentication succeeds; the *authorization* step then rejects the unregistered client, and the
+SPA falls back to basic auth, which the browser renders as a credential prompt. Anyone reading
+that dialog will debug the password, TOTP, or the ingress — none of which is involved.
+
+It stayed hidden because Phase 8's verification exercised webmail login, where the client
+(`bulwark-webmail`) *was* registered. **Turning on a registration requirement is not testable
+against one client.** After changing anything on `OidcProvider`, log in through every UI that
+speaks OIDC to this server, not just the one the change was for.
+
 ## Rules
 
 - **`upsert` only.** Never `reconcile` (destroys every object of a type the plan does not
