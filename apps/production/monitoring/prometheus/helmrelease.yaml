@@ -873,28 +873,38 @@ spec:
                 # completely silent — Google keeps delivering to its own mailbox, so
                 # nobody notices mail stopped arriving HERE until they go looking.
                 #
-                # THE THRESHOLD IS PROVISIONAL. Measured 2026-08-29: one inbound
-                # message in the only ~24h of history that exists, because the
-                # namespace is a day old. 36h is a deliberate over-estimate chosen so
-                # it cannot cry wolf on a genuinely quiet weekend; it is not a
-                # measured baseline and should be retightened once a week of data
-                # exists. Under-alerting was the right way to be wrong here.
+                # Retuned 2026-09-01 from 36h to 12h, against real traffic instead of
+                # the ~24h of a day-old namespace the first number came from. The
+                # original comment recorded "one inbound message per day"; measured
+                # over the three days to 2026-09-01 the rate is ~49/day, and the
+                # minimum of a rolling window stepped hourly never reached zero:
+                #
+                #   window   fewest messages observed
+                #   4h       2
+                #   6h       6
+                #   8h       8
+                #   12h      14
+                #
+                # 12h is therefore ~14x margin over the quietest half-day actually
+                # seen, and it includes a weekend. It cuts detection of a silent break
+                # from ~36.5h to ~12.5h. Widen it again if a holiday produces a
+                # genuinely dead half-day; do not narrow below 8h without new data.
                 #
                 # The heartbeat clause is load-bearing: without it, Alloy or Loki
                 # breaking would zero this counter and fire this alert, pointing at
                 # the mail path when the mail path is fine. The absent() arm covers
                 # first deployment, when the counter does not exist yet at all.
                 expr: >-
-                  (sum(increase(loki_process_custom_stalwart_inbound_queued_total[36h])) == 0
+                  (sum(increase(loki_process_custom_stalwart_inbound_queued_total[12h])) == 0
                   or absent(loki_process_custom_stalwart_inbound_queued_total))
                   and on() sum(increase(loki_process_custom_stalwart_heartbeat_total[1h])) > 6
                 for: 30m
                 labels:
                   severity: warning
                 annotations:
-                  summary: No mail has arrived at Stalwart in 36 hours
+                  summary: No mail has arrived at Stalwart in 12 hours
                   description: >-
-                    Nothing accepted on port 25 for 36 hours while the server is demonstrably
+                    Nothing accepted on port 25 for 12 hours while the server is demonstrably
                     alive. Suspect the Google Workspace dual-delivery routing rule, the OPNsense
                     NAT rule for :25, or the source restriction to Google's egress ranges. Mail
                     is NOT lost — Google remains the MX and retains its own copy — but the
@@ -919,21 +929,40 @@ spec:
                     {namespace="email-stalwart"} |~ "delivery\\.(connect-error|dsn-perm-fail)".
               - alert: StalwartAuthFailures
                 # 993 and 465 are deliberately internet-facing, so some noise is
-                # expected and this is not a break-glass alert. Zero auth.failed lines
-                # were observed in the available history, so 20/hour is a ceiling
-                # rather than a measured multiple of normal — retune when there is a
-                # real baseline.
-                expr: 'sum(increase(loki_process_custom_stalwart_auth_failed_total[1h])) > 20'
+                # expected and this is not a break-glass alert.
+                #
+                # Retuned 2026-09-01 from 20/hour to 5/hour. The baseline is still
+                # exactly zero: over the 7 days to 2026-09-01, 378k log lines carried
+                # 1675 (auth.success) and not one (auth.failed). Scanners are stopped
+                # earlier than authentication — 237 (security.ip-blocked) and 3
+                # (security.scan-ban) over the same window — which is why the
+                # internet-facing ports produce no failed-auth floor to sit above.
+                #
+                # 5/hour rather than 20 because the failure this needs to catch first
+                # is a mail client left on a stale password, not a password spray. It
+                # retries every few minutes, which lands under 20/hour, and every
+                # attempt feeds Stalwart's auto-ban — and *BanPeriod is unset here, so
+                # the ban that follows is permanent. Catching it while it is still a
+                # warning is the entire point. `for: 15m` keeps a human fumbling a
+                # password a few times from firing it.
+                #
+                # The counter does not exist until the first failure, so this rule
+                # evaluates to empty rather than 0 today. That is correct — but it also
+                # means a broken selector would look identical to a quiet server. The
+                # selector was verified against upstream (the id is emitted as
+                # `auth.failed`) rather than inferred from the absence of data.
+                expr: 'sum(increase(loki_process_custom_stalwart_auth_failed_total[1h])) > 5'
                 for: 15m
                 labels:
                   severity: warning
                 annotations:
                   summary: Repeated failed logins against Stalwart
                   description: >-
-                    More than 20 failed authentications in an hour on internet-facing IMAP and
-                    submission. Could be a misconfigured mail client retrying, or a password
-                    spray. Stalwart's auth-ban counts these, so this often precedes an address
-                    being banned. Loki: {namespace="email-stalwart"} |= "(auth.failed)".
+                    More than 5 failed authentications in an hour on internet-facing IMAP and
+                    submission, against a baseline of zero. Most likely a mail client retrying a
+                    stale password; possibly a password spray. Stalwart's auth-ban counts these
+                    and bans here do not expire, so act before the source address is banned
+                    permanently. Loki: {namespace="email-stalwart"} |= "(auth.failed)".
               # THE HEALTH AND META ALERTS
               - alert: StalwartNotReady
                 expr: 'kube_statefulset_status_replicas_ready{namespace="email-stalwart",statefulset="stalwart"} == 0'

@@ -452,11 +452,17 @@ access controls hold, which trips `EmailRelayAuthFailures`.
 
   25/465/993 accept connections; 587/995 refuse (995 refuses because the Service doesn't publish
   it, so klipper never forwards it).
-- **Two provisional alert thresholds were written against ~24h of history** and should be
-  retightened once there's a week of data: `StalwartNoInboundMail` fires at 36h of silence
-  (measured volume was ~1 message/day, so anything shorter would page on an ordinary quiet
-  weekend); `StalwartAuthFailures` fires above 20/hour (zero `auth.failed` lines were observed, so
-  this is a ceiling to avoid noise, not a multiple of a real baseline).
+- **Both provisional alert thresholds were retuned 2026-09-01** against real traffic, replacing
+  numbers written when the namespace was a day old. The original note recorded inbound volume as
+  ~1 message/day; it is **~49/day**, and the minimum of a rolling window stepped hourly over the
+  preceding three days never reached zero — 4h/2, 6h/6, 8h/8, 12h/14 messages. So
+  `StalwartNoInboundMail` went **36h → 12h**, roughly 14x margin over the quietest half-day
+  actually seen and detection in ~12.5h instead of ~36.5h. `StalwartAuthFailures` went **20/hour →
+  5/hour**: the baseline is genuinely zero (7 days, 378k log lines, 1675 `auth.success` and no
+  `auth.failed`, because scanners are stopped by the ban machinery before they authenticate — 237
+  `security.ip-blocked`, 3 `security.scan-ban`), and the failure worth catching first is a client
+  stuck on a stale password, which retries at under 20/hour and earns the source address a
+  **permanent** ban.
 - **Do not use `proxyTrustedNetworks`** to fix the auto-ban issue above — it looks like the right
   setting and isn't: it makes Stalwart _require_ a PROXY protocol header from matching peers
   (Traefik doesn't send one), and the system-level list applies to every listener including SMTP
