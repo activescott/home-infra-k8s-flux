@@ -8,10 +8,14 @@ Running log. Plan: [`plan.md`](./plan.md). Updated as each stage lands.
 | 9b prerequisites   | done                    | 2026-08-31 |
 | 9c contacts        | **done**                | 2026-08-31 |
 | 9d calendar        | **done**                | 2026-08-31 |
-| 9e mail            | **next up**             |            |
+| 9e mail            | **done**                | 2026-08-31 |
 | 9f record          | in progress (this file) |            |
 
 Calendar confirmed good by Scott on 2026-08-31.
+
+**197,978 messages, 2007-11-07 to 2026-08-30, `failed=0`.** One check is outstanding: that
+`archive-all` still files newly delivered mail to Inbox _and_ Archive. See
+[9e](#9e-mail--from-the-takeout-mbox-done-2026-08-31).
 
 ## 9c. Contacts — iCloud CardDAV, done 2026-08-31
 
@@ -236,74 +240,175 @@ without loss. **Mail is ~15.5 GB and far more objects**, so expect this repeated
 wall-clock for it. It is not a fault and needs no intervention, but a run that appears hung is
 probably in a 57-second backoff.
 
-## 9e. Mail — not started. Resuming cold
+> **This paragraph was wrong for mail, and it cost time.** It describes the general
+> `requests";q=1000` limiter. Mail first hits a _different_ one — a per-hour **blob upload**
+> quota of 1,000 files / 50 MB whose `retry-after` is the remainder of the hour (755 s
+> observed), not tens of seconds. Reading the note above, 9e was started against a 50 MB/hour
+> cap with a 15.5 GB payload: a 310-hour run that `--max-retries 5` would have abandoned after
+> about an hour. Both limiters, their measured throughput, and the values to use are in
+> [`stalwart-config/README.md`](../../../apps/production/email-stalwart/stalwart-config/README.md).
+> Do not generalise one Stalwart limiter's behaviour to another.
 
-Everything below is already in place; nothing needs redoing.
+## 9e. Mail — from the Takeout mbox, done 2026-08-31
 
-**On disk** (`~/mail-backfill/`, Scott's, do not delete — he removes them himself):
+**197,978 messages, 2007-11-07 to 2026-08-30, `failed=0` at every step.** Server holds 198,051
+(the difference is mail that arrived during the run plus messages that never had a Gmail twin).
+Store: 267 G used of a 4.3 T pool.
 
-| File                                   | What                                                |
-| -------------------------------------- | --------------------------------------------------- |
-| `takeout/*-1-001.zip`                  | 691 KB, calendar only, already extracted and done   |
-| `takeout/*-2-001.zip`                  | 8.17 GB → **15.53 GB** mbox uncompressed, untouched |
-| `takeout/Takeout/Calendar/SW gCal.ics` | extracted, imported                                 |
-| `icloud.sqlite`                        | 542 contacts, exported                              |
-| `google.sqlite`                        | calendar imported + exported; **no mail yet**       |
-| `google-retarget.sqlite`               | a copy made for an approach not taken; disposable   |
-| `.icloud-pw`, `.stalwart-pw`           | `0600`, read with `$(cat …)`, never echoed          |
-
-**Prerequisites all met:** ZFS snapshot `thedatapool/app-data@pre-mail-backfill-20260831` taken
-(4.03 TB free); Mac had ~130 GiB free before extraction; vandelay 1.0.10.
-
-**Recovery is not `zfs rollback`** — `thedatapool/app-data` holds every app, so a rollback
-reverts all of them. Mount the snapshot under `.zfs/snapshot/` and copy the Stalwart directory
-back instead.
-
-Steps, in order:
-
-```bash
-cd ~/mail-backfill
-unzip -o takeout/takeout-*-2-001.zip -d takeout/     # → takeout/Takeout/Mail/*.mbox, 15.53 GB
-df -h ~                                              # confirm headroom before and after
-
-vandelay import takeout ~/mail-backfill/takeout/ google.sqlite
-vandelay inspect google.sqlite                       # mailbox + email counts
-
-kubectl --context nas -n email-stalwart port-forward svc/stalwart-admin 8080:8080 &
-
-VANDELAY_PASSWORD="$(cat ~/mail-backfill/.stalwart-pw)" vandelay export \
-  --url http://localhost:8080 --auth-basic scott@willeke.com \
-  --account-name scott@willeke.com --objects mailbox,email --dry-run google.sqlite
+```
+import  mailbox c=34     f=0  |  email c=197978 u=0 f=0
+export  Mailbox created=0     skipped=20     failed=0
+export  Email   created=129627 skipped=68351 failed=0
 ```
 
-**The dry run is a gate.** Its skip count must show the ~2 days of dual-delivered mail already on
-the server being matched. If it reports **no** skips, stop — the overlap will duplicate, and the
-fix is to exclude the overlapping date range, not to proceed. `--prune` is prohibited in every
-invocation.
+The 68,351 skips are what earlier interrupted runs had already landed, matched rather than
+duplicated.
 
-Then drop `--dry-run`. Watch during:
+### The import is one transaction — an interrupted run loses all of it
+
+The first import was killed at ~14k messages processed. `emails` was left at **0**: vandelay
+holds the whole mbox pass in a single transaction and commits at the end. There is no partial
+progress and no checkpoint, so a laptop sleep or a tool timeout costs the entire pass (~35 min
+for 15.5 GB). Run it detached (`nohup`) and hold the machine awake:
 
 ```bash
-kubectl --context nas -n email-stalwart exec stalwart-0 -- df -h /var/lib/stalwart
-kubectl --context nas -n email-stalwart get pod stalwart-0 -w
+nohup vandelay import takeout -v ~/mail-backfill/takeout/ ~/mail-backfill/google.sqlite \
+  > ~/mail-backfill/import-mail.log 2>&1 &
+nohup caffeinate -ims -w "$!" >/dev/null 2>&1 &   # releases itself when the pid exits
 ```
 
-Things established this session that apply directly to 9e:
+The **export**, by contrast, is incremental and safe to interrupt — killed runs kept their work
+and the next run matched past it.
 
-- **Expect repeated `HTTP 429`.** `q=1000`, `retry-after` ~57 s. vandelay backs off and retries
-  without loss; a run that looks hung is probably mid-backoff.
-- **Verify by server readback, not by the tool's own summary** — re-run the export as a dry run
-  afterwards and check it reports everything matched.
-- **Verify any count mismatch before believing it.** See the 306-event false alarm above.
-- Re-importing into `google.sqlite` is additive; the calendar objects already in it are untouched
-  by `--objects mailbox,email`, and calendars will not be re-created.
-- `stalwart-sieve-reconcile` runs daily at 04:43 across every account — harmless, but avoid
-  overlapping a long export with it.
+### Two rate limiters, not one, and mail hits the undocumented one first
+
+Detail and the values in
+[`stalwart-config/README.md`](../../../apps/production/email-stalwart/stalwart-config/README.md).
+In short: a per-hour **blob upload** quota (stock 1,000 files / 50 MB, `retry-after` = rest of
+the hour) blocks a bulk import outright, and behind it `Http.rateLimitAuthenticated` (stock
+1,000/min) throttles it to **36 MB/min ≈ 7 h**. Raised to 250,000 / 20 GB / 10,000-per-min the
+same export ran at **350 MB/min ≈ 40 min with zero 429s**. Both were restored to stock
+afterwards (`f157ab4`); both need `apply` **and** a `rollout restart` at each end.
+
+### Gmail's IMAP-keyword labels became folders, and 18,025 messages had no label at all
+
+Takeout's `X-Gmail-Labels` produced **34 mailboxes**, including `IMAP_$NotJunk` (56,444),
+`IMAP_NotJunk` (13,635), `IMAP_$MailFlagBit0/1/2`, `IMAP_JunkRecorded`, `[Gmail]All Mail`,
+`Muted`, `Chat` — IMAP keyword artifacts, not user labels — plus a fallback mailbox named after
+the mbox file holding 18,025 messages that had no parseable label (2,876 with no header at all,
+15,149 with an empty one). Note this contradicts the plan's expectation that `Category *` labels
+are dropped: `Category Purchases` (5,925), `Travel`, and `Bills` all came through as real
+folders.
+
+**Deleting those 14 mailboxes was not an option: 44,852 messages had no other placement** and
+would have been orphaned. Scott chose to remap them to Archive while recording the original
+folder as a JMAP keyword — accepting that Apple Mail does not display arbitrary IMAP keywords,
+so the provenance is visible in Bulwark and via JMAP but not on the phone.
+
+`~/mail-backfill/remap-artifacts.sql` does it in one transaction, with
+`remap-artifacts-check.sql` run either side. Result, every number as predicted:
+
+| Invariant                 | Before  | After       |
+| ------------------------- | ------- | ----------- |
+| total emails              | 197,978 | 197,978     |
+| emails with no mailbox    | 0       | 0           |
+| distinct blobs referenced | 197,978 | 197,978     |
+| mailboxes                 | 34      | **20**      |
+| sync mailbox rows         | 34      | **20**      |
+| emails carrying `gmail-*` | 0       | **76,345**  |
+| emails in Archive         | 119,776 | **182,653** |
+
+62,877 messages moved to Archive (their only placement was an artifact or the fallback — in
+Gmail terms, "in All Mail with no label"); 13,468 kept a real label as well. Keywords are
+`gmail-imap-$notjunk`, `gmail-nolabel`, `gmail-all-mail` and so on — `$` mid-keyword is legal
+and Stalwart accepts it, which matters because `IMAP_$NotJunk` and `IMAP_NotJunk` are different
+folders that a naive slug would collide.
+
+Delete the artifact mailboxes' `sync_id_takeout` rows too, or the export re-creates them as
+empty folders.
+
+### 544 messages have two `Message-ID` headers — a re-run would duplicate them
+
+The post-export readback dry run reports `Email 544 create / 197434 matched`, which looks like
+544 messages failed to land. **They did land.** The archive splits exactly:
+
+```
+messages with 1 Message-ID header: 197,434   <- vandelay MATCHED 197,434
+messages with 2 Message-ID headers:    544   <- vandelay CREATE    544
+```
+
+Such messages carry both `Message-ID:` and `Message-Id:` with different values. Stalwart indexes
+one, vandelay's matcher reads the other, so it cannot re-match them. Verified end to end on
+`100190-22013722232730397@componentsource.com`, which is on the server at its exact
+`receivedAt` and subject under the _other_ id, `P624T736C918277@195.171.5.27`.
+
+**Consequence: never re-run this export as-is — it would create 544 duplicates.**
+
+### The overlap window keeps the server's placement, not Gmail's
+
+Gmail had 52 messages in Inbox; the server shows 18. All 52 are present. 35 of them were
+**skipped as already-delivered**, and vandelay does not rewrite a matched message's mailboxes,
+so the server's own state wins:
+
+| Where the 52 actually are  | Count |
+| -------------------------- | ----- |
+| Inbox (incl. combinations) | 17    |
+| Archive only               | 26    |
+| Trash + Archive            | 5     |
+| Junk (incl. + Archive)     | 4     |
+
+That is correct behaviour — the import must not un-delete or un-archive what Scott already
+handled, nor un-junk what Stalwart's own filter caught. The same effect explains `micah`
+1,704 → 1,702. Expect it for any dual-delivery overlap; it is not loss.
+
+### Verifying "did everything land" — two traps
+
+Comparing Message-ID sets between archive and server is the obvious check and it is easy to get
+wrong twice:
+
+- **`email.policy.default` truncates malformed Message-IDs.** A header like
+  `<...@baeumken@reverse-software.de>` (two `@`) parses as an addr-spec and comes back as
+  `...@baeumken`, while Stalwart keeps the raw string. This manufactured ~523 phantom
+  "missing" messages. Extract the literal text between `<` and `>` from the raw bytes instead.
+- **A regex needing a following header line misses the last header.** `(?=\r?\n[^ \t])` silently
+  returned "no Message-ID" for 7,358 messages. Needs `|\Z`.
+
+The tell in both cases was the _reverse_ diff: roughly as many ids "extra" on the server as
+"missing" from it is a normalization disagreement, not data loss. Always compute both
+directions. `scratchpad/raw_mids.py` has the working extractor.
+
+Also: **`Email/query` `filter.header` does not resolve Message-Id on this server** — it returns
+an empty `ids` with no error, so it cannot be used for existence checks. Page by `receivedAt`
+window instead. And paging by `position` over a live collection can skip or repeat rows.
+
+### Fidelity spot-checks (all verified on the server, not from the tool's own report)
+
+- A message in Archive + `filtered` + `Category Purchases` is **one** message with three
+  mailboxes, not three copies.
+- `$seen`, `$important`, `$flagged` preserved; `receivedAt` is the original date (oldest
+  verified: 2007-12-10), not the import date.
+- `gmail-nolabel` = 18,025 and `gmail-imap-$notjunk` = 56,444 on the server, matching the
+  archive exactly.
+- 127 `Opened`+`Unread` label conflicts resolved to `$seen`, logged by vandelay as warnings.
+
+### Outstanding
+
+**`archive-all`'s ham branch is unverified.** The plan requires proving a newly delivered
+message still lands in **both** Inbox and Archive. The script is installed and active
+(`jcfxtsxpkuaa`), and the spam branch is confirmed live (`message-ingest.spam`,
+`mailboxId = [2]` = Junk). But only one message has been delivered since the last restart and
+it was spam, so the ham path has no evidence either way. Send a test message to
+`scott@willeke.com` and confirm `mailboxId` has two entries.
 
 ## Credentials to revoke when Phase 9 closes
 
-- **iCloud app-specific password** — its only consumer was the 9c import. **Spent — revoke now**
-  at appleid.apple.com; nothing later in Phase 9 uses it.
-- **Stalwart app password** for `vandelay export` — still needed for 9e. It expires
-  **2026-09-12**, which is a hard deadline on the mail export. Must be a separate credential
-  from the one the mail client uses, or revoking it breaks Apple Mail.
+- **iCloud app-specific password** — its only consumer was the 9c import. **Spent — revoke**
+  at appleid.apple.com; nothing else in Phase 9 uses it.
+- **Stalwart app password** for `vandelay export` — **spent, and it must be rotated rather than
+  left to expire.** During 9e it was disclosed in a session transcript: a `curl -w
+"%{url_effective}"` printed the effective URL, and basic-auth credentials are part of that
+  URL. It is scoped to `scott@willeke.com` and every endpoint it reaches is public. Confirm it
+  is not the credential Apple Mail uses before revoking. It would otherwise expire 2026-09-12.
+
+  Avoid `%{url_effective}`, `%{redirect_url}` and `-v` on any authenticated `curl`. Use
+  `%{http_code}` alone.
