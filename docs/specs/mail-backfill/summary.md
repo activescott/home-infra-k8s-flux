@@ -8,8 +8,10 @@ Running log. Plan: [`plan.md`](./plan.md). Updated as each stage lands.
 | 9b prerequisites   | done                    | 2026-08-31 |
 | 9c contacts        | **done**                | 2026-08-31 |
 | 9d calendar        | **done**                | 2026-08-31 |
-| 9e mail            | not started             |            |
+| 9e mail            | **next up**             |            |
 | 9f record          | in progress (this file) |            |
+
+Calendar confirmed good by Scott on 2026-08-31.
 
 ## 9c. Contacts — iCloud CardDAV, done 2026-08-31
 
@@ -234,10 +236,74 @@ without loss. **Mail is ~15.5 GB and far more objects**, so expect this repeated
 wall-clock for it. It is not a fault and needs no intervention, but a run that appears hung is
 probably in a 57-second backoff.
 
+## 9e. Mail — not started. Resuming cold
+
+Everything below is already in place; nothing needs redoing.
+
+**On disk** (`~/mail-backfill/`, Scott's, do not delete — he removes them himself):
+
+| File                                   | What                                                |
+| -------------------------------------- | --------------------------------------------------- |
+| `takeout/*-1-001.zip`                  | 691 KB, calendar only, already extracted and done   |
+| `takeout/*-2-001.zip`                  | 8.17 GB → **15.53 GB** mbox uncompressed, untouched |
+| `takeout/Takeout/Calendar/SW gCal.ics` | extracted, imported                                 |
+| `icloud.sqlite`                        | 542 contacts, exported                              |
+| `google.sqlite`                        | calendar imported + exported; **no mail yet**       |
+| `google-retarget.sqlite`               | a copy made for an approach not taken; disposable   |
+| `.icloud-pw`, `.stalwart-pw`           | `0600`, read with `$(cat …)`, never echoed          |
+
+**Prerequisites all met:** ZFS snapshot `thedatapool/app-data@pre-mail-backfill-20260831` taken
+(4.03 TB free); Mac had ~130 GiB free before extraction; vandelay 1.0.10.
+
+**Recovery is not `zfs rollback`** — `thedatapool/app-data` holds every app, so a rollback
+reverts all of them. Mount the snapshot under `.zfs/snapshot/` and copy the Stalwart directory
+back instead.
+
+Steps, in order:
+
+```bash
+cd ~/mail-backfill
+unzip -o takeout/takeout-*-2-001.zip -d takeout/     # → takeout/Takeout/Mail/*.mbox, 15.53 GB
+df -h ~                                              # confirm headroom before and after
+
+vandelay import takeout ~/mail-backfill/takeout/ google.sqlite
+vandelay inspect google.sqlite                       # mailbox + email counts
+
+kubectl --context nas -n email-stalwart port-forward svc/stalwart-admin 8080:8080 &
+
+VANDELAY_PASSWORD="$(cat ~/mail-backfill/.stalwart-pw)" vandelay export \
+  --url http://localhost:8080 --auth-basic scott@willeke.com \
+  --account-name scott@willeke.com --objects mailbox,email --dry-run google.sqlite
+```
+
+**The dry run is a gate.** Its skip count must show the ~2 days of dual-delivered mail already on
+the server being matched. If it reports **no** skips, stop — the overlap will duplicate, and the
+fix is to exclude the overlapping date range, not to proceed. `--prune` is prohibited in every
+invocation.
+
+Then drop `--dry-run`. Watch during:
+
+```bash
+kubectl --context nas -n email-stalwart exec stalwart-0 -- df -h /var/lib/stalwart
+kubectl --context nas -n email-stalwart get pod stalwart-0 -w
+```
+
+Things established this session that apply directly to 9e:
+
+- **Expect repeated `HTTP 429`.** `q=1000`, `retry-after` ~57 s. vandelay backs off and retries
+  without loss; a run that looks hung is probably mid-backoff.
+- **Verify by server readback, not by the tool's own summary** — re-run the export as a dry run
+  afterwards and check it reports everything matched.
+- **Verify any count mismatch before believing it.** See the 306-event false alarm above.
+- Re-importing into `google.sqlite` is additive; the calendar objects already in it are untouched
+  by `--objects mailbox,email`, and calendars will not be re-created.
+- `stalwart-sieve-reconcile` runs daily at 04:43 across every account — harmless, but avoid
+  overlapping a long export with it.
+
 ## Credentials to revoke when Phase 9 closes
 
-- **iCloud app-specific password** — its only consumer was the 9c import above. Revoke at
-  appleid.apple.com now; nothing later in Phase 9 uses it.
-- **Stalwart app password** for `vandelay export` — still needed for 9d and 9e. It expires
+- **iCloud app-specific password** — its only consumer was the 9c import. **Spent — revoke now**
+  at appleid.apple.com; nothing later in Phase 9 uses it.
+- **Stalwart app password** for `vandelay export` — still needed for 9e. It expires
   **2026-09-12**, which is a hard deadline on the mail export. Must be a separate credential
   from the one the mail client uses, or revoking it breaks Apple Mail.
