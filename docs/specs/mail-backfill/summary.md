@@ -2,14 +2,14 @@
 
 Running log. Plan: [`plan.md`](./plan.md). Updated as each stage lands.
 
-| Stage              | State                   | Date       |
-| ------------------ | ----------------------- | ---------- |
-| 9a persist/correct | done                    | 2026-08-30 |
-| 9b prerequisites   | done                    | 2026-08-31 |
-| 9c contacts        | **done**                | 2026-08-31 |
-| 9d calendar        | **done**                | 2026-08-31 |
-| 9e mail            | **done**                | 2026-08-31 |
-| 9f record          | **done** (this file)    | 2026-09-01 |
+| Stage              | State                | Date       |
+| ------------------ | -------------------- | ---------- |
+| 9a persist/correct | done                 | 2026-08-30 |
+| 9b prerequisites   | done                 | 2026-08-31 |
+| 9c contacts        | **done**             | 2026-08-31 |
+| 9d calendar        | **done**             | 2026-08-31 |
+| 9e mail            | **done**             | 2026-08-31 |
+| 9f record          | **done** (this file) | 2026-09-01 |
 
 Calendar confirmed good by Scott on 2026-08-31.
 
@@ -18,8 +18,8 @@ contacts and the calendar. Every verification the plan called for has evidence, 
 last one — that `archive-all` still files newly delivered mail to Inbox _and_ Archive, proven
 2026-09-01 and written up under 9e.
 
-Two things remain for Scott, both credential hygiene rather than work: rotate the Stalwart app
-password and revoke the iCloud one. See [Credentials](#credentials-to-revoke-when-phase-9-closes).
+Nothing is outstanding. Both import credentials were revoked and `~/mail-backfill` (52 GB) was
+deleted on 2026-09-01; the scripts worth keeping moved to [`scripts/`](./scripts/) first.
 
 ## 9c. Contacts — iCloud CardDAV, done 2026-08-31
 
@@ -153,7 +153,7 @@ Two other ways the shell approach produced wrong numbers before that:
   silently under-reported.
 
 The reliable check is a parser that tracks `BEGIN`/`END` nesting and skips `VALARM`:
-`scratchpad/collide.py` in the session dir does this and returns 2,963 distinct UIDs against
+[`scripts/collide.py`](./scripts/collide.py) does this and returns 2,963 distinct UIDs against
 2,963 archive rows.
 
 Generalisable: **when a count mismatch appears, verify the measurement before reporting the
@@ -309,8 +309,9 @@ would have been orphaned. Scott chose to remap them to Archive while recording t
 folder as a JMAP keyword — accepting that Apple Mail does not display arbitrary IMAP keywords,
 so the provenance is visible in Bulwark and via JMAP but not on the phone.
 
-`~/mail-backfill/remap-artifacts.sql` does it in one transaction, with
-`remap-artifacts-check.sql` run either side. Result, every number as predicted:
+[`scripts/remap-artifacts.sql`](./scripts/remap-artifacts.sql) does it in one transaction, with
+[`scripts/remap-artifacts-check.sql`](./scripts/remap-artifacts-check.sql) run either side.
+Result, every number as predicted:
 
 | Invariant                 | Before  | After       |
 | ------------------------- | ------- | ----------- |
@@ -379,7 +380,9 @@ wrong twice:
 
 The tell in both cases was the _reverse_ diff: roughly as many ids "extra" on the server as
 "missing" from it is a normalization disagreement, not data loss. Always compute both
-directions. `scratchpad/raw_mids.py` has the working extractor.
+directions. [`scripts/raw_mids.py`](./scripts/raw_mids.py) has the working extractor, and
+[`scripts/dump_server_mids.sh`](./scripts/dump_server_mids.sh) the server-side dump to diff it
+against.
 
 Also: **`Email/query` `filter.header` does not resolve Message-Id on this server** — it returns
 an empty `ids` with no error, so it cannot be used for existence checks. Page by `receivedAt`
@@ -398,7 +401,7 @@ window instead. And paging by `position` over a live collection can skip or repe
 ### `archive-all`'s ham branch, verified post-backfill 2026-09-01
 
 The backfill went in entirely through JMAP `Email/import`, which never enters the Sieve ingest
-path, so nothing about the 197,978 imported messages says whether newly *delivered* mail still
+path, so nothing about the 197,978 imported messages says whether newly _delivered_ mail still
 gets its archive copy. Proven separately with an external test message:
 
 ```
@@ -410,9 +413,11 @@ and read back over JMAP, which is the part that matters — one document in two 
 two copies:
 
 ```json
-{ "subject": "Close out Phase 9 properly",
+{
+  "subject": "Close out Phase 9 properly",
   "receivedAt": "2026-09-01T22:15:37Z",
-  "mailboxIds": { "f": true, "a": true } }
+  "mailboxIds": { "f": true, "a": true }
+}
 ```
 
 `a` is the `inbox`-role mailbox and `f` the `archive`-role one. The spam branch was already
@@ -447,22 +452,51 @@ misleading `curl: option : blank argument`. Go straight to `http://localhost:808
 and post method calls to `http://localhost:8080/jmap`. Do not add `-L` to chase the redirect —
 it points at the public HTTPS hostname and defeats the point of the tunnel.
 
-## Credentials to revoke when Phase 9 closes
+## Credentials — both revoked 2026-09-01
 
-- **iCloud app-specific password** — its only consumer was the 9c import. **Spent — revoke**
-  at appleid.apple.com; nothing else in Phase 9 uses it.
-- **Stalwart app password** for `vandelay export` — **spent, and it must be rotated rather than
-  left to expire.** During 9e it was disclosed in a session transcript: a `curl -w
-"%{url_effective}"` printed the effective URL, and basic-auth credentials are part of that
-  URL. It is scoped to `scott@willeke.com` and every endpoint it reaches is public. Confirm it
-  is not the credential Apple Mail uses before revoking. It would otherwise expire 2026-09-12.
-  It was used once more on 2026-09-01 for the `archive-all` readback and has no remaining
-  consumer.
+Both Phase 9 credentials are **revoked**, and the `0600` files that held them
+(`~/mail-backfill/.stalwart-pw`, `.icloud-pw`) are deleted. Neither lived in git or in a sops
+secret — both were minted in their vendor's own UI, so revoking changed no file and rolled no
+pod.
 
-  Avoid `%{url_effective}`, `%{redirect_url}` and `-v` on any authenticated `curl`. Use
-  `%{http_code}` alone.
+- **iCloud app-specific password** — its only consumer was the 9c contacts import.
+- **Stalwart app password** for `vandelay export` — used once more on 2026-09-01 for the
+  `archive-all` readback, then revoked. It had to be **rotated rather than left to expire**
+  on 2026-09-12: during 9e it was disclosed in a session transcript, because a `curl -w
+"%{url_effective}"` prints the effective URL and basic-auth credentials are part of that URL.
+  It was scoped to `scott@willeke.com` and every endpoint it reached is public.
 
-Neither lives in git or in a sops secret — both are minted in their vendor's own UI, so
-rotating them changes no file and rolls no pod. `~/mail-backfill/.stalwart-pw` and
-`.icloud-pw` are `0600` files holding the values; delete them with the rest of
-`~/mail-backfill` (~47 GB, Scott's to remove).
+  **Avoid `%{url_effective}`, `%{redirect_url}` and `-v` on any authenticated `curl`.** Use
+  `%{http_code}` alone. Read secrets as `$(cat <file>)` so the value stays out of shell history
+  too.
+
+## `~/mail-backfill` — deleted 2026-09-01
+
+**52 GB**, removed once Phase 9 closed: the 15.53 GB expanded mbox under `takeout/`,
+`google.sqlite` (15.8 GB), and two backups (`google-preremap-backup.sqlite` 15.8 GB,
+`google-precal-backup-20260831.sqlite` 8.9 MB). Regenerable — request Takeout again and mint new
+app passwords — so it was not worth 52 GB of disk to hold.
+
+The working scripts were moved into [`scripts/`](./scripts/) next to this file first, since they
+lived only in that directory and are the non-obvious part:
+
+| Script                      | What it does                                                      |
+| --------------------------- | ----------------------------------------------------------------- |
+| `remap-artifacts.sql`       | The artifact→Archive remap, one transaction, with the count guard |
+| `remap-artifacts-check.sql` | Before/after invariants; run either side of the remap             |
+| `raw_mids.py`               | Message-ID extractor that avoids both traps described above       |
+| `dump_server_mids.sh`       | Pages `Email/query` + `Email/get` to dump every server Message-ID |
+| `collide.py`                | `.ics` UID parser that tracks nesting and skips `VALARM`          |
+
+Each carries a path or id from that run and needs adjusting before reuse: the two Python scripts
+hardcode `DB = "/Users/scott/mail-backfill/google.sqlite"`, and `dump_server_mids.sh` hardcodes
+`accountId`. It now reads its credential from `STALWART_PW_FILE` rather than the deleted
+`~/mail-backfill/.stalwart-pw`.
+
+The commands quoted earlier in this file still name `~/mail-backfill` paths. They are the
+historical record of the run; a fresh backfill recreates that directory.
+
+The real rollback path was never this directory anyway: it is the pre-mail ZFS snapshot
+`thedatapool/app-data@pre-mail-backfill-20260831`. Recovery is **not** `zfs rollback` — that
+dataset holds every app — so mount it under `.zfs/snapshot/` and copy the Stalwart directory
+back.
