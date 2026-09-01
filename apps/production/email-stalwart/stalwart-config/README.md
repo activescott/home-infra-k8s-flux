@@ -328,10 +328,10 @@ and `retry-after` is the remainder of the current hour, not a short backoff. Thi
 different limiter from the general `requests";q=1000` one whose `retry-after` is tens of
 seconds — do not reason about one from the other.
 
-The Phase 9 mail backfill raised these to 250,000 files and 20 GB. **These are backfill
-values, not steady-state ones**; they are far above anything normal client use needs, and
-leaving them raised widens the resource-exhaustion surface on an account that is reachable
-from the public internet. Restore the stock numbers once a bulk import is finished.
+The Phase 9 mail backfill raised these to 250,000 files and 20 GB for the duration of the
+import, then **put them back**. The lines are still in the plan at their stock values so the
+next bulk import has an obvious place to change, and so that a drifted server gets corrected
+back down rather than left wherever a previous backfill left it.
 
 `maxUploadSize` was left alone: the largest message in that archive was 41.5 MB, under the
 50 MB cap.
@@ -339,16 +339,19 @@ from the public internet. Restore the stock numbers once a bulk import is finish
 Clearing the upload quota only exposes the next limiter: `Http.rateLimitAuthenticated`,
 stock **1,000 requests per minute**. An import spends roughly two requests per message (the
 blob upload, then `Email/import`), so it saturates that cap at about 460 messages/minute and
-then idles through a `retry-after` of 26-57 s. Measured throughput at the stock value was
-36 MB/min, i.e. ~7 hours for a 15.5 GB backfill. Phase 9 raised it to 10,000/minute.
+then idles through a `retry-after` of 26-57 s. Measured: **36 MB/min** at the stock value
+versus **350 MB/min** at 10,000/minute, turning a ~7-hour import into ~40 minutes.
 
-**Both of these are temporary.** The steady-state values to restore are:
+Values to use for a bulk import, and to restore afterwards:
 
-| Field                          | Backfill    | Restore to |
-| ------------------------------ | ----------- | ---------- |
-| `Jmap.maxUploadCount`          | 250000      | 1000       |
-| `Jmap.uploadQuota`             | 20000000000 | 50000000   |
-| `Http.rateLimitAuthenticated`  | 10000/60000 | 1000/60000 |
+| Field                         | Backfill    | Steady state |
+| ----------------------------- | ----------- | ------------ |
+| `Jmap.maxUploadCount`         | 250000      | 1000         |
+| `Jmap.uploadQuota`            | 20000000000 | 50000000     |
+| `Http.rateLimitAuthenticated` | 10000/60000 | 1000/60000   |
+
+Raising them requires `stalwart-apply apply` **and** a `rollout restart` at both ends, since
+Stalwart reads config at startup.
 
 `rateLimitAnonymous` (100/minute) is **not** touched — an import is authenticated, so
 raising the anonymous limit would buy nothing and would weaken the control that actually
