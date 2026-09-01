@@ -9,13 +9,17 @@ Running log. Plan: [`plan.md`](./plan.md). Updated as each stage lands.
 | 9c contacts        | **done**                | 2026-08-31 |
 | 9d calendar        | **done**                | 2026-08-31 |
 | 9e mail            | **done**                | 2026-08-31 |
-| 9f record          | in progress (this file) |            |
+| 9f record          | **done** (this file)    | 2026-09-01 |
 
 Calendar confirmed good by Scott on 2026-08-31.
 
-**197,978 messages, 2007-11-07 to 2026-08-30, `failed=0`.** One check is outstanding: that
-`archive-all` still files newly delivered mail to Inbox _and_ Archive. See
-[9e](#9e-mail--from-the-takeout-mbox-done-2026-08-31).
+**Phase 9 is complete. 197,978 messages, 2007-11-07 to 2026-08-30, `failed=0`**, plus 542
+contacts and the calendar. Every verification the plan called for has evidence, including the
+last one — that `archive-all` still files newly delivered mail to Inbox _and_ Archive, proven
+2026-09-01 and written up under 9e.
+
+Two things remain for Scott, both credential hygiene rather than work: rotate the Stalwart app
+password and revoke the iCloud one. See [Credentials](#credentials-to-revoke-when-phase-9-closes).
 
 ## 9c. Contacts — iCloud CardDAV, done 2026-08-31
 
@@ -391,14 +395,57 @@ window instead. And paging by `position` over a live collection can skip or repe
   archive exactly.
 - 127 `Opened`+`Unread` label conflicts resolved to `$seen`, logged by vandelay as warnings.
 
-### Outstanding
+### `archive-all`'s ham branch, verified post-backfill 2026-09-01
 
-**`archive-all`'s ham branch is unverified.** The plan requires proving a newly delivered
-message still lands in **both** Inbox and Archive. The script is installed and active
-(`jcfxtsxpkuaa`), and the spam branch is confirmed live (`message-ingest.spam`,
-`mailboxId = [2]` = Junk). But only one message has been delivered since the last restart and
-it was spam, so the ham path has no evidence either way. Send a test message to
-`scott@willeke.com` and confirm `mailboxId` has two entries.
+The backfill went in entirely through JMAP `Email/import`, which never enters the Sieve ingest
+path, so nothing about the 197,978 imported messages says whether newly *delivered* mail still
+gets its archive copy. Proven separately with an external test message:
+
+```
+message-ingest.ham  from = "activescott@me.com", to = ["scott@willeke.com"]
+                    documentId = 198132, mailboxId = [5, 0]
+```
+
+and read back over JMAP, which is the part that matters — one document in two mailboxes, not
+two copies:
+
+```json
+{ "subject": "Close out Phase 9 properly",
+  "receivedAt": "2026-09-01T22:15:37Z",
+  "mailboxIds": { "f": true, "a": true } }
+```
+
+`a` is the `inbox`-role mailbox and `f` the `archive`-role one. The spam branch was already
+confirmed live (`message-ingest.spam`, `mailboxId = [2]` = Junk, no archive copy), so both
+branches now have evidence.
+
+Send the test **from an external address**. A message sent from `scott@willeke.com` itself
+leaves via `google-willeke-com-relay` and loops back through the relay-guard path, which tests
+something else. It must also be ordinary ham — `spamtest >= 5` files it to Junk with no archive
+copy, which is the branch that was already proven.
+
+**Numeric mailbox ids in the ingest log are not stable.** The `archive-all` script's own comment
+records `mailboxId = [9, 0]` from the pre-backfill verification; Archive is `5` now, because
+deleting the 14 artifact mailboxes renumbered them. Resolve ids through `Mailbox/get`'s `role`
+field rather than trusting a number written down earlier. Post-backfill state:
+
+| Mailbox | JMAP id | Role      | Messages |
+| ------- | ------- | --------- | -------- |
+| Inbox   | `a`     | `inbox`   | 39       |
+| Archive | `f`     | `archive` | 182,791  |
+| Sent    | `e`     | `sent`    | 14,429   |
+| Junk    | `c`     | `junk`    | 308      |
+| Trash   | `b`     | `trash`   | 67       |
+
+Twenty mailboxes total; the other fifteen are Gmail labels that survived the remap.
+
+### JMAP over `port-forward`: use `/jmap/session`, not `/.well-known/jmap`
+
+The well-known path answers **307** over plain HTTP and `curl` without `-L` returns an empty
+body, so session discovery silently yields an empty `apiUrl` and every later call fails with a
+misleading `curl: option : blank argument`. Go straight to `http://localhost:8080/jmap/session`
+and post method calls to `http://localhost:8080/jmap`. Do not add `-L` to chase the redirect —
+it points at the public HTTPS hostname and defeats the point of the tunnel.
 
 ## Credentials to revoke when Phase 9 closes
 
@@ -409,6 +456,13 @@ it was spam, so the ham path has no evidence either way. Send a test message to
 "%{url_effective}"` printed the effective URL, and basic-auth credentials are part of that
   URL. It is scoped to `scott@willeke.com` and every endpoint it reaches is public. Confirm it
   is not the credential Apple Mail uses before revoking. It would otherwise expire 2026-09-12.
+  It was used once more on 2026-09-01 for the `archive-all` readback and has no remaining
+  consumer.
 
   Avoid `%{url_effective}`, `%{redirect_url}` and `-v` on any authenticated `curl`. Use
   `%{http_code}` alone.
+
+Neither lives in git or in a sops secret — both are minted in their vendor's own UI, so
+rotating them changes no file and rolls no pod. `~/mail-backfill/.stalwart-pw` and
+`.icloud-pw` are `0600` files holding the values; delete them with the rest of
+`~/mail-backfill` (~47 GB, Scott's to remove).
