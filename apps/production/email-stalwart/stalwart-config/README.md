@@ -303,6 +303,39 @@ An account must always retain one. So "import into a new calendar, then delete t
 not available — the imported collection is the one that has to go, with its objects exported
 into `default` instead.
 
+## `Jmap.uploadQuota` is the binding limit on any bulk import
+
+Stalwart meters JMAP blob uploads per user per hour, and the stock values are small:
+
+| Field            | Stock        | Meaning                     |
+| ---------------- | ------------ | --------------------------- |
+| `maxUploadCount` | 1,000        | files per hour              |
+| `uploadQuota`    | 50,000,000   | bytes per hour              |
+| `maxUploadSize`  | 50,000,000   | bytes for any single file   |
+| `uploadTtl`      | 1 h          | before an unreferenced blob is dropped |
+
+`Email/import` takes a `blobId`, so every imported message is first an upload and is metered.
+At the stock 50 MB/hour a 15.5 GB mailbox backfill needs roughly **310 hours**. The server
+answers `429` with
+
+```
+Quota exceeded: You have exceeded the blob upload quota of 1000 files or 50000000 bytes.
+[ratelimit-policy="blob-upload-files";q=1000, "blob-upload-bytes";q=50000000;qu="content-bytes";
+ retry-after=755]
+```
+
+and `retry-after` is the remainder of the current hour, not a short backoff. This is a
+different limiter from the general `requests";q=1000` one whose `retry-after` is tens of
+seconds — do not reason about one from the other.
+
+The Phase 9 mail backfill raised these to 250,000 files and 20 GB. **These are backfill
+values, not steady-state ones**; they are far above anything normal client use needs, and
+leaving them raised widens the resource-exhaustion surface on an account that is reachable
+from the public internet. Restore the stock numbers once a bulk import is finished.
+
+`maxUploadSize` was left alone: the largest message in that archive was 41.5 MB, under the
+50 MB cap.
+
 ## Rules
 
 - **`upsert` only.** Never `reconcile` (destroys every object of a type the plan does not
