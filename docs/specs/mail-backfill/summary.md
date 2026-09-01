@@ -430,9 +430,13 @@ something else. It must also be ordinary ham — `spamtest >= 5` files it to Jun
 copy, which is the branch that was already proven.
 
 **Numeric mailbox ids in the ingest log are not stable.** The `archive-all` script's own comment
-records `mailboxId = [9, 0]` from the pre-backfill verification; Archive is `5` now, because
+recorded `mailboxId = [9, 0]` from the pre-backfill verification; Archive is `5` now, because
 deleting the 14 artifact mailboxes renumbered them. Resolve ids through `Mailbox/get`'s `role`
-field rather than trusting a number written down earlier. Post-backfill state:
+field rather than trusting a number written down earlier. The comment was corrected to say so and
+**applied to the server 2026-09-01** (`./scripts/stalwart-apply apply` → `22 updated, 0 created, 0
+failed`; confirmed with `./scripts/stalwart-apply snapshot SieveUserScript`). No `rollout restart`
+was needed: the change is a comment inside the Sieve source with no runtime effect, and the stored
+object is what ingest reads. Post-backfill state:
 
 | Mailbox | JMAP id | Role      | Messages |
 | ------- | ------- | --------- | -------- |
