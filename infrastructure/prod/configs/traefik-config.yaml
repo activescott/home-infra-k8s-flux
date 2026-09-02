@@ -75,10 +75,32 @@ spec:
         #    always far longer than an app's Host + PathPrefix(`/`), so the solver
         #    wins over the app on websecure too.
         #
-        # VERIFY AFTER THIS ROLLS OUT. The failure mode here is silent and slow:
-        # cert-manager renews at two-thirds of lifetime, so a break would not
-        # surface as an outage for ~30 days, and there is no certificate-expiry
-        # alerting yet. Force one renewal and watch it succeed rather than waiting:
+        # VERIFIED 2026-09-01, and it did not need a forced renewal after all --
+        # a real one had already gone through the redirect within the minute.
+        # The Traefik pod carrying this config started 2026-08-28T23:49:50Z
+        # (deployment rollout complete 23:49:52Z, 0 restarts since), and the
+        # grafana ACME order was created 23:50:44Z -- 52 seconds later -- and
+        # reached `valid`. A full HTTP-01 challenge therefore completed while
+        # the redirect was serving, which is the whole of what was in doubt.
+        # All 26 certificates are Ready; all four public hostnames answer 301
+        # to https:// on :80.
+        #
+        # Re-verify the same way after any change here, since the failure mode
+        # is silent and slow -- cert-manager renews at two-thirds of lifetime,
+        # so a break would not surface as an outage for ~30 days:
+        #   kubectl --context nas -n kube-system get pods -l app.kubernetes.io/name=traefik \
+        #     -o jsonpath='{.items[*].status.startTime}{"\n"}'
+        #   kubectl --context nas get orders.acme.cert-manager.io -A \
+        #     --sort-by=.metadata.creationTimestamp -o custom-columns=\
+        # 'NS:.metadata.namespace,NAME:.metadata.name,STATE:.status.state,CREATED:.metadata.creationTimestamp'
+        # An order created after the pod start time and reaching `valid` proves
+        # the whole redirect-following path. If none is due -- renewals are
+        # sparse -- force one instead:
         #   kubectl --context nas -n monitoring delete secret grafana-activescott-com
         #   kubectl --context nas -n monitoring get certificate,order,challenge -w
-        # A challenge reaching `valid` proves the whole redirect-following path.
+        #
+        # Certificate expiry alerting now exists (task #35) and did not when
+        # this was written, so a silent renewal break would also be caught by
+        # StalwartServedCertExpiringSoon and the four per-domain
+        # *CertExpiringSoon rules -- but only after it has already gone wrong,
+        # which is why the check above is still worth running deliberately.
