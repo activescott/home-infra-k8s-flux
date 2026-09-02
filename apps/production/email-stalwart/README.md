@@ -344,6 +344,38 @@ on the wire, and what cert-manager holds — and neither catches this specific f
   which: 401 means the password in `.env.secret.stalwart` and
   `monitoring/prometheus/.env.secret.stalwart-metrics` have drifted apart (two files, two
   namespaces, must hold the same value).
+- **A 401 in the first minute or two after a rotation is expected, not drift.** The two sides pick
+  the new value up by different mechanisms: `stalwart-creds` is name-suffix-hashed, so a new value
+  renames the Secret, changes the StatefulSet pod template and restarts the pod (needed anyway —
+  Stalwart resolves `authSecret` once at config-build time); `stalwart-metrics-auth` sets
+  `disableNameSuffixHash`, so it is updated in place and Prometheus keeps serving the old mounted
+  value until the kubelet syncs the projected volume. Measured on the 2026-09-01 rotation: both
+  Secrets written at 23:58:50, new pod up at 23:58:52, scrapes at 23:59:12 and 23:59:42 returned
+  401, first 200 at 00:00:12 — about 80 seconds. Prometheus re-reads `password_file` on every
+  scrape, so it never needs a restart of its own.
+- **Do not read recovery off the scrape target's `health` field.** It reports the last *completed*
+  scrape, so immediately after the restart it still shows the pre-restart `up` while the endpoint
+  is 401ing. Compare `lastScrape` against the pod's `startTime`:
+
+  ```bash
+  kubectl --context nas -n email-stalwart get pod stalwart-0 -o jsonpath='{.status.startTime}{"\n"}'
+  kubectl --context nas -n monitoring exec deploy/prometheus-server -c prometheus-server -- \
+    wget -qO- 'http://localhost:9090/api/v1/targets?state=active' \
+    | jq -r '.data.activeTargets[]|select(.labels.job=="stalwart")|"\(.health) \(.lastScrape) \(.lastError)"'
+  ```
+
+- To tell a genuine drift from a slow mount **without decrypting either file**, hash both sides
+  where they are consumed and compare the truncated digests. Neither command prints the value:
+
+  ```bash
+  kubectl --context nas -n email-stalwart exec stalwart-0 -- \
+    sh -c 'printf %s "$STALWART_METRICS_PASSWORD" | sha256sum | cut -c1-12'
+  kubectl --context nas -n monitoring exec deploy/prometheus-server -c prometheus-server -- \
+    sh -c "tr -d ' \t\n\r' < /etc/prometheus/secrets/stalwart_metrics_password | sha256sum | cut -c1-12"
+  ```
+
+  Equal digests with a persistent 401 means the problem is not the password. Unequal means the two
+  files really did drift — see `env.secret.stalwart.example` for how to rotate them together.
 - If Stalwart cannot resolve `STALWART_METRICS_PASSWORD` at all, it degrades the endpoint to
   **unauthenticated** rather than failing loudly — the dangerous direction, and the whole reason
   `stalwart-metrics-ingress.yaml` blocks the path at the edge as a second, git-managed layer
