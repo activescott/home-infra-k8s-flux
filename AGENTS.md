@@ -62,9 +62,34 @@ automation") in `renovate.json5` in the same change. When you remove an
 automation, remove the image from that list. Skipping this makes Renovate
 and Flux fight over the tag.
 
-Renovate guardrails (`minimumReleaseAge: 7 days`, `pinDigests: true`) are
+Renovate guardrails (`minimumReleaseAge: 7 days`, digest pinning) are
 deliberate supply-chain controls — do not relax them to make an update land
 sooner. See `docs/specs/renovate-setup/plan.md`.
+
+### Dependency update decision criteria
+
+Three tiers, encoded as packageRules in `renovate.json5`:
+
+1. **Flows freely** (PR opens; human reviews and merges): digest pins,
+   patch and minor updates. Merge one at a time; wait for Flux to
+   reconcile and the affected app to come back healthy before the next.
+   Stateful apps with forward-only migrations (Home Assistant, PhotoPrism,
+   CVAT) additionally get: skim upstream breaking-change notes, take a DB
+   dump first, merge in an attended window.
+2. **Opt-in majors**: `dependencyDashboardApproval` holds every major in
+   the Dependency Dashboard until a human ticks it. Chart majors
+   (grafana/loki/etc.) are individual planned upgrades — read the chart's
+   migration notes and diff the values schema before approving. Dev-tooling
+   majors (things under `scripts/`) are fine iff the script's own
+   build/typecheck passes after merging.
+3. **Never propose** (`enabled: false` / `allowedVersions`, each with a
+   comment naming the unlock condition): DB-engine majors where in-place
+   upgrades fail or the consuming app's upstream pins an older version
+   (postgres, mariadb, redis), and tooling that must track the cluster
+   version (alpine/kubectl within kubectl's +/-1 skew of k3s).
+
+When an update reveals a new class of risk, add a rule and a line here
+rather than re-deriving the decision next time.
 
 ## Declare what git does not own
 

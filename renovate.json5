@@ -48,6 +48,15 @@
       pinDigests: true,
     },
     {
+      // Majors never open PRs unsolicited: they wait in the Dependency
+      // Dashboard's "Pending Approval" list until ticked, then run as
+      // planned upgrades (read migration notes, one at a time).
+      // See AGENTS.md "Dependency update decision criteria".
+      description: "Major updates are opt-in via the Dependency Dashboard",
+      matchUpdateTypes: ["major"],
+      dependencyDashboardApproval: true,
+    },
+    {
       // In-place postgres major upgrades crashloop: the image refuses a data
       // directory from an older major (see PR #57). Majors happen as planned
       // dump/restore migrations; minor/patch/digest updates still flow.
@@ -55,6 +64,31 @@
       matchPackageNames: ["postgres"],
       matchUpdateTypes: ["major"],
       enabled: false,
+    },
+    {
+      // PhotoPrism upstream targets MariaDB 10.11 LTS; running ahead of what
+      // the app vendor tests gains nothing, and in-place majors need a
+      // planned mariadb-upgrade run anyway (PR #54). Unlock when PhotoPrism
+      // documents a newer MariaDB.
+      description: "No mariadb major-version PRs",
+      matchPackageNames: ["mariadb"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      // CVAT upstream pins redis 7 in its own deployments (PR #58). Unlock
+      // when CVAT moves to redis 8+.
+      description: "No redis major-version PRs",
+      matchPackageNames: ["redis"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      // kubectl supports +/-1 minor vs the API server; cluster is k3s
+      // v1.33.x (PR #20). Raise this cap when k3s is upgraded.
+      description: "Keep alpine/kubectl within cluster version skew",
+      matchPackageNames: ["alpine/kubectl"],
+      allowedVersions: "<1.35",
     },
     {
       // Renovate groups all pin updates into one branch by default; one
