@@ -48,6 +48,15 @@
       pinDigests: true,
     },
     {
+      // Renovate groups all pin updates into one branch by default; one
+      // failing dep then blocks every pin (seen twice: Mend jobs be5c8c82
+      // and the 2026-09-03 17:01 run). Ungroup so each pin is its own PR
+      // and a failure isolates to one visible branch.
+      description: "One PR per pin update",
+      matchUpdateTypes: ["pin", "pinDigest"],
+      groupName: null,
+    },
+    {
       // Kustomize placeholder image names in apps/base (real images are
       // patched in per app). Nothing to look up; lookups 401/403 and emit
       // "No docker auth found" warnings on every run.
