@@ -15,7 +15,7 @@ spec:
       restartPolicy: Always
       containers:
         - name: sleeper
-          image: alpine:3.18@sha256:de0eb0b3f2a47ba1eb89389859a9bd88b28e82f5826b6969ad604979713c2d4f
+          image: alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
           command: ["/bin/sh", "-c", "--"]
           args: ["trap : TERM INT; sleep infinity & wait"]
           ports:
