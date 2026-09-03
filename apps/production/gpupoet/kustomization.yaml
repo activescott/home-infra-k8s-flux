@@ -91,7 +91,7 @@ images:
     newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
   - name: indexnow-notifier-image-placeholder
     newName: ghcr.io/activescott/gpu-agent/indexnow-notifier # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:name"}
-    newTag: v202601041830 # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:tag"}
+    newTag: v202609032019 # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:tag"}
   - name: amazon-searcher-image-placeholder
     newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:name"}
     newTag: v202603300713 # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:tag"}
