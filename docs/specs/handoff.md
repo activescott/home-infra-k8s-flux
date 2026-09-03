@@ -8,4 +8,4 @@ order.
 
 ## In progress
 
-- Renovate setup (config done; pending: app install, post-install validation) — [plan](renovate-setup/plan.md)
+- Renovate setup (operational; 14 held PRs await decisions — see summary "Held for Scott") — [summary](renovate-setup/summary.md)
