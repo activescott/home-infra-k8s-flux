@@ -54,7 +54,7 @@ images:
     newTag: 1.32.3 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
   - name: tayle-image-db
     newName: postgres
-    newTag: "17"
+    newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
   - name: tayle-image-rabbitmq
     newName: rabbitmq
     newTag: 3-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
