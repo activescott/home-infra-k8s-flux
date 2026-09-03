@@ -357,6 +357,48 @@ Stalwart reads config at startup.
 raising the anonymous limit would buy nothing and would weaken the control that actually
 faces unauthenticated traffic.
 
+## The default inbound throttle drops dual-delivery copies
+
+`MtaInboundThrottle` is the one object in this plan whose rationale cannot live in its own
+`description` field, the way most records here carry theirs: `matchOn` is
+`["description"]`, so that string has to stay
+byte-identical to the one Stalwart shipped or the upsert creates a second throttle instead of
+updating the stock one. The reasoning is therefore here.
+
+Stalwart ships two inbound throttles, both enabled, neither of them a choice anyone here made:
+
+| Description                          | Key                    | Stock rate | Now       |
+| ------------------------------------ | ---------------------- | ---------- | --------- |
+| Sender address to recipient throttle | `senderDomain` + `rcpt`| 25 / hour  | 1000 / hour |
+| Sender IP throttle                   | `remoteIp`             | 5 / second | unchanged |
+
+On **2026-09-03** the first one temp-rejected **68 messages in 24 hours**, every one a GitHub
+notification to `scott@willeke.com` — a single sender domain to a single recipient is exactly
+what it keys on, and notification bursts clear 25/hour easily. Each rejection was a 451 to
+Google, which retried into the same limit.
+
+Nothing on this side noticed. Inbound volume never dropped, so `StalwartNoInboundMail` stayed
+quiet; the dual-delivery routing rule has _Suppress bounces from this recipient_ checked by
+design, so no sender saw a failure; and Gmail held every message regardless. The detector was
+a **Google Workspace "Smart host failure" alert email** to the Workspace admin: 47 messages,
+24 failures. Only the archive copy was ever at risk, and only silently — which is the same
+failure shape as the Internal-Receiving gap found the same day.
+
+Raising it rather than disabling it: a per-sender-domain rate limit buys nothing on this
+server. Port 25 is restricted by the OPNsense NAT rule to Google's egress ranges, so the only
+thing that can reach the MTA is one trusted smart host delivering mail Gmail has already spam
+filtered. 1000/hour keeps a runaway guard that will never fire in normal traffic instead of a
+working limit that fires weekly.
+
+The `remoteIp` throttle is left at 5/second — it did not fire once across those 68 rejections,
+and it is the one that would still matter if the NAT restriction were ever loosened.
+
+`loki_process_custom_stalwart_rate_limit_exceeded_total` and the `StalwartInboundRateLimited`
+alert were added at the same time, so the next unchosen throttle reports itself.
+
+**This change needs a `rollout restart`** — see the Rules below; the throttle is read at
+startup like the rest of the configuration.
+
 ## Rules
 
 - **`upsert` only.** Never `reconcile` (destroys every object of a type the plan does not

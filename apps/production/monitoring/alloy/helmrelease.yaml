@@ -526,6 +526,41 @@ spec:
               }
             }
 
+            // Inbound messages Stalwart temp-rejected against one of its
+            // MtaInboundThrottle limits.
+            //
+            // This is here because of 2026-09-03: Stalwart's *default* "Sender
+            // address to recipient throttle" is 25 messages per hour keyed on
+            // (senderDomain, rcpt), and GitHub notification bursts to
+            // scott@willeke.com blew past it 68 times in 24 hours. Every one was a
+            // 451 to Google, which retried into the same limit. Nothing here
+            // noticed: the routing rule has "Suppress bounces from this recipient"
+            // checked, so the sender sees nothing, and Gmail has the message
+            // regardless -- only the archive copy is at risk, and only silently.
+            // The detector was a Google Workspace "Smart host failure" alert email.
+            //
+            // The limit was raised to 1000/hour in stalwart-config/plan.ndjson, so
+            // the expected value of this counter is zero. It exists to catch the
+            // next throttle nobody chose.
+            //
+            // Matching on "MtaInboundThrottle" rather than the bare event id is
+            // deliberate: Stalwart logs the event TWICE per rejection, once naming
+            // the throttle and its limit and once naming the recipient, so the bare
+            // id double-counts.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"(smtp.rate-limit-exceeded)\" |= \"MtaInboundThrottle\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_rate_limit_exceeded_total"
+                  description = "inbound messages rejected against an MtaInboundThrottle limit"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             // Liveness heartbeat for this pipeline, not for Stalwart.
             //
             // Every counter above is silent on a quiet day, and mail here IS quiet --

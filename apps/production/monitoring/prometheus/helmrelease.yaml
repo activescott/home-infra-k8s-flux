@@ -909,6 +909,38 @@ spec:
                     NAT rule for :25, or the source restriction to Google's egress ranges. Mail
                     is NOT lost — Google remains the MX and retains its own copy — but the
                     archive here is incomplete for as long as this holds.
+              - alert: StalwartInboundRateLimited
+                # The counterpart to StalwartNoInboundMail: that one catches the
+                # path being dead, this one catches it being open but refusing.
+                #
+                # On 2026-09-03 Stalwart temp-rejected 68 dual-delivery copies in 24
+                # hours against its DEFAULT "Sender address to recipient throttle"
+                # (25/hour keyed on senderDomain+rcpt) — every one a GitHub
+                # notification to scott@willeke.com. Volume never dropped, so
+                # StalwartNoInboundMail stayed silent, and the routing rule
+                # suppresses bounces by design, so no sender saw anything. The only
+                # signal anywhere was a Google Workspace "Smart host failure" alert
+                # email to the Workspace admin.
+                #
+                # The limit is now 1000/hour and the baseline is zero, so any
+                # occurrence means a throttle is firing that nobody chose. Like
+                # StalwartAuthFailures, the counter does not exist until the first
+                # rejection and this rule evaluates to empty rather than 0 until
+                # then.
+                expr: 'sum(increase(loki_process_custom_stalwart_rate_limit_exceeded_total[1h])) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: Stalwart is rate-limiting inbound mail
+                  description: >-
+                    Stalwart returned 451 to Google for at least one dual-delivery copy in the
+                    last hour, against a baseline of zero. Mail is NOT lost — Google remains the
+                    MX and retries — but copies that outlive Google's retry window never reach
+                    the archive, and nothing else reports it. Read the limit that fired from the
+                    log line, then compare against the live objects with
+                    `./scripts/stalwart-apply snapshot MtaInboundThrottle`. Loki:
+                    {namespace="email-stalwart"} |= "(smtp.rate-limit-exceeded)".
               - alert: StalwartDeliveryFailing
                 # Outbound leaves through the Google Workspace SMTP relay authenticated
                 # with an app password. Google revokes every app password whenever the
