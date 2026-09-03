@@ -27,6 +27,18 @@
     ],
   },
 
+  // Authenticated Docker Hub lookups. Anonymous digest lookups hit Docker
+  // Hub's rate limit ("No docker auth found"), which broke the digest-pin
+  // branch. The token lives in the Mend portal (repo Settings > Credentials,
+  // secret DOCKER_HUB_TOKEN) — never in this repo.
+  hostRules: [
+    {
+      matchHost: "docker.io",
+      username: "activescott",
+      password: "{{ secrets.DOCKER_HUB_TOKEN }}",
+    },
+  ],
+
   packageRules: [
     {
       // Flux image-update automation owns these images (see the
