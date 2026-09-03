@@ -23,7 +23,7 @@ spec:
         # repo at https://github.com/zwave-js/zwave-js-ui
         - name: zwavejs
           # container at https://hub.docker.com/r/zwavejs/zwave-js-ui/tags
-          image: zwavejs/zwave-js-ui:11.17.0@sha256:79827886d44929105b625b07ce9870e739502d8b421bff5b11a4c17f811fb577
+          image: zwavejs/zwave-js-ui:11.22.3@sha256:14d018bb689eecce4029229764d2191d9b8d8f211106fcabaef421e7b0f8cf9c
 
           securityContext:
             # needed for /dev/zwave device access
