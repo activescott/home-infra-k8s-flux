@@ -88,7 +88,7 @@ images:
     newTag: v202609031020 # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:tag"}
   - name: gpupoet-image-db
     newName: postgres
-    newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
+    newTag: "18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280"
   - name: indexnow-notifier-image-placeholder
     newName: ghcr.io/activescott/gpu-agent/indexnow-notifier # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:name"}
     newTag: v202601041830 # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:tag"}

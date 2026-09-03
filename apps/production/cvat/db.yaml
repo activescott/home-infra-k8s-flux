@@ -21,7 +21,7 @@ spec:
       containers:
         - name: postgres
           # same major version as the upstream docker-compose.yml this migrates from
-          image: postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b
+          image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
           env:
             - name: POSTGRES_USER
               value: root
