@@ -2,13 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - app-deployment.yaml
+  - worker-deployment.yaml
   - app-service.yaml
   - app-ingress.yaml
   - app-data-pvc.yaml
   - db-statefulset.yaml
   - db-service.yaml
-  # Transcode worker (activescott/fernfiles issue #140). Runs ffmpeg for the
-  # HLS video pipeline outside the request-serving pod, and is the only image
-  # with ffmpeg in it. Kept byte-identical to k8s/base/worker-deployment.yaml
-  # in the app repo, same as every other file in this directory.
-  - worker-deployment.yaml

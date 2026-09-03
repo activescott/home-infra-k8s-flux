@@ -171,9 +171,20 @@ spec:
           # (30 x 5s = 150s) and suspends liveness/readiness until it
           # succeeds, so they only ever judge an app that has already come
           # up.
+          #
+          # Checks readiness, not liveness: readiness also waits for the
+          # search models (embedding + reranker) to finish their one-time
+          # load, which blocks Node's single event loop for several seconds
+          # and would otherwise fail the tighter liveness/readiness budgets
+          # below if it happened after they take over (2026-09-02 prod
+          # incident — first real search after a rollout triggered the same
+          # block later, mid-steady-state, and got the pod killed). Pointing
+          # startup at readiness means that block, wherever it lands, is
+          # always covered by this probe's 150s budget instead of by timing
+          # luck. See app/lib/search-warmup.server.ts.
           startupProbe:
             httpGet:
-              path: /health/liveness
+              path: /health/readiness
               port: 3300
             periodSeconds: 5
             failureThreshold: 30
