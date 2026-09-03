@@ -48,6 +48,15 @@
       pinDigests: true,
     },
     {
+      // In-place postgres major upgrades crashloop: the image refuses a data
+      // directory from an older major (see PR #57). Majors happen as planned
+      // dump/restore migrations; minor/patch/digest updates still flow.
+      description: "No postgres major-version PRs",
+      matchPackageNames: ["postgres"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
       // Renovate groups all pin updates into one branch by default; one
       // failing dep then blocks every pin (seen twice: Mend jobs be5c8c82
       // and the 2026-09-03 17:01 run). Ungroup so each pin is its own PR
