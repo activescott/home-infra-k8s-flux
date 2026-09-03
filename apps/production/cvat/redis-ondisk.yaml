@@ -23,7 +23,7 @@ spec:
         - name: kvrocks
           # container runs as uid/gid 999 (kvrocks); the hostPath below must be
           # chown'd 999:999 (see docs/specs/cvat-hosting/summary.md)
-          image: apache/kvrocks:2.15.0
+          image: apache/kvrocks:2.15.0@sha256:0192707bd335ad546d8ec7826b1553b674fff27d6cea4195e22c0f1adbdbea40
           # data goes to a SUBDIR of /var/lib/kvrocks: the image bakes kvrocks.conf
           # into /var/lib/kvrocks itself, and a hostPath mounted there shadows it
           # (docker named volumes copy image contents on first use; hostPath doesn't).
