@@ -98,6 +98,9 @@ spec:
       name: repo-amazon-searcher
       namespace: gpupoet-prod
     - kind: ImageRepository
+      name: repo-indexnow-notifier
+      namespace: gpupoet-prod
+    - kind: ImageRepository
       name: repo-gpu-poet-collector
       namespace: gpupoet-prod
     - kind: ImageRepository

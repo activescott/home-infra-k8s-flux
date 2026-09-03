@@ -33,6 +33,7 @@ Derived from `apps/production/*/image-scanning*/` kustomizations patching
 | ghcr.io/activescott/gpu-poet-data/collector     | gpu-poet-collector |
 | ghcr.io/activescott/amazon-searcher             | gpupoet            |
 | ghcr.io/activescott/gpu-agent/app               | gpupoet            |
+| ghcr.io/activescott/gpu-agent/indexnow-notifier | gpupoet            |
 | ghcr.io/activescott/ramblefeed/app              | ramblefeed         |
 | ghcr.io/activescott/www                         | scott-willeke-com  |
 | ghcr.io/activescott/tinkerbell/app              | tinkerbell         |

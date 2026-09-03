@@ -70,6 +70,7 @@
         "ghcr.io/activescott/gpu-poet-data/collector",
         "ghcr.io/activescott/amazon-searcher",
         "ghcr.io/activescott/gpu-agent/app",
+        "ghcr.io/activescott/gpu-agent/indexnow-notifier",
         "ghcr.io/activescott/ramblefeed/app",
         "ghcr.io/activescott/www",
         "ghcr.io/activescott/tinkerbell/app",

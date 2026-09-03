@@ -9,6 +9,7 @@ resources:
   - www-redirect-ingress.yaml
   - image-scanning/
   - image-scanning-amazon-searcher/
+  - image-scanning-indexnow/
   - indexnow-pv.yaml
   - ../shared/ghcr-pull-secret/
 patches:
@@ -89,8 +90,8 @@ images:
     newName: postgres
     newTag: "17"
   - name: indexnow-notifier-image-placeholder
-    newName: ghcr.io/activescott/gpu-agent/indexnow-notifier
-    newTag: latest
+    newName: ghcr.io/activescott/gpu-agent/indexnow-notifier # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:name"}
+    newTag: v202601041830 # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:tag"}
   - name: amazon-searcher-image-placeholder
     newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:name"}
     newTag: v202603300713 # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:tag"}
