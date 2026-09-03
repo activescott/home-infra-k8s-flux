@@ -77,11 +77,27 @@ Merged + verified healthy, in order:
   12.3.3-noble minor for mmm (unbundled from closed #54 by the major-block
   rule) — both verified.
 
-## Open decisions
+## Third wave (2026-09-03 evening)
 
-- #59 wordpress docker v7 (mmm.willeke.com) — real WP major, Scott's call.
+- #59 wordpress 7.0.4 (mmm.willeke.com) merged after mariadb dump (4.2M,
+  session scratchpad); site + wp-login 200, title intact. First wp-admin
+  visit finalizes the DB upgrade — Scott/Micah to click through once.
+- indexnow automation verified end-to-end: added workflow_dispatch to
+  gpu-agent's build-indexnow.yaml (gpu-agent PR #60, squash — repo forbids
+  merge commits), the merge triggered a build, tag v202609032019 published,
+  fluxcdbot committed 4febd2f, CronJob image updated in-cluster. Manual
+  rebuilds now possible:
+  `gh workflow run build-indexnow.yaml -R activescott/gpu-agent`.
+
+## Remaining / future
+
 - k3s upgrade (1.33 → newer) is its own future task; then raise the
-  alpine/kubectl cap.
+  alpine/kubectl `allowedVersions` cap in renovate.json5.
+- Grafana dashboard sidecar hot-reload 401 — bounce the grafana pod after
+  dashboard ConfigMap changes until the sidecar admin creds are wired.
+- HA config: template-under-cover-platform deprecation error (Scott).
+- gpu-agent repo: 108 open Dependabot vulnerabilities (4 critical) —
+  candidate for its own triage session.
 
 ## Gotchas / operational notes
 
