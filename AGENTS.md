@@ -48,6 +48,24 @@ Full context: see the top-level `README.md` "Image source rule"
 section and `docs/specs/wordpress-micah-mmm-bitnami-pin-upgrade/`
 + `docs/specs/wordpress-micah-mmm-migrate-off-bitnami/`.
 
+## Renovate vs Flux image automation
+
+Renovate (`renovate.json5` at repo root) opens PRs for third-party container
+images and Helm chart versions. First-party continuously-deployed app images
+are owned by Flux image-update automation instead (the `image-scanning*/`
+kustomizations under `apps/production/*`).
+
+**Exactly one bot may own each image.** When you add a Flux
+image-scanning/ImageUpdateAutomation setup for an image, add that image to
+the `enabled: false` packageRule ("Images owned by Flux image-update
+automation") in `renovate.json5` in the same change. When you remove an
+automation, remove the image from that list. Skipping this makes Renovate
+and Flux fight over the tag.
+
+Renovate guardrails (`minimumReleaseAge: 7 days`, `pinDigests: true`) are
+deliberate supply-chain controls — do not relax them to make an update land
+sooner. See `docs/specs/renovate-setup/plan.md`.
+
 ## Declare what git does not own
 
 Some things in Cloudflare have a value that something outside git owns and keeps
