@@ -2,13 +2,9 @@
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["config:recommended"],
 
-  // Supply-chain guardrails:
-  // - never propose a release younger than 7 days (compromised releases are
-  //   usually detected and yanked within days)
-  // - pin container images by digest (tag stays visible: tag@sha256:...);
-  //   a re-pointed tag then shows up as a reviewable git diff
+  // Supply-chain guardrail: never propose a release younger than 7 days
+  // (compromised releases are usually detected and yanked within days).
   minimumReleaseAge: "7 days",
-  pinDigests: true,
 
   // Flux and kubernetes managers have no way to know which YAML files are
   // manifests, so scope them to the manifest trees explicitly.
@@ -40,6 +36,26 @@
   ],
 
   packageRules: [
+    {
+      // Supply-chain guardrail: pin container images by digest (tag stays
+      // visible: tag@sha256:...); a re-pointed tag then shows up as a
+      // reviewable git diff. Docker datasource only — a global pinDigests
+      // also tried to digest-pin the cvat GitRepository's git tag, which the
+      // flux manager cannot write, and that aborted the whole grouped
+      // pin-dependencies branch (Mend job be5c8c82, 2026-09-03).
+      description: "Digest-pin container images",
+      matchDatasources: ["docker"],
+      pinDigests: true,
+    },
+    {
+      // Kustomize placeholder image names in apps/base (real images are
+      // patched in per app). Nothing to look up; lookups 401/403 and emit
+      // "No docker auth found" warnings on every run.
+      description: "Skip placeholder images",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["/placeholder/", "/-image(-|$)/"],
+      enabled: false,
+    },
     {
       // Flux image-update automation owns these images (see the
       // apps/production/*/image-scanning*/ kustomizations). Exactly one bot
