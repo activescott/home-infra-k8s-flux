@@ -8,4 +8,4 @@ order.
 
 ## In progress
 
-- Renovate setup (operational; 14 held PRs await decisions — see summary "Held for Scott") — [summary](renovate-setup/summary.md)
+- Renovate follow-ups (setup complete 2026-09-03; open loose ends in summary "Remaining / future": Micah's wp-admin DB-upgrade click after WP 7.0.4, grafana sidecar hot-reload 401, k3s upgrade then raise kubectl cap, gpu-agent Dependabot triage) — [summary](renovate-setup/summary.md)

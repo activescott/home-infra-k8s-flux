@@ -91,6 +91,10 @@ Merged + verified healthy, in order:
 
 ## Remaining / future
 
+- Micah to log into mmm.willeke.com/wp-admin once and click "Update
+  WordPress Database" if prompted (message sent to him 2026-09-03; the
+  pre-upgrade mariadb dump lives in the session scratchpad — take a fresh
+  dump before any future rollback attempt, scratchpads are temporary).
 - k3s upgrade (1.33 → newer) is its own future task; then raise the
   alpine/kubectl `allowedVersions` cap in renovate.json5.
 - Grafana dashboard sidecar hot-reload 401 — bounce the grafana pod after
