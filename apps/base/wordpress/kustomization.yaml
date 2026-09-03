@@ -1,5 +1,0 @@
-resources:
-  - helmrepository.yaml
-  - helmrelease.yaml
-
-buildMetadata: [originAnnotations, transformerAnnotations]
