@@ -26,7 +26,7 @@ spec:
       containers:
         - name: mariadb
           # Tags: https://hub.docker.com/_/mariadb/tags
-          image: mariadb:12.2.2-noble@sha256:6a4c4bbf0447c2247801309513fcc0dd17c3f35390368139ce419387fdd1144d
+          image: mariadb:12.3.3-noble@sha256:dd9b303aed4f4890ed09f766d8ca9ddfd176c0c6f6267feff53b3192ec65a979
           env:
             - name: MARIADB_ROOT_PASSWORD
               valueFrom:
