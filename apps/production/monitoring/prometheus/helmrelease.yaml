@@ -488,6 +488,65 @@ spec:
                     days, so reaching 14 means renewal is not happening. Check
                     the Certificate and CertificateRequest objects in the
                     fernfiles-prod namespace.
+              # Search moved its models out of the app pod and into
+              # inference-service (fernfiles
+              # docs/specs/036-search-inference-service/plan.md). The app no
+              # longer waits on search warmth to report itself ready — search
+              # is one feature, not the whole site — so nothing about a broken
+              # inference path shows up in any of the object-level alerts
+              # above. This counter is the only signal it produces: the app
+              # increments it whenever a search cannot reach a model at all
+              # (unreachable, non-2xx, or timed out). A superseded request —
+              # the scheduler abandoning a keystroke the user already replaced
+              # — is deliberately NOT counted, or normal type-ahead would fire
+              # this constantly.
+              - alert: FernfilesSearchInferenceFailing
+                expr: 'increase(fernfiles_search_inference_failures_total{job="fernfiles_app"}[10m]) > 0'
+                for: 5m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Fernfiles search cannot reach its {{ $labels.phase }} model. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    Searches are failing at the {{ $labels.phase }} stage and
+                    every one of them returns no results. The site is otherwise
+                    up. Check `kubectl --context nas -n fernfiles-prod logs
+                    deploy/inference-service` and the app's own
+                    "search inference hard failure" log events.
+              # The app restart alert above is scoped to container="app", so
+              # it says nothing about this pod. One replica, one forked child
+              # holding both models: a restart means every search 503s until
+              # the models reload.
+              - alert: FernfilesInferenceServiceRestarted
+                expr: 'increase(kube_pod_container_status_restarts_total{namespace="fernfiles-prod",container="inference-service"}[15m]) > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Fernfiles inference-service restarted. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    The inference-service container restarted in the last 15
+                    minutes, so search was unavailable while its models
+                    reloaded. Check
+                    `kubectl --context nas -n fernfiles-prod logs deploy/inference-service --previous`.
+              # Both ONNX models plus their arenas live in this one container.
+              # Its limit is 1Gi (fernfiles
+              # k8s/base/inference-service-deployment.yaml) and an OOMKill
+              # reads as an unexplained restart, so warn while there is still
+              # headroom. 900MB tracks that limit by hand — raise both together.
+              - alert: FernfilesInferenceServiceMemoryHigh
+                expr: 'container_memory_working_set_bytes{namespace="fernfiles-prod",container="inference-service"} > 900e6'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Fernfiles inference-service is near its memory limit. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    {{ $value | humanize1024 }}B working set against a 1Gi
+                    limit. The next step is an OOMKill, which surfaces only as
+                    a restart.
           - name: cloudflare-proxied-sites
             rules:
               # Site-down / redirect-loop coverage for the Cloudflare-proxied

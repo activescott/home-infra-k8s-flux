@@ -152,6 +152,17 @@ spec:
                   name: app-creds
                   key: UPLOAD_MAX_FILES_PER_REQUEST
                   optional: true
+            # Sends every embed/rerank call to inference-service instead of
+            # loading the models in this process
+            # (docs/specs/036-search-inference-service/plan.md step 2). A
+            # literal, not a secret: it is a cluster-internal Service name,
+            # and it is the switch that decides which provider server-core
+            # builds, so it belongs where the topology is described.
+            # k8s/overlays/{dev,e2e} delete both this and the Deployment it
+            # points at — they run the models in-process until step 3 gives
+            # them the service too.
+            - name: INFERENCE_SERVICE_URL
+              value: http://inference-service:3400
           volumeMounts:
             - name: app-data
               mountPath: /data/storage
