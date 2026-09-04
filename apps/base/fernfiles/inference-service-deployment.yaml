@@ -1,0 +1,108 @@
+# Search inference service (docs/specs/036-search-inference-service/plan.md).
+#
+# Embedding and reranking ran inside the app pod until this existed, on the
+# same event loop that answers its kubelet probes; one 11.4s search on
+# 2026-09-02 starved them and got the pod killed. Here, the HTTP process does
+# nothing but message-passing and forks one child that owns both models, so no
+# inference call can delay a probe answer — and a native onnxruntime crash
+# kills only that child.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inference-service
+spec:
+  # One, matching the app Deployment. A restart degrades search briefly; it
+  # does not take the app down, which is the entire point of this split.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inference-service
+  template:
+    metadata:
+      labels:
+        app: inference-service
+        app.activescott.com/component: inference-service
+    spec:
+      containers:
+        - name: inference-service
+          image: fernfiles-image-inference
+          ports:
+            - containerPort: 3400
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: NODE_ENV
+            # optional: the logger falls back to its own default level.
+            - name: LOG_LEVEL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: LOG_LEVEL
+                  optional: true
+            # Deliberately NOT the whole app-creds secret the worker mounts.
+            # This pod holds no user data, opens no database connection and
+            # mounts no volume — it takes query text in and returns numbers.
+            # Handing it the app's credentials would give an onnxruntime
+            # compromise something to steal, for no functional gain.
+            #
+            # Nothing else is needed: src/inference-child.ts constructs the
+            # provider classes directly and reads these variables from
+            # process.env, rather than going through server-core's
+            # default*Provider() factories and their env() schema, which
+            # requires DATABASE_URL/JWT_SECRET/E2E_MAGIC_LINK_SECRET on the
+            # app's behalf. That also makes it structurally impossible for
+            # INFERENCE_SERVICE_URL to point this service at itself, since
+            # the child never consults the branching factory.
+            - name: SEARCH_MODEL_DIR
+              value: /app/models
+          resources:
+            # cpu 4 is the measured knee (036 plan, "Measured baselines"):
+            # over a 2-CPU limit it buys 1.36x, while 8 buys only 1.16x more
+            # for double the resources. The providers pin
+            # intraOpNumThreads to this number via detectCpuLimit()
+            # (packages/server-core/src/cpu.ts), so this limit is the ONLY
+            # place the thread count is configured — and it must stay bounded,
+            # because oversubscribing the quota is the original defect (20 ORT
+            # threads against a 2-CPU quota measured 1809ms where 2 threads
+            # measured 369ms).
+            #
+            # Memory from the same measurements: both models resident cost
+            # ~130MB over a bare Node process, and the worst observed figure
+            # (5 oversized 40x1000 batches) was 495MB. The limit is ~2x that.
+            # Monitored rather than proven — 20 iterations cannot rule out
+            # slow growth, which is what the memory alert in rollout step 2
+            # covers.
+            limits:
+              cpu: "4"
+              memory: "1Gi"
+            requests:
+              cpu: "0.1"
+              memory: "512Mi"
+          # Loading both models takes seconds and happens in the child before
+          # it reports ready, so readiness gets its own generous budget here
+          # (30 x 5s = 150s) and liveness/readiness below are suspended until
+          # it passes — the #250 lesson, applied to the pod that now owns the
+          # model load.
+          startupProbe:
+            httpGet:
+              path: /health/readiness
+              port: 3400
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 3400
+            periodSeconds: 10
+          # Liveness points at the parent's own endpoint, which never touches
+          # a model and so can never be blocked by one. It fails only if the
+          # HTTP process itself is wedged — which is exactly what a restart
+          # fixes, and what the app pod's liveness could not distinguish
+          # before this split.
+          livenessProbe:
+            httpGet:
+              path: /health/liveness
+              port: 3400
+            periodSeconds: 10

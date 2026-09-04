@@ -3,7 +3,9 @@ kind: Kustomization
 resources:
   - app-deployment.yaml
   - worker-deployment.yaml
+  - inference-service-deployment.yaml
   - app-service.yaml
+  - inference-service-service.yaml
   - app-ingress.yaml
   - app-data-pvc.yaml
   - db-statefulset.yaml

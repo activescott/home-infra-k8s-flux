@@ -1,0 +1,22 @@
+# ClusterIP only, and there is deliberately NO Ingress file for this Service
+# — that absence is the access control (036 plan, "Network exposure"). The app
+# reaches it at
+# http://inference-service.<namespace>.svc.cluster.local:3400; nothing outside
+# the cluster network can reach it at all. Stricter than /ops/* on the app,
+# which is reachable via its Service and denied at the ingress layer; this has
+# no ingress layer to deny at.
+#
+# Still reachable by any pod in the cluster that knows the name, same trust
+# level the app Service already has. Tightening that is a NetworkPolicy
+# follow-up (036 plan, open question 3), not specific to this service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: inference-service
+spec:
+  selector:
+    app: inference-service
+  ports:
+    - port: 3400
+      targetPort: 3400
+  type: ClusterIP

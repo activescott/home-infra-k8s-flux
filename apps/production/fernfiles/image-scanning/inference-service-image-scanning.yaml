@@ -1,0 +1,31 @@
+# Image automation for the fernfiles search inference service
+# (activescott/fernfiles docs/specs/036-search-inference-service/plan.md).
+#
+# Written out rather than reusing base/image-scanning/semver via a third
+# placeholder-patch pass, for the same reason worker-image-scanning.yaml is:
+# that base bundles an ImageUpdateAutomation, and another one pushing commits
+# to the same branch for the same repository is redundant. The existing
+# update-fernfiles-app automation already rewrites every $imagepolicy marker
+# in this repo, including this one's.
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-fernfiles-inference-service
+spec:
+  image: ghcr.io/activescott/fernfiles/inference-service
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-fernfiles-inference-service
+spec:
+  imageRepositoryRef:
+    name: repo-fernfiles-inference-service
+  policy:
+    # Same range as the app and worker: build.yaml tags all three images
+    # v<version> from the same release, so the policies resolve together.
+    semver:
+      range: ">=0.0.0"

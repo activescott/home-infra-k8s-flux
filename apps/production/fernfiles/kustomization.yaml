@@ -15,13 +15,17 @@ patches:
     target:
       kind: Deployment
       name: app
-  # Both ghcr.io/activescott/fernfiles packages are private, so every
+  # All three ghcr.io/activescott/fernfiles packages are private, so every
   # Deployment pulling one needs the pull secret. Prod-only: dev and e2e run
   # images loaded straight into kind.
   - path: patch-worker-deployment.yaml
     target:
       kind: Deployment
       name: worker
+  - path: patch-inference-service-deployment.yaml
+    target:
+      kind: Deployment
+      name: inference-service
   - path: patch-app-ingress.yaml
     target:
       kind: Ingress
@@ -55,3 +59,11 @@ images:
   - name: fernfiles-image-worker
     newName: ghcr.io/activescott/fernfiles/worker # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:name"}
     newTag: v0.59.2 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:tag"}
+  # Search inference service (activescott/fernfiles
+  # docs/specs/036-search-inference-service/plan.md), tagged from the same
+  # release as the app and worker images, so all three tags move together.
+  # The tag below must be the first release that contains this image — an
+  # earlier tag does not exist in the registry and the pod would never pull.
+  - name: fernfiles-image-inference
+    newName: ghcr.io/activescott/fernfiles/inference-service # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-inference-service:name"}
+    newTag: v0.60.0 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-inference-service:tag"}
