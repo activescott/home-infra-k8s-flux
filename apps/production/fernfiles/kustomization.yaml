@@ -58,7 +58,7 @@ images:
   # is the release that introduced it — no earlier tag of this image exists.
   - name: fernfiles-image-worker
     newName: ghcr.io/activescott/fernfiles/worker # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:name"}
-    newTag: v0.61.1 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:tag"}
+    newTag: v0.61.2 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:tag"}
   # Search inference service (activescott/fernfiles
   # docs/specs/036-search-inference-service/plan.md), tagged from the same
   # release as the app and worker images, so all three tags move together.
