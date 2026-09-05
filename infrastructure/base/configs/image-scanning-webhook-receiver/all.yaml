@@ -116,6 +116,15 @@ spec:
     - kind: ImageRepository
       name: repo-fernfiles-worker
       namespace: fernfiles-prod
+    # Same reason as the worker: build.yaml tags app, worker, and
+    # inference-service v<version> from one release, so this needs its own
+    # Receiver entry to roll with the others. Missed when the inference
+    # service was added (8424fde) — validate-webhook-receiver.sh catches it
+    # on every commit but the missing entry was never filed. See the
+    # comment in apps/production/fernfiles/image-scanning/inference-service-image-scanning.yaml.
+    - kind: ImageRepository
+      name: repo-fernfiles-inference-service
+      namespace: fernfiles-prod
     # ARC (Actions Runner Controller) — public images on ghcr.io/actions/*
     # GitHub does not send webhooks for these (they live in another user's repo),
     # so the receiver entry is only here to satisfy the validate-webhook-receiver
