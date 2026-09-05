@@ -3,6 +3,8 @@
 import { execSync } from 'child_process';
 import { Octokit } from '@octokit/rest';
 import * as readline from 'readline';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface ImageRepository {
   name: string;
@@ -88,6 +90,25 @@ async function promptForToken(prompt: string): Promise<string> {
   });
 }
 
+function loadTokenFromFile(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  for (const line of fs.readFileSync(filePath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+    const match = trimmed.match(/^GITHUB_TOKEN=(.+)$/);
+    if (match) {
+      return match[1].trim().replace(/^["']|["']$/g, '');
+    }
+  }
+
+  return null;
+}
+
 // GitHub has two webhook event types related to packages:
 //
 // - 'package': The newer/recommended event per GitHub docs. Fires for GitHub Packages.
@@ -127,7 +148,16 @@ class UpdateFluxImageScanningWebhooks {
     let githubToken = process.env.GITHUB_TOKEN;
 
     if (!githubToken) {
-      console.log('GITHUB_TOKEN not found in environment.');
+      const tokenFile = path.resolve(process.cwd(), 'scripts', '.env.secret.github.flux-bootstrap');
+      const fileToken = loadTokenFromFile(tokenFile);
+      if (fileToken) {
+        console.log(`GITHUB_TOKEN loaded from ${tokenFile}`);
+        githubToken = fileToken;
+      }
+    }
+
+    if (!githubToken) {
+      console.log('GITHUB_TOKEN not found in environment or scripts/.env.secret.github.flux-bootstrap.');
       githubToken = await promptForToken('Enter GITHUB_TOKEN: ');
 
       if (!githubToken) {
