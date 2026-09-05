@@ -28,7 +28,7 @@ spec:
       containers:
         - name: wordpress
           # Tags: https://hub.docker.com/_/wordpress/tags
-          image: wordpress:7.0.4-php8.3-apache@sha256:b427cec767f5de2aa649390cb8805aa1fe320e1e0d57fc1f467754edb6cc0a49
+          image: wordpress:7.1.0-php8.3-apache@sha256:5a93c470ae8220fddf71f6ebe3bc94e615ddc2ae4d9810f795b830fb11c41a17
           env:
             # In-namespace DNS name of the mariadb Service.
             - name: WORDPRESS_DB_HOST
