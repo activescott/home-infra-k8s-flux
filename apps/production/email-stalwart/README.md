@@ -291,6 +291,33 @@ If it does get banned, the way back in bypasses Traefik and arrives as loopback 
 kubectl --context nas -n email-stalwart port-forward stalwart-0 8081:8080
 ```
 
+#### Reading a `security.ip-blocked` line after `useXForwarded`
+
+The field appears **twice** on an http-listener block, and only the second one is the address
+Stalwart blocked:
+
+```
+INFO Blocked IP address (security.ip-blocked) listenerId = "http", localPort = 8080,
+     remoteIp = 172.16.0.67, remotePort = 48352, listenerId = "http", remoteIp = 81.171.74.60
+```
+
+The first is the TCP socket peer — Traefik's pod, so always inside 172.16/16 no matter who is
+being blocked. The second is the effective address resolved from `X-Forwarded-For`. A line like
+the one above is an ordinary scanner ban working correctly, **not** a banned ingress controller.
+
+`StalwartBlockingClusterAddress` fired on exactly this misreading on 2026-09-04: its Alloy
+matcher was a bare substring `remoteIp = 172.16.` written for the pre-`useXForwarded` log shape,
+so it matched the socket peer. Over the seven days to 2026-09-05, 32 of 32 `security.ip-blocked`
+events matched it and 0 had an in-cluster effective address. The matcher now anchors on the last
+`remoteIp` in the line. Two consequences worth keeping in mind when reading that alert:
+
+- Only a **single-context** line — `remoteIp = 172.16.x.y, remotePort = N` with no second
+  `remoteIp` — is a genuine in-cluster block. That is a non-http listener, or http with
+  `useXForwarded` regressed off.
+- The counter behind the alert counts blocked connection **attempts**, not the ban's existence,
+  so the alert resolves once traffic stops even though the ban is permanent. The window is 6h to
+  keep a single event visible; resolution is never evidence the ban was lifted.
+
 ### Mail not delivering after a routing/strategy change
 
 Two independent causes, both hit in practice:

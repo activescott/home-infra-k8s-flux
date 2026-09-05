@@ -512,8 +512,28 @@ spec:
             // Matching the CIDR as a string prefix rather than parsing the address
             // into a label is deliberate: a remoteIp label would be unbounded
             // cardinality driven by whoever is scanning today.
+            //
+            // The regex must anchor on the LAST remoteIp in the line, not any
+            // remoteIp. Since useXForwarded was turned on (2026-08-29, see
+            // email-stalwart/README.md), an http-listener block logs the field
+            // twice -- first the TCP socket peer, which is Traefik's pod address
+            // and therefore always inside 172.16/16, then the effective address
+            // resolved from X-Forwarded-For, which is who Stalwart actually
+            // blocked:
+            //
+            //   ... remoteIp = 172.16.0.67, remotePort = 48352,
+            //       listenerId = "http", remoteIp = 81.171.74.60
+            //
+            // A bare |= "remoteIp = 172.16." matches the socket peer and so fires
+            // on every ordinary scanner block. It did, on 2026-09-04; over the
+            // seven days to 2026-09-05, 32 of 32 events matched that filter and 0
+            // of them had an in-cluster effective address.
+            //
+            // The optional ", remotePort = N" tail covers the single-context shape
+            // -- a non-http listener, or http if useXForwarded ever regresses --
+            // where remoteIp is followed by remotePort and nothing else.
             stage.match {
-              selector = "{namespace=\"email-stalwart\"} |= \"(security.ip-blocked)\" |= \"remoteIp = 172.16.\""
+              selector = "{namespace=\"email-stalwart\"} |= \"(security.ip-blocked)\" |~ \"remoteIp = 172\\\\.16\\\\.[0-9]+\\\\.[0-9]+(, remotePort = [0-9]+)?$\""
 
               stage.metrics {
                 metric.counter {

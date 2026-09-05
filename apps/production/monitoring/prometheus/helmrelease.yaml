@@ -917,9 +917,19 @@ spec:
                     alert; that is the webmail alone.
               - alert: StalwartBlockingClusterAddress
                 # The direct detector for that ban, rather than its 502 symptom.
-                # Bans never expire here (no *BanPeriod is set), so this does not
-                # self-resolve and one occurrence is worth acting on.
-                expr: 'sum(increase(loki_process_custom_stalwart_ip_blocked_cluster_total[15m])) > 0'
+                # Bans never expire here (no *BanPeriod is set), so one occurrence
+                # is worth acting on.
+                #
+                # The counter measures blocked connection ATTEMPTS, not the
+                # existence of the ban, so this alert does self-resolve however
+                # permanent the ban is: it goes quiet as soon as nothing is
+                # connecting from the banned address. The window is 6h rather than
+                # 15m so a single event holds the alert open long enough for a
+                # human to see it, instead of clearing itself in a quarter hour --
+                # which is what happened on 2026-09-04. Resolution still means
+                # "nothing blocked recently", never "ban lifted"; only Security >
+                # Allowed IPs plus a pod restart means that.
+                expr: 'sum(increase(loki_process_custom_stalwart_ip_blocked_cluster_total[6h])) > 0'
                 for: 0m
                 labels:
                   severity: critical
@@ -927,11 +937,13 @@ spec:
                   summary: Stalwart is refusing connections from inside the cluster
                   description: >-
                     Stalwart banned a 172.16/16 address, which is the ingress controller or
-                    another cluster pod, and is dropping its connections at TCP accept. The admin
-                    UI and CalDAV are down for everyone while this holds, and it will NOT expire
-                    on its own. Add the range under Security > Allowed IPs and restart the pod —
+                    another cluster pod, and is dropping its connections. The admin UI and CalDAV
+                    are down for everyone while this holds, and the ban will NOT expire on its
+                    own. Add the range under Security > Allowed IPs and restart the pod —
                     deleting the block alone does not take effect, the running process keeps a
-                    stale copy. Full write-up in apps/production/email-stalwart/README.md.
+                    stale copy. This alert resolving means only that nothing has been blocked in
+                    the last 6h; it is not evidence the ban is gone, so confirm before closing.
+                    Full write-up in apps/production/email-stalwart/README.md.
               - alert: StalwartNoInboundMail
                 # willeke.com's MX is still Google; this server receives a copy through
                 # a dual-delivery routing rule. That path crosses the firewall NAT
