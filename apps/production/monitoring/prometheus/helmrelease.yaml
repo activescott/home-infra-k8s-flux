@@ -531,10 +531,13 @@ spec:
                     reloaded. Check
                     `kubectl --context nas -n fernfiles-prod logs deploy/inference-service --previous`.
               # Both ONNX models plus their arenas live in this one container.
-              # Its limit is 1Gi (fernfiles
-              # k8s/base/inference-service-deployment.yaml) and an OOMKill
-              # reads as an unexplained restart, so warn while there is still
-              # headroom. 900MB tracks that limit by hand — raise both together.
+              # Its limit is 2Gi (fernfiles
+              # k8s/base/inference-service-deployment.yaml), raised from 1Gi
+              # after the 2026-09-04 OOMKills. 900MB is deliberately NOT
+              # tracking that limit any more: measured steady state under
+              # sustained load is ~420MB and flat, so 900MB is the level only
+              # the unexplained spike reached. Leave it here if the limit
+              # changes again.
               - alert: FernfilesInferenceServiceMemoryHigh
                 expr: 'container_memory_working_set_bytes{namespace="fernfiles-prod",container="inference-service"} > 900e6'
                 for: 10m
@@ -544,9 +547,13 @@ spec:
                   summary: >-
                     Fernfiles inference-service is near its memory limit. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
                   description: >-
-                    {{ $value | humanize1024 }}B working set against a 1Gi
-                    limit. The next step is an OOMKill, which surfaces only as
-                    a restart.
+                    {{ $value | humanize1024 }}B working set against a 2Gi
+                    limit, where steady state under load is ~420MB and holds
+                    flat. This is the unexplained 2026-09-04 spike recurring,
+                    not normal growth — capture evidence before it resolves or
+                    restarts: `kubectl --context nas -n fernfiles-prod logs
+                    deploy/inference-service` plus the container_memory_rss
+                    series for the pod.
           - name: cloudflare-proxied-sites
             rules:
               # Site-down / redirect-loop coverage for the Cloudflare-proxied

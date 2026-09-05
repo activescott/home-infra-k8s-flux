@@ -68,15 +68,29 @@ spec:
             # threads against a 2-CPU quota measured 1809ms where 2 threads
             # measured 369ms).
             #
-            # Memory from the same measurements: both models resident cost
-            # ~130MB over a bare Node process, and the worst observed figure
-            # (5 oversized 40x1000 batches) was 495MB. The limit is ~2x that.
-            # Monitored rather than proven — 20 iterations cannot rule out
-            # slow growth, which is what the memory alert in rollout step 2
-            # covers.
+            # Memory was 1Gi until 2026-09-04, when this container reached
+            # 993MB RSS and was OOMKilled three times mid-search, breaking
+            # every search for the duration
+            # (docs/specs/037-inference-service-oom/summary.md).
+            #
+            # 2Gi is margin, not a root-cause fix, and the distinction matters
+            # for whoever reads this next. Measured on this image under
+            # sustained varied-shape rerank load: anon memory rises from
+            # ~350MB to ~415MB over the first ~200 requests and then holds
+            # flat through 1200 (peak 423MB). So the steady state is ~420MB
+            # and the growth is asymptotic, not a leak — which means it does
+            # not explain the 993MB. That spike could not be reproduced by
+            # varied shapes, fixed shapes, 8-way concurrency, rapid client
+            # aborts, embed load, or repeated child re-forks; see the summary
+            # for the full list of what was ruled out and how.
+            #
+            # Until it is explained, this limit is doubled so the same event
+            # drifts and fires FernfilesInferenceServiceMemoryHigh instead of
+            # being killed. Raise the alert's attention, not this number, if
+            # it trips again.
             limits:
               cpu: "4"
-              memory: "1Gi"
+              memory: "2Gi"
             requests:
               cpu: "0.1"
               memory: "512Mi"
