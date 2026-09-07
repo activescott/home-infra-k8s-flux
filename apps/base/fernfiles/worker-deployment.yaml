@@ -47,6 +47,18 @@ spec:
           envFrom:
             - secretRef:
                 name: app-creds
+          env:
+            # 040: the worker is a caller of inference-service, not an
+            # in-process embedder. INFERENCE_CLIENT_KEY="worker" gives the
+            # worker's batch its own newest-wins slot so a typing user is
+            # never superseded by a background indexing pass and vice versa.
+            # Same reasoning as the per-user keys the app uses: a single
+            # global slot would let the worker starve a user for the
+            # duration of one model forward-pass.
+            - name: INFERENCE_SERVICE_URL
+              value: http://inference-service:3400
+            - name: INFERENCE_CLIENT_KEY
+              value: worker
           volumeMounts:
             - name: app-data
               mountPath: /data/storage
