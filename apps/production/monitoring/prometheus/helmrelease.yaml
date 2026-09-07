@@ -533,13 +533,20 @@ spec:
               # Both ONNX models plus their arenas live in this one container.
               # Its limit is 2Gi (fernfiles
               # k8s/base/inference-service-deployment.yaml), raised from 1Gi
-              # after the 2026-09-04 OOMKills. 900MB is deliberately NOT
-              # tracking that limit any more: measured steady state under
-              # sustained load is ~420MB and flat, so 900MB is the level only
-              # the unexplained spike reached. Leave it here if the limit
-              # changes again.
+              # after the 2026-09-04 OOMKills.
+              # 1700MB was raised from 900MB on 2026-09-07: the 2026-09-04
+              # spike has recurred twice, both times plateauing around
+              # 1.5 GB during inference bursts (worker batch-embed +
+              # interactive searches). Plateau is bounded — measured at
+              # ~1.50 GB and flat for 5+ minutes during the 2026-09-07
+              # incident — so the alert was firing on the bug-as-baseline
+              # rather than on growth toward the 2Gi OOMKill ceiling.
+              # 1700MB is the smallest value that suppresses the bounded
+              # plateau while still firing well before OOMKill (300MB
+              # headroom). Raise it again if the plateau grows; lower it
+              # back toward 900MB if a code fix eliminates the spike.
               - alert: FernfilesInferenceServiceMemoryHigh
-                expr: 'container_memory_working_set_bytes{namespace="fernfiles-prod",container="inference-service"} > 900e6'
+                expr: 'container_memory_working_set_bytes{namespace="fernfiles-prod",container="inference-service"} > 1700e6'
                 for: 10m
                 labels:
                   severity: warning
@@ -548,10 +555,12 @@ spec:
                     Fernfiles inference-service is near its memory limit. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
                   description: >-
                     {{ $value | humanize1024 }}B working set against a 2Gi
-                    limit, where steady state under load is ~420MB and holds
-                    flat. This is the unexplained 2026-09-04 spike recurring,
-                    not normal growth — capture evidence before it resolves or
-                    restarts: `kubectl --context nas -n fernfiles-prod logs
+                    limit, where steady state under load is ~1.1GB and a
+                    documented unexplained spike plateaus around 1.5GB.
+                    This alert fires if working_set crosses 1700MB (300MB
+                    of headroom before OOMKill at 2Gi). If this fires,
+                    capture evidence before it resolves or restarts:
+                    `kubectl --context nas -n fernfiles-prod logs
                     deploy/inference-service` plus the container_memory_rss
                     series for the pod.
           - name: cloudflare-proxied-sites
