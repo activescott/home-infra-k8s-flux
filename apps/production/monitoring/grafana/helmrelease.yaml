@@ -59,6 +59,20 @@ spec:
     grafana.ini:
       plugins:
         preinstall: "grafana-lokiexplore-app@2.5.2,grafana-metricsdrilldown-app@2.5.1,grafana-exploretraces-app@2.2.0,grafana-pyroscope-app@2.3.0"
+        # These two datasource plugins ship inside the image, under
+        # /usr/share/grafana/data/plugins-bundled, and are also in Grafana's
+        # default preinstall list. Whenever the catalog holds a newer version
+        # than the image bundles (12.8.0 -> 12.8.1 and 13.0.2 -> 13.1.0 as of
+        # Grafana 13.2.0), every pod start logs an error the cluster can do
+        # nothing about:
+        #   Failed to install plugin ... error="unlinkat
+        #   /usr/share/grafana/data/plugins-bundled/<id>: read-only file system"
+        # Neither datasource is used here — only Prometheus and Loki are
+        # provisioned — so drop them from the preinstall list. Disabling also
+        # stops them loading and hides them from the plugin catalog; delete an
+        # entry here to get one back. If a different bundled datasource starts
+        # logging the same error after a Grafana upgrade, add it to this list.
+        disable_plugins: "elasticsearch,mysql"
 
     # Provision both Prometheus and Loki datasources
     datasources:
