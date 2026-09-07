@@ -79,7 +79,10 @@ Three tiers, encoded as packageRules in `renovate.json5`:
 2. **Opt-in majors**: `dependencyDashboardApproval` holds every major in
    the Dependency Dashboard until a human ticks it. Chart majors
    (grafana/loki/etc.) are individual planned upgrades — read the chart's
-   migration notes and diff the values schema before approving. Dev-tooling
+   migration notes and diff the values schema before approving. A Grafana
+   chart major that carries a Grafana major also needs its Drilldown plugin
+   pins bumped: see `apps/production/monitoring/grafana/AGENTS.md`.
+   Dev-tooling
    majors (things under `scripts/`) are fine iff the script's own
    build/typecheck passes after merging.
 3. **Never propose** (`enabled: false` / `allowedVersions`, each with a

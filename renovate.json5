@@ -91,6 +91,20 @@
       allowedVersions: "<1.35",
     },
     {
+      // Grafana never auto-updates a plugin across a major version, and the
+      // Drilldown apps live on the PVC rather than in the image, so a Grafana
+      // major leaves plugin builds behind that the new Grafana cannot load
+      // ("App not found" in the browser). The pins that fix it are invisible
+      // in the chart bump's diff, so state the extra step in the PR body.
+      description: "Grafana chart majors also need Drilldown plugin re-pins",
+      matchDatasources: ["helm"],
+      matchPackageNames: ["grafana"],
+      matchUpdateTypes: ["major"],
+      prBodyNotes: [
+        ":warning: **Also bump `grafana.ini.plugins.preinstall`** in `apps/production/monitoring/grafana/helmrelease.yaml` if this chart carries a new Grafana major. Steps: `apps/production/monitoring/README.md`, \"Step 4 (Grafana major upgrades only)\".",
+      ],
+    },
+    {
       // Renovate groups all pin updates into one branch by default; one
       // failing dep then blocks every pin (seen twice: Mend jobs be5c8c82
       // and the 2026-09-03 17:01 run). Ungroup so each pin is its own PR
