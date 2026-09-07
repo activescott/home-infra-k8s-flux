@@ -355,6 +355,50 @@ spec:
                   severity: warning
                 annotations:
                   summary: gpu-poet-collector FurMark fetch error rate >5% over the last hour.
+              - alert: OpenBenchmarkingBlocked
+                # The scraper labels a navigation "blocked" only for an explicit
+                # refusal: 401/403/429, or a 200 carrying the Cloudflare
+                # challenge interstitial. Any occurrence means scraping has
+                # stopped; the collector deliberately does not retry a block on
+                # the short cadence, because the next request would be refused
+                # the same way.
+                expr: 'increase(collector_openbenchmarking_page_fetches_total{outcome="blocked"}[1d]) > 0'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    OpenBenchmarking is refusing the gpu-poet collector
+                    (Cloudflare challenge or 403).
+                  description: >-
+                    Benchmark scraping for {{ $labels.benchmark }} is stopped
+                    until the fetch path or User-Agent is changed. Access
+                    depends on a Phoronix-identifying User-Agent, so Phoronix
+                    tightening that rule looks exactly like this. See
+                    gpu-poet-data specs/openbenchmarking-cloudflare-block/.
+              - alert: OpenBenchmarkingStale
+                # 12 days = 2 collector cadences (5d each) + slack. The absence
+                # of this alert let an 8-week OpenBenchmarking outage hide behind
+                # healthy FurMark metrics.
+                #
+                # collector_source_run_total{status="ok"} is the wrong series
+                # here: a source run that scraped nothing still records "ok" as
+                # long as it did not throw, so it cannot see this. The
+                # per-configuration counter can.
+                expr: 'increase(collector_openbenchmarking_configurations_total{outcome="scraped"}[12d]) == 0'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    gpu-poet-collector has not scraped any OpenBenchmarking
+                    configuration in 12 days.
+                  description: >-
+                    No configuration of {{ $labels.benchmark }} has been scraped
+                    successfully in 12 days (2 collector cadences). Check the
+                    other outcome labels on
+                    collector_openbenchmarking_configurations_total — no_table,
+                    below_minimum and failed each mean something different.
           - name: tayle
             rules:
               - alert: PodNotReady
