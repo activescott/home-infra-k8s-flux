@@ -31,6 +31,35 @@ spec:
     initChownData:
       enabled: false
 
+    # Grafana's Drilldown apps (Logs/Metrics/Traces/Profiles) are not baked
+    # into the image: the preinstaller downloads them into
+    # GF_PATHS_PLUGINS=/var/lib/grafana/plugins, which is the PVC, so they
+    # outlive image upgrades. Preinstalled plugins auto-update on startup
+    # "except for new major versions" (documented under [plugins] preinstall
+    # in setup-grafana/configure-grafana; the guard is
+    # pluginchecker.CanUpdateVersion() with onlyMinor=true, and the skip is
+    # logged at debug level only, so nothing shows in the pod log). So
+    # after the chart went 11.6.1 -> 13.0.0 (Grafana 13.2.0), the PVC still
+    # held the v1 plugins downloaded under Grafana 11, whose frontend bundles
+    # do not load in Grafana 13 (they declare react-router v5 as a shared
+    # module). Symptom: "App not found" on /a/grafana-lokiexplore-app/explore
+    # while /api/plugins/<id>/settings reports the plugin enabled.
+    #
+    # `plugin_id@version` is the documented pinning syntax, and an explicit
+    # version also bypasses the major guard: the preinstaller installs the
+    # requested version whenever it differs from what is on disk. These entries
+    # merge into Grafana's built-in preinstall list (they do not replace it).
+    # A pinned plugin never auto-updates. Once these 2.x versions are on the
+    # PVC the pins may be dropped, which restores auto-update within the 2.x
+    # major; the pins have to come back for the next major. Latest compatible
+    # version for an id:
+    #   curl -H "grafana-version: <grafana-ver>" -H "grafana-os: linux" \
+    #     -H "grafana-arch: amd64" \
+    #     https://grafana.com/api/plugins/<plugin-id>/versions | jq -r .items[0].version
+    grafana.ini:
+      plugins:
+        preinstall: "grafana-lokiexplore-app@2.5.2,grafana-metricsdrilldown-app@2.5.1,grafana-exploretraces-app@2.2.0,grafana-pyroscope-app@2.3.0"
+
     # Provision both Prometheus and Loki datasources
     datasources:
       datasources.yaml:

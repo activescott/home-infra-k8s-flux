@@ -47,6 +47,41 @@ Verify:
 flux get helmreleases -n monitoring
 ```
 
+### Step 4 (Grafana major upgrades only): bump the pinned Drilldown plugins
+
+Grafana's Drilldown apps (Logs, Metrics, Traces, Profiles) are downloaded into
+the PVC at `/var/lib/grafana/plugins`, not baked into the image, so a Grafana
+image upgrade leaves the old plugin build in place. Preinstalled plugins
+auto-update on startup ["except for new major
+versions"](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#preinstall)
+(`pluginchecker.CanUpdateVersion(..., onlyMinor=true)`, skip logged at debug
+level only). A v1 plugin left behind under Grafana 13 fails to mount in the
+browser — the page shows "App not found" even though
+`/api/plugins/<id>/settings` reports it installed and enabled.
+
+The versions are therefore pinned with the documented `plugin_id@version`
+syntax in `grafana/helmrelease.yaml` under `grafana.ini.plugins.preinstall`;
+a pinned version is installed whenever it differs from what is on disk. Pins
+also stop auto-update, so they can be dropped once the new major is on the PVC
+and re-added at the next major. After a Grafana major upgrade, re-pin each id
+to the newest version the catalog reports as compatible:
+
+```bash
+for p in grafana-lokiexplore-app grafana-metricsdrilldown-app \
+         grafana-exploretraces-app grafana-pyroscope-app; do
+  echo "$p $(curl -sS -H 'grafana-version: 13.2.0' -H 'grafana-os: linux' \
+    -H 'grafana-arch: amd64' \
+    "https://grafana.com/api/plugins/$p/versions" | jq -r '.items[0].version')"
+done
+```
+
+Verify after reconcile (`installed` should match the pin):
+
+```bash
+kubectl --context nas -n monitoring logs deploy/grafana -c grafana \
+  | grep -i "plugin successfully installed"
+```
+
 ### Helm Repositories
 
 Grafana and Loki charts migrated from `grafana/helm-charts` to `grafana-community/helm-charts` in early 2026. Alloy has not migrated yet and still uses the original `grafana` repo. When Alloy migrates, remove the old `grafana` HelmRepository.
