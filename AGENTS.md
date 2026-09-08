@@ -15,6 +15,23 @@ log investigation, operations), see `../home-infra-private/AGENTS.md` and its
 (public IPs, MACs, PTR hostnames, credentials) in this public repo — redacted
 case studies only.
 
+## GitOps-only changes
+
+This repo's whole purpose is GitOps. **Never make a one-time state change via
+UI, CLI, or out-of-band API** to a managed resource — Kubernetes resources
+reconciled by Flux, Cloudflare zones / Email Routing / DNS (managed directly
+here or via Crossplane in the cluster), the OPNsense firewall (lives in
+`../home-infra-private`), etc. All changes flow through git → Flux reconcile
+(or, for Crossplane-managed Cloudflare resources, Crossplane reconcile
+driven by git). The only exception is an explicit owner override in the chat,
+and even then the change is expected to land in git immediately afterward so
+the loop stays closed.
+
+Concrete consequence for managed Cloudflare dashboards: see "Observability"
+below — `update_dashboard` against a `provisioned: true` dashboard gets
+reverted on the next reconcile. The same principle applies to anything else
+this repo declares.
+
 ## Flux reconciliation
 
 Do NOT run `flux reconcile` manually after committing. GitHub webhooks
