@@ -1,0 +1,22 @@
+# Metrics only. The worker answers no application requests and has no ingress
+# — this Service exists so Prometheus can reach /ops/metrics, which is the
+# whole of what the port serves (042, issue #166).
+#
+# Until 042 the worker exported nothing at all, so a background failure was
+# invisible to Prometheus and only surfaced when a user noticed their file was
+# missing from search. That is exactly how issue #272 was found.
+#
+# ClusterIP with no Ingress, matching inference-service-service.yaml: the
+# absence of an ingress is the access control.
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker
+spec:
+  selector:
+    app: worker
+  ports:
+    - name: metrics
+      port: 3401
+      targetPort: 3401
+  type: ClusterIP

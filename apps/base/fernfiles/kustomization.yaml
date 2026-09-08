@@ -5,6 +5,7 @@ resources:
   - worker-deployment.yaml
   - inference-service-deployment.yaml
   - app-service.yaml
+  - worker-service.yaml
   - inference-service-service.yaml
   - app-ingress.yaml
   - app-data-pvc.yaml
