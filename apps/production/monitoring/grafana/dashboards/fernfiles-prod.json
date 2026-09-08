@@ -61,12 +61,218 @@
     },
     {
       "type": "row",
-      "title": "Availability",
+      "title": "Users",
+      "description": "Unique active users from the app's own /ops/metrics gauge (027). Lost once before: these panels were added via the Grafana API and the next Flux reconcile reverted them, so they live in this file now.",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 3
+      },
+      "id": 40,
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Active users (1d)",
+      "description": "Unique users with at least one authenticated request in the last 24h (rolling window). Unique by construction — the gauge counts rows in users, so repeat sign-ins count once. max() because a rollout briefly runs two app pods exporting the same gauge; or vector(0) so the panel reads 0 rather than No data before the first scrape.",
+      "id": 41,
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "max(fernfiles_active_users{window=\"1d\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "1d",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active users (7d)",
+      "description": "Unique users with at least one authenticated request in the last 7 days (rolling window). Same gauge as the 1d panel, different window label.",
+      "id": 42,
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "max(fernfiles_active_users{window=\"7d\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "7d",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active users (30d)",
+      "description": "Unique users with at least one authenticated request in the last 30 days (rolling window). Fills out one day at a time from the first scrape; Prometheus retention is 180d so the window has room.",
+      "id": 43,
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "editorMode": "code",
+          "expr": "max(fernfiles_active_users{window=\"30d\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "30d",
+          "range": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Availability",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
       },
       "id": 1,
       "collapsed": false,
@@ -81,7 +287,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 4
+        "y": 9
       },
       "datasource": {
         "type": "prometheus",
@@ -148,7 +354,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 4
+        "y": 9
       },
       "datasource": {
         "type": "prometheus",
@@ -231,7 +437,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 4
+        "y": 9
       },
       "datasource": {
         "type": "prometheus",
@@ -299,7 +505,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 4
+        "y": 9
       },
       "datasource": {
         "type": "prometheus",
@@ -367,7 +573,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 4
+        "y": 9
       },
       "datasource": {
         "type": "prometheus",
@@ -450,7 +656,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 4
+        "y": 9
       },
       "datasource": {
         "type": "prometheus",
@@ -522,7 +728,7 @@
         "h": 5,
         "w": 16,
         "x": 0,
-        "y": 8
+        "y": 13
       },
       "datasource": {
         "type": "prometheus",
@@ -580,7 +786,7 @@
         "h": 5,
         "w": 8,
         "x": 16,
-        "y": 8
+        "y": 13
       },
       "datasource": {
         "type": "prometheus",
@@ -667,7 +873,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 13
+        "y": 18
       },
       "id": 17,
       "collapsed": false,
@@ -682,7 +888,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 19
       },
       "datasource": {
         "type": "prometheus",
@@ -759,7 +965,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 21
+        "y": 26
       },
       "datasource": {
         "type": "prometheus",
@@ -827,7 +1033,7 @@
         "h": 4,
         "w": 18,
         "x": 6,
-        "y": 21
+        "y": 26
       },
       "datasource": {
         "type": "prometheus",
@@ -904,7 +1110,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 30
       },
       "id": 7,
       "collapsed": false,
@@ -919,7 +1125,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 31
       },
       "datasource": {
         "type": "prometheus",
@@ -977,7 +1183,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 31
       },
       "datasource": {
         "type": "prometheus",
@@ -1080,7 +1286,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 39
       },
       "datasource": {
         "type": "prometheus",
@@ -1157,7 +1363,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 45
       },
       "id": 11,
       "collapsed": false,
@@ -1172,7 +1378,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 41
+        "y": 46
       },
       "datasource": {
         "type": "prometheus",
@@ -1229,7 +1435,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 41
+        "y": 46
       },
       "datasource": {
         "type": "prometheus",
@@ -1287,7 +1493,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 49
+        "y": 54
       }
     },
     {
@@ -1299,7 +1505,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 50
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1361,7 +1567,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 50
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1423,7 +1629,7 @@
         "h": 5,
         "w": 12,
         "x": 12,
-        "y": 50
+        "y": 55
       },
       "datasource": {
         "type": "prometheus",
@@ -1480,7 +1686,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 60
       },
       "datasource": {
         "type": "prometheus",
@@ -1537,7 +1743,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 60
       },
       "datasource": {
         "type": "prometheus",
@@ -1605,7 +1811,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 63
+        "y": 68
       },
       "datasource": {
         "type": "prometheus",
@@ -1671,7 +1877,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 74
       },
       "id": 14,
       "collapsed": false,
@@ -1686,7 +1892,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 75
       },
       "datasource": {
         "type": "loki",
@@ -1724,7 +1930,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 85
       },
       "datasource": {
         "type": "loki",
