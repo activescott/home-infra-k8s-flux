@@ -120,3 +120,22 @@ spec:
       - type: all
     actions:
       - type: drop
+
+---
+# RFC 2142 §5.2 role mailboxes for ramblefeed.com. One RoleMailboxes composite fans out into
+# six EmailRoutingRule resources -- abuse, noc, security, postmaster, hostmaster
+# and webmaster -- each forwarding to the destination held in the SOPS-encrypted
+# Secret cloudflare/email-routing-destination.
+#
+# The mailbox list and the destination both live in the Composition rather than
+# here, so every zone provably gets the identical set and the address appears in
+# no manifest. See
+# infrastructure/prod/controllers/crossplane-config/rolemailboxes/xrd.yaml.
+apiVersion: email.activescott.com/v1alpha1
+kind: RoleMailboxes
+metadata:
+  name: ramblefeed-com-rfc2142
+  namespace: cloudflare
+spec:
+  zoneId: e520413f6aef57eb975b6a1304132116
+  zoneName: ramblefeed.com

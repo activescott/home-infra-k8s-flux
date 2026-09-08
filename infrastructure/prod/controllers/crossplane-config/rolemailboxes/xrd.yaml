@@ -1,0 +1,59 @@
+# RoleMailboxes: one manifest per Cloudflare zone declaring that the zone carries
+# the RFC 2142 role mailboxes. The Composition fans each XR out into six
+# EmailRoutingRule managed resources -- the same one-XR-per-zone shape DNSZone
+# uses for records, for the same reason: a file per rule multiplies by the number
+# of zones and drifts.
+#
+# RFC 2142 §5.2 mandates ABUSE, NOC, SECURITY, POSTMASTER, HOSTMASTER and
+# WEBMASTER on every domain that runs the protocol. That list is fixed in the
+# Composition template, not exposed here, because the point of this API is that
+# every zone gets the identical set. A per-zone list would reintroduce exactly the
+# drift this exists to remove. Adding §5.3 CERT later is a one-line Composition
+# edit and needs no schema change.
+#
+# The destination address is not in this schema either. It comes from the
+# SOPS-encrypted Secret cloudflare/email-routing-destination, which the
+# Composition reads through Crossplane's ExtraResources mechanism. See
+# ./composition.yaml.
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: rolemailboxes.email.activescott.com
+spec:
+  # Namespaced so a RoleMailboxes sits in the `cloudflare` namespace alongside the
+  # ProviderConfig, the credentials, and the destination Secret it reads -- an
+  # ExtraResources lookup from a namespaced XR resolves in the XR's own namespace.
+  scope: Namespaced
+  group: email.activescott.com
+  names:
+    kind: RoleMailboxes
+    plural: rolemailboxes
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                zoneId:
+                  type: string
+                  description: Cloudflare zone identifier.
+                zoneName:
+                  type: string
+                  description: >
+                    Apex of the zone. Used to build each matcher address as
+                    "<mailbox>@<zoneName>". This is the public DNS name, not
+                    metadata.name.
+                providerConfigName:
+                  type: string
+                  default: email-routing
+                  description: >
+                    ProviderConfig to use. Defaults to the Email Routing token
+                    rather than the DNS one: Cloudflare rate-limits per token and
+                    these rules must not compete with the DNS records for that
+                    budget. See ../providerconfig.yaml.
+              required: [zoneId, zoneName]

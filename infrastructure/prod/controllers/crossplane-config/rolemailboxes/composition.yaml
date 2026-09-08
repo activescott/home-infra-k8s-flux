@@ -1,0 +1,112 @@
+# Composition for RoleMailboxes -- see ./xrd.yaml. One go-templating step ranges
+# over the RFC 2142 §5.2 mailbox list and emits one EmailRoutingRule per name,
+# then function-auto-ready rolls their readiness up to the XR.
+#
+# Why go-templating rather than patch-and-transform: this needs iteration (six
+# managed resources from one XR) and it needs to read a Secret. P&T does neither
+# -- it has no loop, and its patch types are a closed set with no way to source a
+# value from a Secret. Both functions used here are already installed for DNSZone.
+#
+# The destination address is read at compose time from the SOPS-encrypted Secret
+# cloudflare/email-routing-destination (key `destination`), via ExtraResources.
+# It is not in any manifest in this repo.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: rolemailboxes-cloudflare
+spec:
+  compositeTypeRef:
+    apiVersion: email.activescott.com/v1alpha1
+    kind: RoleMailboxes
+  mode: Pipeline
+  pipeline:
+    - step: render-rules
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource -}}
+            {{- /*
+              RFC 2142 §5.2, in section order. Fixed here rather than in the XR
+              spec so every zone provably gets the same set. §5.2 group (b)
+              (usenet/news, ftp, uucp) is conditional on running those services
+              and none of these zones do; §5.3 CERT is only recommended and is
+              out of scope. Adding a name here adds it to all seven zones.
+            */ -}}
+            {{- $mailboxes := list "abuse" "noc" "security" "postmaster" "hostmaster" "webmaster" -}}
+            ---
+            # Ask Crossplane for the destination Secret. This makes the pipeline
+            # two-pass: the first call returns only this requirement with
+            # .extraResources empty, and Crossplane calls back with the Secret
+            # populated. The `if` below is what makes the first pass a no-op
+            # instead of rendering six rules with an empty forward address.
+            apiVersion: meta.gotemplating.fn.crossplane.io/v1alpha1
+            kind: ExtraResources
+            requirements:
+              destination-secret:
+                apiVersion: v1
+                kind: Secret
+                matchName: email-routing-destination
+                # The XR's own namespace, never a literal. A namespaced XR may
+                # only reach resources in its own namespace, so this is the only
+                # correct value -- and deriving it keeps the Composition from
+                # hardcoding where its instances live.
+                namespace: {{ $xr.metadata.namespace }}
+            {{- /*
+              Every step defaults, because on the first pass .extraResources is
+              absent entirely -- not an empty map, nil -- and `index` on nil is a
+              fatal template error, not an empty result.
+            */ -}}
+            {{- $found := index (.extraResources | default dict) "destination-secret" | default dict }}
+            {{- $items := index $found "items" | default list }}
+            {{- if $items }}
+            {{- $destination := index (index $items 0).resource.data "destination" | b64dec | trim }}
+            {{- range $mailbox := $mailboxes }}
+            ---
+            apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+            kind: EmailRoutingRule
+            metadata:
+              annotations:
+                # Identity of this composed resource, keyed by mailbox name rather
+                # than loop index: an index shifts for every name inserted above
+                # it, which Crossplane reads as "these resources were replaced"
+                # and acts on by deleting and recreating the live Cloudflare
+                # rules. Same rationale as dnszone/composition.yaml.
+                gotemplating.fn.crossplane.io/composition-resource-name: {{ $mailbox }}
+            spec:
+              providerConfigRef:
+                kind: ProviderConfig
+                name: {{ $xr.spec.providerConfigName | default "email-routing" | quote }}
+              # Everything except Delete. Removing a rule from this Composition
+              # stops Crossplane managing it; it does not delete it from
+              # Cloudflare. deletionPolicy: Orphan is rejected on namespaced
+              # m.cloudflare.com resources, so the policy list is how that intent
+              # is expressed.
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                zoneId: {{ $xr.spec.zoneId | quote }}
+                name: {{ $mailbox | quote }}
+                enabled: true
+                # Matches the priority the other GitOps-managed rules in this repo
+                # use (dmarc-reports, privacy, support). Dashboard-era adopted
+                # rules sit at 0. The catch-all is a separate resource kind that
+                # Cloudflare always evaluates last, so it cannot shadow these
+                # regardless of the number here.
+                priority: 10
+                matchers:
+                  - type: literal
+                    field: to
+                    value: {{ printf "%s@%s" $mailbox $xr.spec.zoneName | quote }}
+                actions:
+                  - type: forward
+                    value:
+                      - {{ $destination | quote }}
+            {{- end }}
+            {{- end }}
+    - step: auto-ready
+      functionRef:
+        name: function-auto-ready

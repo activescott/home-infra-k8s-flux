@@ -6,6 +6,10 @@ resources:
   # The DNSZone API -- see ./dnszone/README.md. Crossplane creates its CRD from the
   # XRD, so DNSZone instances belong one stage later, in crossplane-dns.
   - ./dnszone
+  # The RoleMailboxes API -- see ./rolemailboxes/xrd.yaml. Same split as DNSZone:
+  # the XRD and Composition live here, the instances live one stage later in
+  # infrastructure/prod/dns/email-routing/<zone>.com.yaml.
+  - ./rolemailboxes
 
 secretGenerator:
   # Fixed name (no hash suffix): providerconfig.yaml references it by name, and a hash suffix
@@ -27,6 +31,27 @@ secretGenerator:
     namespace: cloudflare
     files:
       - credentials.json=cloudflare-email-credentials.json.encrypted
+    options:
+      disableNameSuffixHash: true
+  # The forwarding destination for every RFC 2142 role mailbox, read at compose time
+  # by the rolemailboxes Composition through Crossplane's ExtraResources mechanism.
+  # The address is in no manifest in this repo.
+  #
+  # `envs:` rather than `files:`, matching how every other .env.secret.*.encrypted in
+  # this repo is consumed (see apps/production/email-relay/kustomization.yaml). It
+  # parses the decrypted dotenv into Secret data keys, so `destination=<addr>` in the
+  # file becomes Secret key `destination`. With `files:` the whole dotenv would land
+  # under a single key instead, and the Composition's lookup would miss.
+  #
+  # This lives here rather than beside the rules it serves under dns/email-routing/
+  # because only the crossplane-config Flux Kustomization declares
+  # `decryption: {provider: sops, secretRef: sops-age}` -- crossplane-dns does not, so
+  # an encrypted file placed there reaches the cluster as ciphertext. See
+  # clusters/nas1/crossplane.yaml.
+  - name: email-routing-destination
+    namespace: cloudflare
+    envs:
+      - .env.secret.email-routing-destination.encrypted
     options:
       disableNameSuffixHash: true
 
