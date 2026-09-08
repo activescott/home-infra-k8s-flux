@@ -1,8 +1,11 @@
 # Transcode worker (issue #140, docs/specs/018-transcode-worker/plan.md).
 # Runs ffmpeg for the HLS video pipeline in its own pod so a multi-minute
-# transcode competes with nothing the app pod is serving. No Service, no
-# ingress, no probes: it listens on no port. Kubernetes restarting the
-# container when the process exits is the whole liveness story.
+# transcode competes with nothing the app pod is serving.
+#
+# It listens on one port, for Prometheus metrics only (042, issue #166) — see
+# worker-service.yaml. There is still no ingress and there are still no
+# probes: Kubernetes restarting the container when the process exits is the
+# whole liveness story, and a metrics endpoint is not a health signal.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -47,6 +50,9 @@ spec:
           envFrom:
             - secretRef:
                 name: app-creds
+          ports:
+            - name: metrics
+              containerPort: 3401
           env:
             # 040: the worker is a caller of inference-service, not an
             # in-process embedder. INFERENCE_CLIENT_KEY="worker" gives the

@@ -496,6 +496,37 @@ spec:
                 annotations:
                   summary: >-
                     Fernfiles pod {{ $labels.pod }} not ready for 10m. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+              # A derived job that failed and is NOT recovering. The worker's
+              # hourly sweep re-enqueues every drifted path, so a file that
+              # failed once is retried and usually succeeds; this gauge counts
+              # only rows that already outlived that retry window.
+              #
+              # The threshold is computed inside the worker from
+              # SEARCH_SWEEP_INTERVAL_MS, not here: that variable is never set
+              # in k8s, so the worker is the only process that knows it, and
+              # duplicating it in PromQL would be the same drift that caused
+              # activescott/fernfiles#272. `for:` below is scrape debounce
+              # only — Prometheus parses it as a literal duration and cannot
+              # derive it from a metric anyway.
+              #
+              # Why it matters: the bytes are safe, but a file nobody can find
+              # is a discoverability failure under the project's durability
+              # tenet. This is the alert that would have caught #272 on the
+              # day it started, instead of a user noticing.
+              - alert: FernfilesSearchJobStuckFailed
+                expr: 'fernfiles_worker_jobs_stuck_failed > 0'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: >-
+                    Fernfiles {{ $labels.kind }} job stuck FAILED. See https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+                  description: >-
+                    {{ $value }} {{ $labels.kind }} job(s) have been FAILED for
+                    longer than the sweep's retry window, so the sweep has
+                    already retried them and they failed again. Oldest is
+                    {{ with query "max(fernfiles_worker_oldest_failed_job_age_seconds)" }}{{ . | first | value | humanizeDuration }}{{ end }} old.
+                    Check `kubectl --context nas -n fernfiles-prod logs deploy/worker | grep "search job failed"`.
               # The checks above all watch Kubernetes objects. This one asks
               # the question a user asks: does the URL answer? It goes through
               # the real ingress and TLS, so it catches a 502-with-healthy-pods
@@ -1443,6 +1474,19 @@ spec:
         metrics_path: "/ops/metrics"
         static_configs:
           - targets: ["app.fernfiles-prod.svc.cluster.local:3300"]
+      # Fernfiles worker metrics: derived-job outcomes, durations, queue
+      # depth, and the stuck-FAILED gauge the alert below reads. The worker
+      # exported nothing before v0.65.0, so an indexing failure was invisible
+      # here and surfaced only when a user noticed a file missing from search
+      # — which is how activescott/fernfiles#272 was found.
+      #
+      # Metrics-only port with no ingress, same shape as the app job above.
+      - job_name: "fernfiles_worker"
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        metrics_path: "/ops/metrics"
+        static_configs:
+          - targets: ["worker.fernfiles-prod.svc.cluster.local:3401"]
       - job_name: "tinkerbell_app"
         scrape_interval: 30s
         scrape_timeout: 10s

@@ -57,6 +57,29 @@ spec:
             # the child never consults the branching factory.
             - name: SEARCH_MODEL_DIR
               value: /app/models
+            # 041: default global in-flight cap. Raised from 1 to 2 so the
+            # worker batch-embed (036 step 3) and an interactive search
+            # can run in parallel; the per-key newest-wins queue still
+            # gives type-ahead its supersession. Override via this env var
+            # (main.ts parses it; rejects malformed values at boot).
+            - name: INFERENCE_GLOBAL_IN_FLIGHT_CAP
+              value: "2"
+            # Child timeout for a request that states no budget of its own.
+            # NOT set here on purpose (042/#272): the default lives beside
+            # the client budgets in
+            # packages/server-core/src/search/inference-http.ts, because the
+            # two have to stay ordered. 041 set 8000ms in this file while
+            # every client stayed at 2000ms, so clients aborted requests the
+            # service was still working on and the worker's indexing job
+            # failed on every retry. A literal here is exactly the second
+            # copy that drifted.
+            #
+            # Callers now send X-Inference-Timeout-Ms derived from the one
+            # timeout they are themselves waiting on, so an indexing batch
+            # gets a long budget and a keystroke a short one. This ceiling
+            # bounds what any caller may ask for.
+            - name: INFERENCE_MAX_CHILD_TIMEOUT_MS
+              value: "180000"
           resources:
             # cpu 4 is the measured knee (036 plan, "Measured baselines"):
             # over a 2-CPU limit it buys 1.36x, while 8 buys only 1.16x more
