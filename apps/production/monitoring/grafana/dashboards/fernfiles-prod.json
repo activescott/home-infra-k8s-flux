@@ -1,4 +1,25 @@
 {
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Infra events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "target": { "type": "tags", "matchAny": false, "tags": ["infra-event"], "limit": 100 }
+      }
+    ]
+  },
   "uid": "fernfiles-prod",
   "title": "Fernfiles Prod Status",
   "description": "Health of the fernfiles-prod namespace. Built after the 2026-08-16 outage, where the app crashed and restarted 3 times unnoticed and was only found when a user hit \"no available server\". The Restarts and Last termination reason panels are the ones that would have shown it.",

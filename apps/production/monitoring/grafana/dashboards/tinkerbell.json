@@ -1,4 +1,25 @@
 {
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Infra events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "target": { "type": "tags", "matchAny": false, "tags": ["infra-event"], "limit": 100 }
+      }
+    ]
+  },
   "uid": "1edf3822-73d3-4fca-8e4a-47a14648e7a5",
   "title": "Tinkerbell",
   "description": "Tinkerbell app health: alerts, log-error volume, LLM provider errors, proxy errors, process health, workflows, cost/usage.",

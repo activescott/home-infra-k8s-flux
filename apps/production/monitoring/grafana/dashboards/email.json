@@ -1,4 +1,25 @@
 {
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Infra events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "target": { "type": "tags", "matchAny": false, "tags": ["infra-event"], "limit": 100 }
+      }
+    ]
+  },
   "uid": "email",
   "title": "Email",
   "description": "Mail for willeke.com (Stalwart, self-hosted) and outbound for the apps (email-relay). Two evidence sources: Stalwart's own exporter (job=\"stalwart\") and counters Alloy derives from container logs (loki_process_custom_stalwart_*). The log counters keep working when the exporter does not, which is why some questions are answered twice.",

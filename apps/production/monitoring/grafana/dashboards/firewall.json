@@ -1,4 +1,25 @@
 {
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Infra events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "target": { "type": "tags", "matchAny": false, "tags": ["infra-event"], "limit": 100 }
+      }
+    ]
+  },
   "editable": true,
   "graphTooltip": 1,
   "id": null,
@@ -299,9 +320,623 @@
       }
     },
     {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "panels": [],
+      "title": "WAN Quality",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "dpinger transitions into loss/delay/down in the last 24h. Since the inline switch (2026-08-11) holds igb0's carrier up, this — not link state — is the WAN outage signal. Backs the WanGatewayDegraded alert.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 22 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_wan_gateway_alarm_total[24h]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway alarms (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Share of ICMP probes to 1.1.1.1 and 8.8.8.8 that succeeded across the selected range. Probes run every 15s from the cluster, so this is LAN-side reachability, independent of the firewall's own view.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 99 },
+              { "color": "green", "value": 99.9 }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 22 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "100 * avg(avg_over_time(probe_success{job=\"blackbox_icmp\"}[$__range]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Probe availability (range)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Current ICMP round-trip time to each external anchor.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 30 },
+              { "color": "red", "value": 80 }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 22 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "probe_icmp_duration_seconds{job=\"blackbox_icmp\", phase=\"rtt\"} * 1000",
+          "instant": true,
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RTT now",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "ICMP round-trip time to the external anchors. Latency climbing before a drop is the signature worth watching; the anchors are deliberately off-net so an ISP-side problem shows on both.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "rtt",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "decimals": 1,
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 26 },
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "probe_icmp_duration_seconds{job=\"blackbox_icmp\", phase=\"rtt\"} * 1000",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "ICMP RTT to external anchors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Percentage of probes failing per interval. A gap on both anchors at once means the WAN, not the target.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "red", "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "loss",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 0,
+            "showPoints": "never"
+          },
+          "decimals": 0,
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 26 },
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "100 * (1 - avg_over_time(probe_success{job=\"blackbox_icmp\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Probe loss",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Bars, not lines: dpinger alarm transitions into loss/delay/down, counted by Alloy from the firewall's MONITOR lines. Recovery transitions (-> none) are deliberately not counted.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "orange", "mode": "fixed" },
+          "custom": {
+            "axisLabel": "alarms",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "lineWidth": 0,
+            "showPoints": "never"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 33 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_wan_gateway_alarm_total[$__rate_interval]))",
+          "legendFormat": "gateway alarms",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway monitor alarms (dpinger)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "description": "Raw dpinger MONITOR lines: gateway address, RTT, RTT deviation and loss at each alarm transition. dpinger only logs transitions, so quiet here means no state change, not no data.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 33 },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "editorMode": "code",
+          "expr": "{host=\"theshield\", app_name=\"dpinger\"}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway monitor events (dpinger)",
+      "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "panels": [],
+      "title": "Firewall System",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Load average from the firewall's own node_exporter (Services -> Prometheus Exporter on OPNsense).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "decimals": 2,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 40 },
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "node_load1{job=\"firewall_node\"}",
+          "legendFormat": "1m",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "node_load5{job=\"firewall_node\"}",
+          "legendFormat": "5m",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "node_load15{job=\"firewall_node\"}",
+          "legendFormat": "15m",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "Load average",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Per-core CPU temperature. ~56-60 C was the baseline measured when the exporter was installed (2026-08-11).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 75 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 40 },
+      "options": {
+        "legend": { "calcs": ["max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "node_cpu_temperature_celsius{job=\"firewall_node\"}",
+          "legendFormat": "core {{cpu}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "CPU temperature",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Memory in use as a share of installed RAM. FreeBSD reclaimable memory is free + inactive + laundry + cache, so anything else (wired, active) counts as used.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "decimals": 1,
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 40 },
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "100 * (1 - (node_memory_free_bytes{job=\"firewall_node\"} + node_memory_inactive_bytes{job=\"firewall_node\"} + node_memory_laundry_bytes{job=\"firewall_node\"} + node_memory_cache_bytes{job=\"firewall_node\"}) / node_memory_size_bytes{job=\"firewall_node\"})",
+          "legendFormat": "memory used",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "100 * node_memory_swap_used_bytes{job=\"firewall_node\"} / node_memory_swap_size_bytes{job=\"firewall_node\"}",
+          "legendFormat": "swap used",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Memory used",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "WAN interface throughput in bits per second, from the firewall's netdev collector.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "bandwidth",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "bps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 46 },
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "rate(node_network_receive_bytes_total{job=\"firewall_node\", device=\"igb0\"}[$__rate_interval]) * 8",
+          "legendFormat": "in",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "rate(node_network_transmit_bytes_total{job=\"firewall_node\", device=\"igb0\"}[$__rate_interval]) * 8",
+          "legendFormat": "out",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "igb0 bandwidth",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "New receive errors on the WAN NIC. The counter was 681 at the 2026-08-11 baseline; fresh errors point at cable or SFP/ONT-side health, not at the ISP.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "custom": {
+            "axisLabel": "errors",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "showPoints": "never"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 46 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "increase(node_network_receive_errs_total{job=\"firewall_node\", device=\"igb0\"}[$__rate_interval])",
+          "legendFormat": "igb0 rx errors",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "igb0 receive errors",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+      "panels": [],
+      "title": "Traffic Verdicts",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "pf block/pass verdicts per second, counted by Alloy from filterlog CSV. Ops visibility only — verdict volume does not cause carrier loss.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "verdicts/sec",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "decimals": 1,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 53 },
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(rate(loki_process_custom_fw_block_total[$__rate_interval]))",
+          "legendFormat": "block",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(rate(loki_process_custom_fw_pass_total[$__rate_interval]))",
+          "legendFormat": "pass",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "pf verdict rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Blocked packets logged across the selected range.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "red", "mode": "fixed" },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 53 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_fw_block_total[$__range]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Blocks (range)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "description": "Passed packets logged across the selected range. Only rules with logging enabled are counted, so this is not total throughput.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "green", "mode": "fixed" },
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "0",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 53 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "editorMode": "code",
+          "expr": "sum(increase(loki_process_custom_fw_pass_total[$__range]))",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Passes (range)",
+      "type": "stat"
+    },
+    {
       "type": "row",
       "title": "All Firewall Logs",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 59 },
       "collapsed": false,
       "panels": []
     },
@@ -310,7 +945,7 @@
       "title": "Log volume by application",
       "description": "Dominated by filterlog (pf) and unbound (DNS) - together ~99% of volume.",
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
@@ -350,7 +985,7 @@
       "title": "Top applications (selected range)",
       "description": "Line counts per application across the dashboard time range.",
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
@@ -390,7 +1025,7 @@
       "title": "Firewall logs",
       "description": "All firewall syslog. Filter with the Application and Search controls at the top.",
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
-      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 30 },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 68 },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
