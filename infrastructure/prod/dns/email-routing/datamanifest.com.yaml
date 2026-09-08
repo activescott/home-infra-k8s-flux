@@ -56,3 +56,15 @@ metadata:
 spec:
   zoneId: 3a610f170ef3305f17048ec68b832da7
   zoneName: datamanifest.com
+  # No `aliases`: this is the one zone that never had a forwarding rule of its own.
+  #
+  # Cloudflare rule ids, so each composed resource adopts its existing rule rather than
+  # creating a second one. See the `adopt` description in the XRD for why these stay here
+  # permanently instead of being removed once adopted.
+  adopt:
+    abuse: 1ff4e54315d5407b852791dd9f44876a
+    noc: 33d495c0424942bbbc4d7e52eed1633f
+    security: 32417a0615b44e80bbd2d1deece7ebf7
+    postmaster: 1afc8f31aa474e5f961a3fa0378650cc
+    hostmaster: fe7b80cae1584c0dbd6eabb66bc11775
+    webmaster: bab8cd23fa4649f4b270239c22a4238b

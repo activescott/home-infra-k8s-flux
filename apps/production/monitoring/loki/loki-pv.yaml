@@ -1,3 +1,15 @@
+# Loki's data volume, pinned to the ZFS pool.
+#
+# The claim is named `storage-loki-0` on purpose: the chart's single-binary
+# StatefulSet always renders a volumeClaimTemplate named `storage` and has no
+# `existingClaim` value, so the only way to choose the backing volume is to
+# pre-create the PVC the template would have created. A StatefulSet adopts an
+# existing PVC of that name instead of provisioning a new one.
+#
+# Naming it anything else is how this broke before: the claim template fell
+# through to the default `local-path` class and Loki wrote to the k3s data dir
+# on `/mnt/fast-scratch`, which the nas1 rebuild wipes (2026-08-26: a fresh
+# empty volume, all prior history orphaned).
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -13,13 +25,13 @@ spec:
     path: /mnt/thedatapool/no-backup/app-data/loki
     type: DirectoryOrCreate
   claimRef:
-    name: loki-storage-pvc
+    name: storage-loki-0
     namespace: monitoring
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: loki-storage-pvc
+  name: storage-loki-0
   namespace: monitoring
 spec:
   accessModes:

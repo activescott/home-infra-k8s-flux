@@ -1,88 +1,10 @@
-# Email Routing rules for ramblefeed.com. See fernfiles.com.yaml in this directory for
+# Email Routing for ramblefeed.com. See fernfiles.com.yaml in this directory for
 # why routing is declarative here while Email Sending onboarding is not.
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: ramblefeed-com-dmarc
-  namespace: cloudflare
-  annotations:
-    # Created by Crossplane on 2026-08-28, then pinned. See fernfiles.com.yaml for why.
-    crossplane.io/external-name: 84a278ede93d444fafae56d0ece0c12e
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: e520413f6aef57eb975b6a1304132116
-    # Destination for the rua= address in _dmarc.ramblefeed.com. Without a rule, aggregate
-    # reports bounce and the p=none monitoring period observes nothing.
-    name: dmarc-reports
-    enabled: true
-    priority: 10
-    matchers:
-      - type: literal
-        field: to
-        value: dmarc@ramblefeed.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
-# Predates Crossplane, created through the dashboard on 2025-11-03. Adopted by its existing
-# rule id so ownership transfers without the rule changing.
 #
-# The name is Cloudflare's auto-generated label, reproduced verbatim for that reason. It is
-# only a label, so renaming it is safe -- but as its own deliberate change, not smuggled in
-# with the adoption.
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: ramblefeed-com-scott
-  namespace: cloudflare
-  annotations:
-    crossplane.io/external-name: caa584e6593b433b9c1c5aa966a6ec25
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: e520413f6aef57eb975b6a1304132116
-    name: Rule created at 2025-11-03T00:44:19.254Z
-    enabled: true
-    priority: 0
-    matchers:
-      - type: literal
-        field: to
-        value: scott@ramblefeed.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
+# Every forwarding rule on this zone is composed from the RoleMailboxes below, so the
+# destination address appears in no manifest. Only the catch-all is an ordinary managed
+# resource: it forwards nothing, so it needs nothing from the Secret.
+#
 # The catch-all, disabled and dropping, which is Cloudflare's default for a routing-enabled
 # zone. Declared so git shows what governs every address no other rule matches.
 #
@@ -122,10 +44,10 @@ spec:
       - type: drop
 
 ---
-# RFC 2142 §5.2 role mailboxes for ramblefeed.com. One RoleMailboxes composite fans out into
-# six EmailRoutingRule resources -- abuse, noc, security, postmaster, hostmaster
-# and webmaster -- each forwarding to the destination held in the SOPS-encrypted
-# Secret cloudflare/email-routing-destination.
+# RFC 2142 §5.2 role mailboxes for ramblefeed.com, plus this zone's own aliases. One
+# RoleMailboxes composite fans out into one EmailRoutingRule per entry -- abuse, noc, security,
+# postmaster, hostmaster, webmaster, and everything under `aliases` -- each forwarding to the
+# destination held in the SOPS-encrypted Secret cloudflare/email-routing-destination.
 #
 # The mailbox list and the destination both live in the Composition rather than
 # here, so every zone provably gets the identical set and the address appears in
@@ -139,3 +61,31 @@ metadata:
 spec:
   zoneId: e520413f6aef57eb975b6a1304132116
   zoneName: ramblefeed.com
+  aliases:
+    # Destination for the rua= address in _dmarc.ramblefeed.com. Without a rule, aggregate
+    # reports bounce and the p=none monitoring period observes nothing. Created by Crossplane
+    # on 2026-08-28 as a hand-written EmailRoutingRule; moved here so its forward address
+    # comes from the Secret instead of sitting in git.
+    - localPart: dmarc
+      ruleName: dmarc-reports
+      priority: 10
+    # Predates Crossplane, created through the dashboard on 2025-11-03.
+    #
+    # ruleName is Cloudflare's auto-generated label, reproduced verbatim, and priority stays
+    # at the 0 it was adopted with. The label is only a label, so renaming it is safe -- but
+    # as its own deliberate change, not smuggled in with this migration.
+    - localPart: scott
+      ruleName: Rule created at 2025-11-03T00:44:19.254Z
+      priority: 0
+  # Cloudflare rule ids, so each composed resource adopts its existing rule rather than
+  # creating a second one. See the `adopt` description in the XRD for why these stay here
+  # permanently instead of being removed once adopted.
+  adopt:
+    abuse: b59599d305894d4d969e75c4846b939d
+    noc: 712b771395d44305ace01d68e5f7f536
+    security: 53f1e3c851664e5d8b2632a0b87857e3
+    postmaster: caae33d7f79c439ea6e1fd4bc48276cc
+    hostmaster: 54a988fba73e43f6bc3cb48df64bd267
+    webmaster: 74baf5c5e36a48a58d04d44d361fe6a0
+    dmarc: 84a278ede93d444fafae56d0ece0c12e
+    scott: caa584e6593b433b9c1c5aa966a6ec25

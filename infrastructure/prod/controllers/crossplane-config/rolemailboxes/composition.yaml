@@ -1,11 +1,13 @@
 # Composition for RoleMailboxes -- see ./xrd.yaml. One go-templating step ranges
-# over the RFC 2142 §5.2 mailbox list and emits one EmailRoutingRule per name,
-# then function-auto-ready rolls their readiness up to the XR.
+# over the RFC 2142 §5.2 mailbox list plus the XR's aliases and emits one
+# EmailRoutingRule per entry, then function-auto-ready rolls their readiness up to
+# the XR.
 #
-# Why go-templating rather than patch-and-transform: this needs iteration (six
-# managed resources from one XR) and it needs to read a Secret. P&T does neither
-# -- it has no loop, and its patch types are a closed set with no way to source a
-# value from a Secret. Both functions used here are already installed for DNSZone.
+# Why go-templating rather than patch-and-transform: this needs iteration (six or
+# more managed resources from one XR) and it needs to read a Secret. P&T does
+# neither -- it has no loop, and its patch types are a closed set with no way to
+# source a value from a Secret. Both functions used here are already installed for
+# DNSZone.
 #
 # The destination address is read at compose time from the SOPS-encrypted Secret
 # cloudflare/email-routing-destination (key `destination`), via ExtraResources.
@@ -38,6 +40,30 @@ spec:
               out of scope. Adding a name here adds it to all seven zones.
             */ -}}
             {{- $mailboxes := list "abuse" "noc" "security" "postmaster" "hostmaster" "webmaster" -}}
+            {{- /*
+              Flatten the mandatory six and the per-zone aliases into one list of
+              {localPart, ruleName, priority} so the rule body below is written
+              once. The six are all ruleName == localPart at priority 10.
+            */ -}}
+            {{- $entries := list -}}
+            {{- range $mailbox := $mailboxes -}}
+            {{- $entries = append $entries (dict "localPart" $mailbox "ruleName" $mailbox "priority" 10) -}}
+            {{- end -}}
+            {{- range $alias := ($xr.spec.aliases | default list) -}}
+            {{- if has $alias.localPart $mailboxes -}}
+            {{- fail (printf "alias localPart %q is already an RFC 2142 mailbox; it would collide on composition-resource-name" $alias.localPart) -}}
+            {{- end -}}
+            {{- /*
+              hasKey, not `default 10`: sprig's `default` treats 0 as empty, and
+              priority 0 is the real value on every dashboard-era adopted rule.
+              `default` would silently rewrite them to 10 -- a live Cloudflare
+              change with no diff in this repo to explain it.
+            */ -}}
+            {{- $priority := 10 -}}
+            {{- if hasKey $alias "priority" -}}{{- $priority = $alias.priority -}}{{- end -}}
+            {{- $entries = append $entries (dict "localPart" $alias.localPart "ruleName" ($alias.ruleName | default $alias.localPart) "priority" $priority) -}}
+            {{- end -}}
+            {{- $adopt := $xr.spec.adopt | default dict -}}
             ---
             # Ask Crossplane for the destination Secret. This makes the pipeline
             # two-pass: the first call returns only this requirement with
@@ -65,7 +91,7 @@ spec:
             {{- $items := index $found "items" | default list }}
             {{- if $items }}
             {{- $destination := index (index $items 0).resource.data "destination" | b64dec | trim }}
-            {{- range $mailbox := $mailboxes }}
+            {{- range $entry := $entries }}
             ---
             apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
             kind: EmailRoutingRule
@@ -76,7 +102,19 @@ spec:
                 # it, which Crossplane reads as "these resources were replaced"
                 # and acts on by deleting and recreating the live Cloudflare
                 # rules. Same rationale as dnszone/composition.yaml.
-                gotemplating.fn.crossplane.io/composition-resource-name: {{ $mailbox }}
+                gotemplating.fn.crossplane.io/composition-resource-name: {{ $entry.localPart }}
+                {{- $id := index $adopt $entry.localPart | default "" }}
+                {{- if $id }}
+                # Pinned Cloudflare rule id from spec.adopt, so this reconciles as
+                # an adoption rather than a create. Without it, deleting and
+                # recreating this managed resource makes a SECOND Cloudflare rule
+                # for the same address: the id Crossplane records in this
+                # annotation at create time lives only on the object being
+                # deleted. Also the durable repair for the 2026-08-28 case where
+                # Cloudflare 429'd the post-create Observe and left rules with no
+                # external name and no way to recover one.
+                crossplane.io/external-name: {{ $id | quote }}
+                {{- end }}
             spec:
               providerConfigRef:
                 kind: ProviderConfig
@@ -89,18 +127,20 @@ spec:
               managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
               forProvider:
                 zoneId: {{ $xr.spec.zoneId | quote }}
-                name: {{ $mailbox | quote }}
+                name: {{ $entry.ruleName | quote }}
                 enabled: true
-                # Matches the priority the other GitOps-managed rules in this repo
-                # use (dmarc-reports, privacy, support). Dashboard-era adopted
-                # rules sit at 0. The catch-all is a separate resource kind that
-                # Cloudflare always evaluates last, so it cannot shadow these
-                # regardless of the number here.
-                priority: 10
+                # 10 for the RFC 2142 six and for the GitOps-created aliases
+                # (dmarc-reports, privacy, support); 0 for dashboard-era rules
+                # adopted at that value and kept there. Literal matchers cannot
+                # overlap, so relative order never decides delivery -- the number
+                # matters only because changing it writes to Cloudflare. The
+                # catch-all is a separate resource kind that Cloudflare always
+                # evaluates last, so it cannot shadow these regardless.
+                priority: {{ $entry.priority }}
                 matchers:
                   - type: literal
                     field: to
-                    value: {{ printf "%s@%s" $mailbox $xr.spec.zoneName | quote }}
+                    value: {{ printf "%s@%s" $entry.localPart $xr.spec.zoneName | quote }}
                 actions:
                   - type: forward
                     value:

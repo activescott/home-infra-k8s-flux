@@ -1,8 +1,9 @@
 # RoleMailboxes: one manifest per Cloudflare zone declaring that the zone carries
-# the RFC 2142 role mailboxes. The Composition fans each XR out into six
-# EmailRoutingRule managed resources -- the same one-XR-per-zone shape DNSZone
-# uses for records, for the same reason: a file per rule multiplies by the number
-# of zones and drifts.
+# the RFC 2142 role mailboxes, plus any zone-specific aliases sharing the same
+# destination. The Composition fans each XR out into six EmailRoutingRule managed
+# resources, one more per alias -- the same one-XR-per-zone shape DNSZone uses for
+# records, for the same reason: a file per rule multiplies by the number of zones
+# and drifts.
 #
 # RFC 2142 §5.2 mandates ABUSE, NOC, SECURITY, POSTMASTER, HOSTMASTER and
 # WEBMASTER on every domain that runs the protocol. That list is fixed in the
@@ -56,4 +57,66 @@ spec:
                     rather than the DNS one: Cloudflare rate-limits per token and
                     these rules must not compete with the DNS records for that
                     budget. See ../providerconfig.yaml.
+                aliases:
+                  type: array
+                  description: >
+                    Zone-specific forwards that share the same destination as the
+                    RFC 2142 set. They live here rather than in their own
+                    manifests because a managed resource cannot read a Secret, and
+                    the destination is only reachable from a Composition. The
+                    mandatory six above are unaffected -- an alias adds a rule, it
+                    never replaces or reconfigures one.
+                    Not all of these are role addresses in the RFC 2142 sense:
+                    dmarc, privacy, support and admin are, "scott" is a personal
+                    alias that predates Crossplane on four zones.
+                  items:
+                    type: object
+                    properties:
+                      localPart:
+                        type: string
+                        description: >
+                          Left of the @. Becomes the matcher address
+                          "<localPart>@<zoneName>" and the composed resource name.
+                          Must not be one of the six RFC 2142 mailboxes -- those
+                          are already composed, and a duplicate composed-resource
+                          name is ambiguous. The Composition fails the render
+                          rather than letting one silently win.
+                        pattern: '^[a-z0-9]([-a-z0-9._]*[a-z0-9])?$'
+                      ruleName:
+                        type: string
+                        description: >
+                          Cloudflare's display name for the rule. Defaults to
+                          localPart. Set it to reproduce an existing name verbatim
+                          when adopting -- several of these are Cloudflare's
+                          auto-generated "Rule created at <timestamp>" labels, and
+                          changing one would rewrite live state for no reason.
+                      priority:
+                        type: integer
+                        description: >
+                          Defaults to 10, matching the RFC 2142 rules. Adopted
+                          dashboard-era rules sit at 0 and must keep it. Literal
+                          matchers cannot overlap, so relative order never decides
+                          delivery; the value only matters because changing it
+                          writes to Cloudflare.
+                    required: [localPart]
+                adopt:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: >
+                    Existing Cloudflare rule ids, keyed by local-part, covering
+                    both the RFC 2142 six and any aliases. An entry becomes that
+                    composed resource's crossplane.io/external-name, so Crossplane
+                    adopts the rule instead of creating a duplicate. A local-part
+                    absent from this map is created normally, which is what makes
+                    a brand-new zone work with no adopt block at all.
+
+                    Unlike DNSZone.spec.records[].adopt, these are NOT removed
+                    once adopted. Permanence is the point: an id recorded only in
+                    the controller's annotation is lost the moment the managed
+                    resource is deleted and recreated, and Crossplane then makes a
+                    second Cloudflare rule. Pinning here is also what recovered
+                    the hand-written rules from the 2026-08-28 429 incident -- see
+                    the note at the foot of
+                    ../../../dns/email-routing/fernfiles.com.yaml.
               required: [zoneId, zoneName]

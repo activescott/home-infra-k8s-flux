@@ -1,52 +1,10 @@
-# Email Routing rules for activescott.com. See fernfiles.com.yaml in this directory for why
-# routing is declarative here while Email Sending onboarding is not.
+# Email Routing for activescott.com. See fernfiles.com.yaml in this directory for why routing
+# is declarative here while Email Sending onboarding is not.
 #
-# Predates Crossplane by three years -- created 2022-08-27, the same day scott@willeke.com was
-# verified as a destination address, which makes this the oldest routing rule on the account.
-# Adopted by its existing rule id so ownership transfers without the rule changing. The name is
-# Cloudflare's auto-generated label, reproduced verbatim -- see ramblefeed.com.yaml.
+# Every forwarding rule on this zone is composed from the RoleMailboxes below, so the
+# destination address appears in no manifest. Only the catch-all is an ordinary managed
+# resource: it forwards nothing, so it needs nothing from the Secret.
 #
-# This rule is load-bearing beyond forwarding: _dmarc.activescott.com publishes
-# rua=/ruf=mailto:admin@activescott.com, so it is what makes this zone's DMARC reports land.
-# activescott.com is at p=reject, unlike the p=none sending domains, so the reports are the
-# only warning of a legitimate sender failing alignment and being silently rejected.
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: activescott-com-admin
-  namespace: cloudflare
-  annotations:
-    crossplane.io/external-name: bfad08f9d9ee4a7fb2abbc31cd7d05ff
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
-    name: Rule created at 2022-08-27T03:18:21.105Z
-    enabled: true
-    priority: 0
-    matchers:
-      - type: literal
-        field: to
-        value: admin@activescott.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
 # Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
 # rather than a second EmailRoutingRule.
 apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
@@ -81,10 +39,10 @@ spec:
       - type: drop
 
 ---
-# RFC 2142 §5.2 role mailboxes for activescott.com. One RoleMailboxes composite fans out into
-# six EmailRoutingRule resources -- abuse, noc, security, postmaster, hostmaster
-# and webmaster -- each forwarding to the destination held in the SOPS-encrypted
-# Secret cloudflare/email-routing-destination.
+# RFC 2142 §5.2 role mailboxes for activescott.com, plus this zone's own aliases. One
+# RoleMailboxes composite fans out into one EmailRoutingRule per entry -- abuse, noc, security,
+# postmaster, hostmaster, webmaster, and everything under `aliases` -- each forwarding to the
+# destination held in the SOPS-encrypted Secret cloudflare/email-routing-destination.
 #
 # The mailbox list and the destination both live in the Composition rather than
 # here, so every zone provably gets the identical set and the address appears in
@@ -98,3 +56,32 @@ metadata:
 spec:
   zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
   zoneName: activescott.com
+  aliases:
+    # Predates Crossplane by three years -- created 2022-08-27, the same day the destination
+    # address was verified on the account, which makes this the oldest routing rule on it.
+    # Was a hand-written EmailRoutingRule until it moved here so its forward address could
+    # come from the Secret instead of sitting in git.
+    #
+    # Load-bearing beyond forwarding: _dmarc.activescott.com publishes
+    # rua=/ruf=mailto:admin@activescott.com, so this is what makes this zone's DMARC reports
+    # land. activescott.com is at p=reject, unlike the p=none sending domains, so the reports
+    # are the only warning of a legitimate sender failing alignment and being silently
+    # rejected.
+    #
+    # ruleName is Cloudflare's auto-generated label, reproduced verbatim, and priority stays
+    # at the 0 it was adopted with: both are live state, and changing either here would write
+    # to Cloudflare for no reason.
+    - localPart: admin
+      ruleName: Rule created at 2022-08-27T03:18:21.105Z
+      priority: 0
+  # Cloudflare rule ids, so each composed resource adopts its existing rule rather than
+  # creating a second one. See the `adopt` description in the XRD for why these stay here
+  # permanently instead of being removed once adopted.
+  adopt:
+    abuse: bdf8c21586944a7ea781d0e7bc672272
+    noc: 77acef383ba9430ea4931ccbcacc1550
+    security: c80fa243f1b048bba0c9bade30ed26dd
+    postmaster: 2b41fa5ca4154128a415444b7141e014
+    hostmaster: 393d9c89105549e0bef9dc419374e18a
+    webmaster: 088de1a8c0e440ec8f3e29097c40662e
+    admin: bfad08f9d9ee4a7fb2abbc31cd7d05ff

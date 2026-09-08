@@ -46,9 +46,14 @@ spec:
     singleBinary:
       replicas: 1
       persistence:
-        storageClass: ""
+        # "-" renders `storageClassName: ""` in the claim template. An empty
+        # string renders no storageClassName at all, which silently falls
+        # through to the default class (local-path, on the wipe-able scratch
+        # NVMe). The claim itself is pre-created in ./loki-pv.yaml as
+        # `storage-loki-0` — the chart has no `existingClaim` for the
+        # single-binary StatefulSet.
+        storageClass: "-"
         size: 50Gi
-        existingClaim: loki-storage-pvc
       resources:
         requests:
           cpu: "250m"

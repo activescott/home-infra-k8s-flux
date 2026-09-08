@@ -1,133 +1,16 @@
-# Email Routing rules for fernfiles.com. Unlike Email Sending, routing is fully
-# declarative -- the provider serves EmailRoutingRule directly, so these are ordinary
-# managed resources rather than composed ones.
+# Email Routing for fernfiles.com. Unlike Email Sending, routing is fully declarative -- the
+# provider serves EmailRoutingRule and EmailRoutingCatchAll directly, so nothing here needs the
+# onboarding dance Email Sending does.
 #
 # Routing is already enabled on this zone (status: ready) with the apex MX, SPF and
 # cf2024-1 DKIM records adopted in zones/fernfiles.com.yaml. Those records are Cloudflare's,
 # but unlike the Email Sending ones they can be unlocked, which is why they are fully
 # managed there and the cf-bounce ones are not.
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: fernfiles-com-dmarc
-  namespace: cloudflare
-  annotations:
-    # Created by Crossplane on 2026-08-28, then pinned here. See the note at the bottom of
-    # this file for why the id is written back into git rather than left to the controller.
-    crossplane.io/external-name: 28e88c59e5c5488697277d99598a7b32
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
-    # Destination for the rua= address in _dmarc.fernfiles.com. Without a rule, aggregate
-    # reports bounce and the p=none monitoring period observes nothing.
-    name: dmarc-reports
-    enabled: true
-    priority: 10
-    matchers:
-      - type: literal
-        field: to
-        value: dmarc@fernfiles.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
-# The two addresses the shipped policy pages already publish. Until these existed, both pages
-# pointed users at addresses that hit the dropping catch-all below, so a privacy request or a
-# support mail was accepted by Cloudflare and silently discarded.
 #
-# Created by Crossplane rather than adopted -- no external-name annotation -- so Cloudflare
-# assigns the rule id and writes it back. Priority is deliberately the same 10 as the DMARC
-# rule: literal matchers cannot overlap, so relative order between them never decides delivery.
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: fernfiles-com-privacy
-  namespace: cloudflare
-  annotations:
-    crossplane.io/external-name: fabc55828afc432184868f9ad0ffede4
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
-    name: privacy
-    enabled: true
-    priority: 10
-    matchers:
-      - type: literal
-        field: to
-        value: privacy@fernfiles.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: fernfiles-com-support
-  namespace: cloudflare
-  annotations:
-    crossplane.io/external-name: 24bb47ac27064ec7a258be8fc1cd33df
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: dad431388d3f4e6e76b5bcbeac28d56a
-    name: support
-    enabled: true
-    priority: 10
-    matchers:
-      - type: literal
-        field: to
-        value: support@fernfiles.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
+# Every forwarding rule on this zone is composed from the RoleMailboxes below, so the
+# destination address appears in no manifest. Only the catch-all is an ordinary managed
+# resource: it forwards nothing, so it needs nothing from the Secret.
+#
 # Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
 # rather than a second EmailRoutingRule.
 apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
@@ -161,14 +44,15 @@ spec:
     actions:
       - type: drop
 #
-# Why every rule in this directory carries an external-name, including the ones Crossplane
-# created itself.
+# Why every routing resource in this directory carries a pinned Cloudflare rule id -- as an
+# external-name annotation here, or as a `spec.adopt` entry on a RoleMailboxes -- including the
+# ones Crossplane created itself.
 #
-# When these five rules were first applied without one, the creates succeeded -- Cloudflare
-# made each rule exactly once -- but the Observe that runs immediately afterwards, which is
-# what reads the assigned id back out and writes it into the external-name annotation, was
-# rejected with 429 Too Many Requests. Cloudflare rate-limits the Email Routing endpoints far
-# more tightly than DNS, and seventeen resources reconciling at once cleared that limit.
+# When the first five rules were applied without one, the creates succeeded -- Cloudflare made
+# each rule exactly once -- but the Observe that runs immediately afterwards, which is what
+# reads the assigned id back out and writes it into the external-name annotation, was rejected
+# with 429 Too Many Requests. Cloudflare rate-limits the Email Routing endpoints far more
+# tightly than DNS, and seventeen resources reconciling at once cleared that limit.
 #
 # The result is a resource that is created but has no external name. Crossplane records
 # `crossplane.io/external-create-succeeded` for exactly this case and then refuses to act,
@@ -176,16 +60,16 @@ spec:
 # this whole adoption strategy is built to avoid. It is safe, but it is stuck, and it does not
 # resolve on its own: with no external name there is nothing for a later Observe to look up.
 #
-# Pinning the id here is the durable repair. It converts a create into an adoption, which is
+# Pinning the id in git is the durable repair. It converts a create into an adoption, which is
 # idempotent, breaks the error loop that was sustaining the 429, and survives the managed
 # resource being deleted and recreated. An in-cluster `kubectl annotate` would have fixed the
 # symptom until the next time something reapplied from git.
 
 ---
-# RFC 2142 §5.2 role mailboxes for fernfiles.com. One RoleMailboxes composite fans out into
-# six EmailRoutingRule resources -- abuse, noc, security, postmaster, hostmaster
-# and webmaster -- each forwarding to the destination held in the SOPS-encrypted
-# Secret cloudflare/email-routing-destination.
+# RFC 2142 §5.2 role mailboxes for fernfiles.com, plus this zone's own aliases. One
+# RoleMailboxes composite fans out into one EmailRoutingRule per entry -- abuse, noc, security,
+# postmaster, hostmaster, webmaster, and everything under `aliases` -- each forwarding to the
+# destination held in the SOPS-encrypted Secret cloudflare/email-routing-destination.
 #
 # The mailbox list and the destination both live in the Composition rather than
 # here, so every zone provably gets the identical set and the address appears in
@@ -199,3 +83,34 @@ metadata:
 spec:
   zoneId: dad431388d3f4e6e76b5bcbeac28d56a
   zoneName: fernfiles.com
+  aliases:
+    # Destination for the rua= address in _dmarc.fernfiles.com. Without a rule, aggregate
+    # reports bounce and the p=none monitoring period observes nothing. Created by Crossplane
+    # on 2026-08-28 as a hand-written EmailRoutingRule; moved here so its forward address
+    # comes from the Secret instead of sitting in git.
+    - localPart: dmarc
+      ruleName: dmarc-reports
+      priority: 10
+    # The two addresses the shipped policy pages already publish. Until these existed, both
+    # pages pointed users at addresses that hit the dropping catch-all above, so a privacy
+    # request or a support mail was accepted by Cloudflare and silently discarded.
+    #
+    # Priority is deliberately the same 10 as the DMARC rule: literal matchers cannot overlap,
+    # so relative order between them never decides delivery.
+    - localPart: privacy
+      priority: 10
+    - localPart: support
+      priority: 10
+  # Cloudflare rule ids, so each composed resource adopts its existing rule rather than
+  # creating a second one. See the `adopt` description in the XRD, and the note above, for why
+  # these stay here permanently instead of being removed once adopted.
+  adopt:
+    abuse: 90e92ffded8b4b2f87c136615d6355ae
+    noc: abd4c6d4518745c08213497445f93e69
+    security: 2cefad93d34b483fb0f0792b2f094ce0
+    postmaster: 2941a05568c04556a5eec33c7f5406b4
+    hostmaster: 19524c56a1ec463890f6d7ebdab514d0
+    webmaster: 81f483aa706c46e79033859ca6ac9840
+    dmarc: 28e88c59e5c5488697277d99598a7b32
+    privacy: fabc55828afc432184868f9ad0ffede4
+    support: 24bb47ac27064ec7a258be8fc1cd33df

@@ -1,46 +1,10 @@
-# Email Routing rules for coinpoet.com. See fernfiles.com.yaml in this directory for why
+# Email Routing for coinpoet.com. See fernfiles.com.yaml in this directory for why
 # routing is declarative here while Email Sending onboarding is not.
 #
-# Predates Crossplane, created through the dashboard on 2023-11-21. Adopted by its existing
-# rule id so ownership transfers without the rule changing. The name is Cloudflare's
-# auto-generated label, reproduced verbatim -- see ramblefeed.com.yaml.
-apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
-kind: EmailRoutingRule
-metadata:
-  name: coinpoet-com-scott
-  namespace: cloudflare
-  annotations:
-    crossplane.io/external-name: 6ebfd4fb78864b99a7e95b4d9ad52f76
-spec:
-  # Everything except Delete: Crossplane may observe, create and update these rules but never
-  # remove them from Cloudflare. Adoption transfers ownership, not lifecycle -- several of these
-  # predate Crossplane by years -- and with `prune: true` on both cluster Kustomizations a
-  # kustomize path typo would otherwise delete real mail routing.
-  #
-  # This is the v2 spelling. `deletionPolicy: Orphan` does NOT exist on namespaced managed
-  # resources (`*.m.cloudflare.com`); setting it fails the Flux dry-run with
-  # ".spec.deletionPolicy: field not declared in schema" and blocks the whole kustomization.
-  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
-  # The Email Routing token, not the DNS one -- Cloudflare rate-limits per token, and these
-  # resources need a budget the 114 DNS records cannot exhaust. See
-  # infrastructure/prod/controllers/crossplane-config/providerconfig.yaml.
-  providerConfigRef:
-    kind: ProviderConfig
-    name: email-routing
-  forProvider:
-    zoneId: 143c0a29af5daf36ca684365cfc33dbf
-    name: Rule created at 2023-11-21T02:39:17.809Z
-    enabled: true
-    priority: 0
-    matchers:
-      - type: literal
-        field: to
-        value: scott@coinpoet.com
-    actions:
-      - type: forward
-        value:
-          - scott@willeke.com
----
+# Every forwarding rule on this zone is composed from the RoleMailboxes below, so the
+# destination address appears in no manifest. Only the catch-all is an ordinary managed
+# resource: it forwards nothing, so it needs nothing from the Secret.
+#
 # Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
 # rather than a second EmailRoutingRule.
 apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
@@ -75,10 +39,10 @@ spec:
       - type: drop
 
 ---
-# RFC 2142 §5.2 role mailboxes for coinpoet.com. One RoleMailboxes composite fans out into
-# six EmailRoutingRule resources -- abuse, noc, security, postmaster, hostmaster
-# and webmaster -- each forwarding to the destination held in the SOPS-encrypted
-# Secret cloudflare/email-routing-destination.
+# RFC 2142 §5.2 role mailboxes for coinpoet.com, plus this zone's own aliases. One
+# RoleMailboxes composite fans out into one EmailRoutingRule per entry -- abuse, noc, security,
+# postmaster, hostmaster, webmaster, and everything under `aliases` -- each forwarding to the
+# destination held in the SOPS-encrypted Secret cloudflare/email-routing-destination.
 #
 # The mailbox list and the destination both live in the Composition rather than
 # here, so every zone provably gets the identical set and the address appears in
@@ -92,3 +56,24 @@ metadata:
 spec:
   zoneId: 143c0a29af5daf36ca684365cfc33dbf
   zoneName: coinpoet.com
+  aliases:
+    # Predates Crossplane, created through the dashboard on 2023-11-21. Was a hand-written
+    # EmailRoutingRule until it moved here so its forward address could come from the Secret
+    # instead of sitting in git.
+    #
+    # ruleName is Cloudflare's auto-generated label, reproduced verbatim, and priority stays
+    # at the 0 it was adopted with -- see ramblefeed.com.yaml.
+    - localPart: scott
+      ruleName: Rule created at 2023-11-21T02:39:17.809Z
+      priority: 0
+  # Cloudflare rule ids, so each composed resource adopts its existing rule rather than
+  # creating a second one. See the `adopt` description in the XRD for why these stay here
+  # permanently instead of being removed once adopted.
+  adopt:
+    abuse: 2d6d878ca093495f83ab677254338009
+    noc: 9f2c00168dc0474d93a25c116abd3c9b
+    security: 61083d9da7e3451689f24217fc77e7db
+    postmaster: 2e25dc3c03f0440db9f99d254407ef27
+    hostmaster: 7425c14948184290b573a8c7dd72b310
+    webmaster: 440ea8fc1d784c57a9b76e0db3a33426
+    scott: 6ebfd4fb78864b99a7e95b4d9ad52f76
