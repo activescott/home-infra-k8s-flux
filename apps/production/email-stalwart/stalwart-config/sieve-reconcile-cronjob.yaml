@@ -35,7 +35,7 @@ spec:
             runAsUser: 65532
           containers:
             - name: reconcile
-              image: python:3.12-alpine
+              image: python:3.12-alpine@sha256:b64631e04e4920160c50fbe8d8df828f7f35f06f425cb44aa09bca53e708a35a
               command: ["python3", "/script/sieve-reconcile.py"]
               env:
                 - name: STALWART_URL
