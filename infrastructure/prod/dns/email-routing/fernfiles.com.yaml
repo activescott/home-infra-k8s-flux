@@ -101,6 +101,11 @@ spec:
       priority: 10
     - localPart: support
       priority: 10
+    # Personal alias, same as the "scott" alias on coinpoet/tinkerbellbot/gpupoet/ramblefeed --
+    # see xrd.yaml. New rule on this zone, so no adopt entry: ruleName defaults to "scott" and
+    # priority defaults to 10.
+    - localPart: scott
+      priority: 10
   # Cloudflare rule ids, so each composed resource adopts its existing rule rather than
   # creating a second one. See the `adopt` description in the XRD, and the note above, for why
   # these stay here permanently instead of being removed once adopted.
