@@ -36,9 +36,13 @@ this repo declares.
 
 Do NOT run `flux reconcile` manually after committing. GitHub webhooks
 (`flux-webhook.activescott.com`) notify Flux on every push so it picks up
-new commits within seconds. To watch progress after a push, use
-`flux --context nas get kustomization apps` or `kubectl --context nas get
-helmreleases -A` directly.
+new commits within seconds — this applies to every manifest change (image
+tags, cronjob specs, HelmRelease versions, etc.), not just app deployments.
+Don't confuse this with a workload's own schedule (e.g. a CronJob's
+`spec.schedule`): the manifest update lands in seconds regardless; only that
+workload's next *execution* waits for its own trigger. To watch progress
+after a push, use `flux --context nas get kustomization apps` or
+`kubectl --context nas get helmreleases -A` directly.
 
 ## Observability
 
