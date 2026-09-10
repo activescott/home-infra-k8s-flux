@@ -44,7 +44,20 @@ helmreleases -A` directly.
 
 See `apps/production/monitoring/README.md` for full architecture, chart versions, storage paths, and log collection details.
 
+**Read logs from Loki, not from pods.** Every pod's stdout is shipped to Loki
+with `namespace` / `pod` / `container` / `app` labels. Query it with the Grafana
+MCP tools against the `Loki` datasource (UID `P8E80F9AEF21F6940`) — e.g.
+`{namespace="home-assistant"} |~ "(?i)garage"`. Do not `kubectl logs` or
+`kubectl exec` into a pod to read logs; Loki has more history than the running
+container does, and app config generally lives in this repo anyway.
+
 Grafana dashboards under `apps/production/monitoring/grafana/dashboards/*.json` are provisioned by Flux — edits via the Grafana UI or API (including the Grafana MCP `update_dashboard` tool) get reverted on the next reconcile. When asked to "add … to a dashboard" (or otherwise change one), edit its JSON file in this repo and commit — never reach for the API/MCP write path. This already bit once: 027's `fernfiles_active_users` panels were added via MCP and vanished without anyone noticing, and had to be re-authored in git. The Grafana API exposes `meta.provisioned: true` on these dashboards if you want to confirm before editing; the MCP `get_dashboard_by_uid` response does not currently surface that field, so when in doubt grep this repo for the dashboard UID first — if a file matches, the file is the only edit path. Read-only MCP/API use (searching dashboards, running PromQL to validate a query before saving it in JSON) is fine and encouraged.
+
+## Home Assistant
+
+See `apps/production/home-assistant/AGENTS.md` before changing anything under
+that directory — which config files are ConfigMap-delivered vs written by HA on
+the PVC, and the template-entity rules.
 
 ## Image sources: no Bitnami
 

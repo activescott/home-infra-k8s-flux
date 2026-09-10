@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Pulls back only the config files Home Assistant itself writes (automations.yaml,
+# scenes.yaml, scripts.yaml, secrets.yaml). Static config is delivered by Flux
+# as ConfigMaps -- see ../kustomization.yaml -- and is listed in
+# rsync-excluded-files so this script cannot clobber the git copy.
 THISDIR=$(cd $(dirname "$0"); pwd) #this script's directory
 
 GIT_DIR=$THISDIR

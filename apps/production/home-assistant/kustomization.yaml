@@ -12,9 +12,17 @@ secretGenerator:
       - .env.secret.hass.encrypted
 
 configMapGenerator:
+  # Static config files -- ones Home Assistant itself never writes. Files HA
+  # writes (automations.yaml, scenes.yaml, scripts.yaml) stay on the PVC and are
+  # synced with config-home-assistant/copy-config-from-*.sh.
   - name: hass-configuration
     files:
       - config-home-assistant/configuration.yaml
+      - config-home-assistant/template-cover-garage.yaml
+      - config-home-assistant/customize.yaml
+  - name: hass-www-auto-entities
+    files:
+      - config-home-assistant/www/plugins/auto-entities/auto-entities.js
 
 patches:
   - target:
@@ -33,4 +41,33 @@ patches:
           name: hass-configuration
           mountPath: /config/configuration.yaml
           subPath: configuration.yaml
+          readOnly: true
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: hass-configuration
+          mountPath: /config/template-cover-garage.yaml
+          subPath: template-cover-garage.yaml
+          readOnly: true
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: hass-configuration
+          mountPath: /config/customize.yaml
+          subPath: customize.yaml
+          readOnly: true
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: hass-www-auto-entities
+          configMap:
+            name: hass-www-auto-entities
+      # Directory mount (not subPath) so the ConfigMap replaces the whole
+      # plugin directory. The Lovelace resource URL
+      # /local/plugins/auto-entities/auto-entities.js is unchanged.
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: hass-www-auto-entities
+          mountPath: /config/www/plugins/auto-entities
           readOnly: true

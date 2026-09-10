@@ -1,12 +1,18 @@
 # Garage Door Integration
-# Uses template platform to invoke services for each of the open, close, stop, position and tilt commands of a cover.
-# See https://www.home-assistant.io/integrations/cover.template/#garage-door
-- platform: template
-  covers:
-    garage_door:
+# Glues the Zooz ZEN17 relay (switch.garage_relay) and the Ecolink tilt sensor
+# into a single cover entity.
+#
+# Migrated from the legacy `cover: - platform: template` / `covers:` schema,
+# which Home Assistant removed in 2026.6. `default_entity_id` keeps the
+# entity_id at cover.garage_door so the automations in automations.yaml and the
+# dashboard cards keep working unchanged.
+# See https://www.home-assistant.io/integrations/template/#cover
+- cover:
+    - name: "Garage Door"
+      default_entity_id: cover.garage_door
+      unique_id: garage_door_template_cover
       device_class: garage
-      friendly_name: "Garage Door"
-      position_template: >-
+      position: >-
         {% if states('binary_sensor.ecolink_garage_tilt_sensor_window_door_is_open') == "off" %}
           0
         {% else %}
@@ -16,24 +22,23 @@
         - condition: state
           entity_id: binary_sensor.ecolink_garage_tilt_sensor_window_door_is_open
           state: "off"
-        - service: switch.toggle
+        - action: switch.toggle
           target:
             entity_id: switch.garage_relay
       close_cover:
         - condition: state
           entity_id: binary_sensor.ecolink_garage_tilt_sensor_window_door_is_open
           state: "on"
-        - service: switch.toggle
+        - action: switch.toggle
           target:
             entity_id: switch.garage_relay
       stop_cover:
-        service: switch.toggle
-        target:
-          entity_id: switch.garage_relay
-      icon_template: >-
+        - action: switch.toggle
+          target:
+            entity_id: switch.garage_relay
+      icon: >-
         {% if states('binary_sensor.ecolink_garage_tilt_sensor_window_door_is_open') == "off" %}
           mdi:garage
         {% else %}
           mdi:garage-open
         {% endif %}
-    

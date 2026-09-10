@@ -6,6 +6,22 @@ diff-hass-and-git.sh
 copy-config-from-git-to-hass.sh
 copy-config-from-hass-to-git.sh
 FLUME_TOKEN_FILE-scott@willeke.com
+
+# Delivered by Flux as ConfigMaps (see ../kustomization.yaml) and mounted
+# read-only into the container. Excluded here so neither sync direction can
+# overwrite them -- or, with --delete, remove them.
+configuration.yaml
+configuration.yaml.old-now-in-flux-configmap
+customize.yaml
+template-cover-garage.yaml
+cover-garage.yaml
+www/
+
+# Runtime state written by Home Assistant, not configuration.
+.cache/
+.ha_run.lock
+packages/
+.claude/
 home-assistant_v2.db
 home-assistant_v2.db-*
 home-assistant.log

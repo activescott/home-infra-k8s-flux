@@ -9,7 +9,10 @@ tts:
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
-cover garage: !include cover-garage.yaml
+# Labeled include (`template garage:`, not a bare `template:`) so more template
+# files can be added later as new labels. Never add a second, unlabeled
+# `template:` key -- the last one wins and the others silently vanish.
+template garage: !include template-cover-garage.yaml
 #lovelace: !include ui-lovelace-config.yaml
 
 # for certificate expiry per https://github.com/home-assistant/core/issues/105070#issuecomment-2015364310
