@@ -412,13 +412,13 @@
 - id: '1737415256447'
   alias: Plant Switch Off
   description: ''
-  trigger:
-  - platform: time_pattern
-    hours: '21'
+  triggers:
+  - hours: '19'
     minutes: '0'
     seconds: '0'
-  condition: []
-  action:
+    trigger: time_pattern
+  conditions: []
+  actions:
   - type: turn_off
     device_id: 63e988d98ea0b4ddb11c7091c8888097
     entity_id: 3543e11714ecfd239f46d54d74beec32
@@ -435,4 +435,42 @@
   - alias: Create backup now
     action: shell_command.delete_old_backups
     data: {}
+  mode: single
+- id: '1764122878471'
+  alias: New automation
+  description: ''
+  triggers:
+  - type: turned_on
+    device_id: 107c997c93c98ab0db677160cb24b511
+    entity_id: c06f196b7f4922e2c3b367b821f0204b
+    domain: switch
+    trigger: device
+  - type: turned_off
+    device_id: 107c997c93c98ab0db677160cb24b511
+    entity_id: c06f196b7f4922e2c3b367b821f0204b
+    domain: switch
+    trigger: device
+  conditions: []
+  actions:
+  - choose:
+    - conditions:
+      - condition: state
+        entity_id: switch.micah_br_switch_2
+        state: 'on'
+      sequence:
+      - action: switch.turn_on
+        metadata: {}
+        data: {}
+        target:
+          device_id: 50a89ec3aefa5b3de3b1b3ec150c4708
+    - conditions:
+      - condition: state
+        entity_id: switch.micah_br_switch_2
+        state: 'off'
+      sequence:
+      - action: switch.turn_off
+        metadata: {}
+        data: {}
+        target:
+          device_id: 50a89ec3aefa5b3de3b1b3ec150c4708
   mode: single
