@@ -130,6 +130,22 @@ spec:
                   name: app-creds
                   key: TWILIO_VERIFY_SERVICE_SID
                   optional: true
+            # optional: product analytics is disabled when the key is
+            # absent (dev/e2e/self-host); prod app-creds sets both when
+            # PostHog capture is enabled
+            # (docs/specs/043-posthog-analytics/plan.md).
+            - name: POSTHOG_PROJECT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: POSTHOG_PROJECT_KEY
+                  optional: true
+            - name: POSTHOG_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: POSTHOG_HOST
+                  optional: true
             # optional: the logger falls back to its own default level.
             - name: LOG_LEVEL
               valueFrom:
