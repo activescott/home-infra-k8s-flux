@@ -36,12 +36,3 @@ patches:
       - op: replace
         path: /spec/policy/semver/range
         value: ">=0.14.0 <0.15.0"
-
-  # Customize ImageUpdateAutomation
-  - target:
-      kind: ImageUpdateAutomation
-      name: update-placeholder
-    patch: |-
-      - op: replace
-        path: /metadata/name
-        value: update-arc-controller

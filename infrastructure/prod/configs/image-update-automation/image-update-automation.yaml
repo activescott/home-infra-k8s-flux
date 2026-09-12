@@ -1,7 +1,11 @@
+# Repo-wide ImageUpdateAutomation — the ONLY one in this repo. With
+# update.path ./ it rewrites every $imagepolicy marker in the repo, serving
+# all ImageRepository/ImagePolicy pairs (every image-scanning*/ dir). Do not
+# add a second one: parallel automations race and misattribute commits.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
-  name: update-placeholder
+  name: update-images
 spec:
   interval: 4h
   sourceRef:

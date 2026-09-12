@@ -1,6 +1,7 @@
 resources:
   - ../../base/configs/secret-name-reference
   - ../../base/configs/image-scanning-webhook-receiver
+  - image-update-automation
   - ../controllers/cert-manager
   # k3s bundles Traefik; customize it via HelmChartConfig instead of a separate HelmRelease
   - traefik-config.yaml

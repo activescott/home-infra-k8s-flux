@@ -31,12 +31,3 @@ patches:
       - op: replace
         path: /spec/imageRepositoryRef/name
         value: repo-scott-willeke-com
-
-  # Customize ImageUpdateAutomation
-  - target:
-      kind: ImageUpdateAutomation
-      name: update-placeholder
-    patch: |-
-      - op: replace
-        path: /metadata/name
-        value: update-scott-willeke-com

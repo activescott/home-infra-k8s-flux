@@ -48,14 +48,11 @@ patches:
         path: /spec/imageRepositoryRef/name
         value: repo-YOUR-APP-NAME
 
-  # Customize ImageUpdateAutomation
-  - target:
-      kind: ImageUpdateAutomation
-      name: update-placeholder
-    patch: |-
-      - op: replace
-        path: /metadata/name
-        value: update-YOUR-APP-NAME
+  # No ImageUpdateAutomation patch: update-images
+  # (infrastructure/prod/configs/image-update-automation/) is the single
+  # repo-wide automation — with update.path ./ it already rewrites every
+  # $imagepolicy marker in this repo. Do not add another one: parallel
+  # automations race and misattribute commits.
 ```
 
 ### For Semver Apps

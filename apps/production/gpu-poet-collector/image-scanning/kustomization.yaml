@@ -29,11 +29,3 @@ patches:
       - op: replace
         path: /spec/imageRepositoryRef/name
         value: repo-gpu-poet-collector
-
-  - target:
-      kind: ImageUpdateAutomation
-      name: update-placeholder
-    patch: |-
-      - op: replace
-        path: /metadata/name
-        value: update-gpu-poet-collector

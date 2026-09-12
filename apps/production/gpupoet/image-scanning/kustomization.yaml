@@ -31,12 +31,3 @@ patches:
       - op: replace
         path: /spec/imageRepositoryRef/name
         value: repo-gpupoet-app
-
-  # Customize ImageUpdateAutomation
-  - target:
-      kind: ImageUpdateAutomation
-      name: update-placeholder
-    patch: |-
-      - op: replace
-        path: /metadata/name
-        value: update-gpupoet-app

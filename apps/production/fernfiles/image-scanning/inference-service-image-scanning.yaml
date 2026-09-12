@@ -4,9 +4,10 @@
 # Written out rather than reusing base/image-scanning/semver via a third
 # placeholder-patch pass, for the same reason worker-image-scanning.yaml is:
 # that base bundles an ImageUpdateAutomation, and another one pushing commits
-# to the same branch for the same repository is redundant. The existing
-# update-fernfiles-app automation already rewrites every $imagepolicy marker
-# in this repo, including this one's.
+# to the same branch for the same repository is redundant. The repo-wide
+# update-images automation
+# (infrastructure/prod/configs/image-update-automation/) already rewrites
+# every $imagepolicy marker in this repo, including this one's.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
