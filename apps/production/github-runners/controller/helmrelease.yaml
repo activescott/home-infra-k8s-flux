@@ -17,7 +17,7 @@ spec:
   values:
     image:
       repository: ghcr.io/actions/gha-runner-scale-set-controller
-      tag: "0.14.2" # {"$imagepolicy": "arc-systems:policy-arc-controller:tag"}
+      tag: "0.14.2" # {"$imagepolicy": "flux-system:policy-arc-controller:tag"}
     flags:
       logFormat: "json"
     # Enable Prometheus metrics. Both the controller-manager and the

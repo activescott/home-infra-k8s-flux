@@ -1,0 +1,20 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-fernfiles-app
+spec:
+  image: ghcr.io/activescott/fernfiles/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-fernfiles-app
+spec:
+  imageRepositoryRef:
+    name: repo-fernfiles-app
+  policy:
+    semver:
+      range: ">=0.0.0"

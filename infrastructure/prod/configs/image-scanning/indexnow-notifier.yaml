@@ -1,0 +1,22 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-indexnow-notifier
+spec:
+  image: ghcr.io/activescott/gpu-agent/indexnow-notifier
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-indexnow-notifier
+spec:
+  imageRepositoryRef:
+    name: repo-indexnow-notifier
+  filterTags:
+    pattern: '^v[0-9]{12}$'
+  policy:
+    alphabetical:
+      order: asc

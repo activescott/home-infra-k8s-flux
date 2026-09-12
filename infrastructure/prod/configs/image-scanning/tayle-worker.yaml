@@ -7,3 +7,14 @@ spec:
   interval: 5h
   secretRef:
     name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-tayle-worker
+spec:
+  imageRepositoryRef:
+    name: repo-tayle-worker
+  policy:
+    semver:
+      range: "1.x"

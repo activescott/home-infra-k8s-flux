@@ -1,0 +1,20 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-ramblefeed-app
+spec:
+  image: ghcr.io/activescott/ramblefeed/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-ramblefeed-app
+spec:
+  imageRepositoryRef:
+    name: repo-ramblefeed-app
+  policy:
+    semver:
+      range: ">=0.0.0"

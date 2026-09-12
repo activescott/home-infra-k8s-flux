@@ -1,0 +1,18 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-arc-controller
+spec:
+  image: ghcr.io/actions/gha-runner-scale-set-controller
+  interval: 5h
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-arc-controller
+spec:
+  imageRepositoryRef:
+    name: repo-arc-controller
+  policy:
+    semver:
+      range: ">=0.14.0 <0.15.0"

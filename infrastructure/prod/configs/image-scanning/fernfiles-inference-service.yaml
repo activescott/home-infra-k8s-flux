@@ -1,0 +1,20 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-fernfiles-inference-service
+spec:
+  image: ghcr.io/activescott/fernfiles/inference-service
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-fernfiles-inference-service
+spec:
+  imageRepositoryRef:
+    name: repo-fernfiles-inference-service
+  policy:
+    semver:
+      range: ">=0.0.0"

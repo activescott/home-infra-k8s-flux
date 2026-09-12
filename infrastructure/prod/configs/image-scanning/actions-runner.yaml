@@ -1,0 +1,18 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-actions-runner
+spec:
+  image: ghcr.io/actions/actions-runner
+  interval: 5h
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-actions-runner
+spec:
+  imageRepositoryRef:
+    name: repo-actions-runner
+  policy:
+    semver:
+      range: ">=2.0.0"

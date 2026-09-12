@@ -1,0 +1,22 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-gpupoet-app
+spec:
+  image: ghcr.io/activescott/gpu-agent/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-gpupoet-app
+spec:
+  imageRepositoryRef:
+    name: repo-gpupoet-app
+  filterTags:
+    pattern: '^v[0-9]{12}$'
+  policy:
+    alphabetical:
+      order: asc

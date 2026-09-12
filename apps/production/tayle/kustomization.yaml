@@ -6,7 +6,6 @@ resources:
   - db-backup/
   - ../../base/tayle/
   - app-ingress-certificate.yaml
-  - image-scanning/
   - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-app-ingress.yaml
@@ -47,11 +46,11 @@ secretGenerator:
 # the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:
   - name: tayle-image-app
-    newName: ghcr.io/tayle-co/tayle/app # {"$imagepolicy": "tayle-prod:policy-tayle-app:name"}
-    newTag: 1.32.3 # {"$imagepolicy": "tayle-prod:policy-tayle-app:tag"}
+    newName: ghcr.io/tayle-co/tayle/app # {"$imagepolicy": "flux-system:policy-tayle-app:name"}
+    newTag: 1.32.3 # {"$imagepolicy": "flux-system:policy-tayle-app:tag"}
   - name: tayle-image-worker
-    newName: ghcr.io/tayle-co/tayle/worker # {"$imagepolicy": "tayle-prod:policy-tayle-worker:name"}
-    newTag: 1.32.3 # {"$imagepolicy": "tayle-prod:policy-tayle-worker:tag"}
+    newName: ghcr.io/tayle-co/tayle/worker # {"$imagepolicy": "flux-system:policy-tayle-worker:name"}
+    newTag: 1.32.3 # {"$imagepolicy": "flux-system:policy-tayle-worker:tag"}
   - name: tayle-image-db
     newName: postgres
     newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
