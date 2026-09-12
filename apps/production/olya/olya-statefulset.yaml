@@ -174,26 +174,30 @@ spec:
           # /startupz rather than /readyz for admission. /readyz additionally requires every
           # configured channel to pass a deep health check, so a Telegram hiccup would pull the
           # pod out of service for a problem that has nothing to do with serving traffic.
+          # exec + loopback, NOT httpGet. A kubelet httpGet probe dials the pod IP from an
+          # address inside the cluster pod CIDR -- which is exactly what gateway.trustedProxies
+          # lists. The gateway therefore treats the probe as a proxied request, finds no
+          # forwarded client headers, and answers 403. The pod then fails its startup probe and
+          # is killed mid-turn, in a loop. Requests from 127.0.0.1 are exempt from that check,
+          # so probing from inside the container avoids it entirely.
+          #
           # timeoutSeconds is explicit on all three: the default is 1s, and a single-threaded
           # Node process busy with a compaction or a large model response can plausibly miss
           # that. On the liveness probe a missed response restarts the pod mid-task.
           startupProbe:
-            httpGet:
-              path: /startupz
-              port: http
+            exec:
+              command: ["curl", "-sf", "http://127.0.0.1:18789/startupz"]
             periodSeconds: 5
             timeoutSeconds: 5
             failureThreshold: 60
           readinessProbe:
-            httpGet:
-              path: /startupz
-              port: http
+            exec:
+              command: ["curl", "-sf", "http://127.0.0.1:18789/startupz"]
             periodSeconds: 10
             timeoutSeconds: 5
           livenessProbe:
-            httpGet:
-              path: /health
-              port: http
+            exec:
+              command: ["curl", "-sf", "http://127.0.0.1:18789/health"]
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
