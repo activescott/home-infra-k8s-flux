@@ -27,6 +27,17 @@
     // Must be "lan" rather than the default loopback, or Traefik cannot reach the pod.
     bind: "lan",
     port: 18789,
+    // Traefik terminates TLS and forwards, so every request arrives with client identity in
+    // headers rather than in the socket. Without this the gateway refuses to attribute the
+    // caller at all and answers "proxy_attribution_required" -- the Control UI just renders
+    // that JSON error instead of loading.
+    //
+    // The cluster pod CIDR, not a single address: Traefik's pod IP changes on every restart.
+    // That is wider than it looks only in theory -- the NetworkPolicy admits port 18789 solely
+    // from Traefik pods in kube-system, so nothing else can open a connection here to present
+    // forged headers in the first place. The two settings are load-bearing together; narrowing
+    // that policy without revisiting this list would be the thing to think twice about.
+    trustedProxies: ["172.16.0.0/16"],
     auth: {
       // Second of two independent auth layers; the Traefik basicAuth middleware in
       // olya-ingress.yaml is the first. Both are required. Do not set this to "none".
