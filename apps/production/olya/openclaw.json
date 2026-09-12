@@ -137,16 +137,6 @@
       olya: {
         name: "Olya",
         workspace: "/state/workspace",
-        tools: {
-          // Routes work to sessions_spawn instead of being done here. NOT a security boundary:
-          // the sub-agents share this container, uid, mounts and environment. See the private
-          // repo's docs/specs/autonomous-ai-assistant/deployment.md before relying on it.
-          //
-          // The three filesystem verbs are listed individually rather than as group:fs because
-          // `read` must stay available, and because denying "write" alone does NOT deny
-          // "apply_patch".
-          deny: ["write", "edit", "apply_patch", "group:runtime"],
-        },
         subagents: {
           delegationMode: "prefer",
           allowAgents: ["coder-opencode", "coder-claude"],
