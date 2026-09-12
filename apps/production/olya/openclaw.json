@@ -95,6 +95,21 @@
       model: {
         primary: "anthropic/claude-opus-4-6",
       },
+      // Run this model through the installed `claude` executable rather than the Anthropic API,
+      // so turns draw on Claude Max subscription instead of per-token API billing.
+      //
+      // The credential is NOT here and cannot be. `claude auth login` was run once inside the
+      // pod and its login lives under $HOME/.claude on the PV; OpenClaw only records a route
+      // marker and never reads, refreshes or forwards the token. That makes this another
+      // redo-by-hand item after a volume loss -- see the runbook.
+      //
+      // Keep the model ref canonical (`anthropic/*`) and put the backend here. `claude-cli/*`
+      // model refs still work but are the legacy form.
+      models: {
+        "anthropic/claude-opus-4-6": {
+          agentRuntime: { id: "claude-cli" },
+        },
+      },
       // With an explicit multi-agent roster there is no ambient agent, so heartbeats stay
       // disabled until one is named here. Required, not optional.
       heartbeat: {
