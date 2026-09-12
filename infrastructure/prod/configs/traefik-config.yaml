@@ -8,7 +8,21 @@ spec:
     service:
       spec:
         # Preserve real client IPs instead of SNAT'ing through kube-proxy.
-        # Required for PostHog geo-location and IP-based analytics.
+        #
+        # Two things depend on this. The second is an access control, so treat
+        # the setting as load-bearing rather than an analytics preference:
+        #
+        #   1. PostHog geo-location and IP-based analytics.
+        #   2. Every Traefik `ipAllowList` middleware in this repo, currently
+        #      apps/production/olya/olya-ingress.yaml, which restricts the
+        #      OpenClaw Control UI to the LAN. It matches on the TCP source
+        #      address. Set this to Cluster and k3s's svclb MASQUERADEs, so every
+        #      request arrives as the node (10.1.111.20) rather than the client.
+        #
+        # Those allowlists deliberately exclude the node's own address, so the
+        # failure is a 403 for everyone rather than a 403 for no one. It fails
+        # closed, but the symptom shows up in an unrelated app with no hint that
+        # the cause is this line.
         externalTrafficPolicy: Local
     ports:
       web:

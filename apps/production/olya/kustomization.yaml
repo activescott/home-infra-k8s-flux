@@ -1,0 +1,65 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - olya-rbac.yaml
+  - olya-pv.yaml
+  - olya-pvc.yaml
+  - olya-statefulset.yaml
+  - olya-service.yaml
+  - olya-ingress.yaml
+  - olya-networkpolicy.yaml
+  - olya-memory-sync-cronjob.yaml
+  # Image is private on GHCR, same as the other first-party images in this repo.
+  - ../shared/ghcr-pull-secret/
+namespace: olya
+
+configMapGenerator:
+  # The gateway configuration. The seed-config initContainer copies this over the PV copy on
+  # every boot, so this file is the source of truth and Control UI edits do not survive a
+  # restart. OpenClaw refuses to start on an invalid config, so validate before committing:
+  #   docker run --rm -v $PWD/openclaw.json:/cfg/openclaw.json:ro \
+  #     -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
+  #     -e OPENCLAW_GATEWAY_TOKEN=dummy -e TELEGRAM_ALLOW_FROM=1 \
+  #     ghcr.io/activescott/olya:v0.1.0 openclaw config validate
+  - name: olya-config
+    files:
+      - openclaw.json
+  - name: olya-scripts
+    files:
+      - scripts/seed-workspace.sh
+      - scripts/memory-sync.mts
+
+secretGenerator:
+  # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token, openclaw_gateway_token.
+  # The statefulset names the ones openclaw.json substitutes individually; see the comment there.
+  - name: olya-env
+    envs:
+      - .env.secret.olya.encrypted
+
+  # htpasswd line for the Traefik basicAuth middleware in front of the Control UI. Separate
+  # from olya-env because the middleware resolves the Secret by name and reads only `users`.
+  #
+  # disableNameSuffixHash is REQUIRED, not a style choice. The Traefik Middleware names this
+  # Secret in spec.basicAuth.secret, a CRD field kustomize's name-reference transformer knows
+  # nothing about, so a hashed name would leave the middleware pointing at a Secret that does
+  # not exist. Traefik then fails the auth check rather than skipping it, but the failure shows
+  # up as a 401 on a correct password, which is a confusing way to find out. Same reasoning as
+  # apps/production/monitoring/prometheus.
+  - name: olya-basic-auth
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.olya-basic-auth.encrypted
+
+  # PAT for the memory-sync CronJob. Scott's, not Olya's, scoped to activeassistant only.
+  - name: olya-memory-sync
+    envs:
+      - .env.secret.olya-memory-sync.encrypted
+
+  # Her ssh private key, for git transport and commit signing. Binary rather than dotenv: a PEM
+  # is multi-line. Note the generator KEY, not the filename, is what selects the SOPS input
+  # format, so this must stay `id_ed25519=`.
+  - name: olya-ssh
+    files:
+      - id_ed25519=olya-ssh.secret.encrypted

@@ -1,0 +1,15 @@
+# Single port carrying HTTP, the Control UI, and the RPC WebSocket. OpenClaw has no separate
+# metrics port: /api/diagnostics/prometheus is served here too and requires operator.read auth,
+# which is why Prometheus needs a bearer token rather than the usual annotation scrape.
+apiVersion: v1
+kind: Service
+metadata:
+  name: olya
+  namespace: olya
+spec:
+  selector:
+    app: olya
+  ports:
+    - name: http
+      port: 18789
+      targetPort: http

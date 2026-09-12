@@ -64,6 +64,14 @@ To give an app a new public URL like `myapp.activescott.com`:
    override are still reachable from the LAN via the public IP — so this is a
    performance nicety, not a requirement. Add the override on the local DNS server
    (10.1.111.1).
+
+   **Exception — required, not optional, for any host behind an `ipAllowList`
+   middleware** (currently `olya.activescott.com`). Hairpinned requests can reach
+   Traefik with the router's address as the source instead of the client's, and
+   those allowlists deliberately exclude `10.1.111.1` so that a source-IP
+   regression fails closed rather than admitting everyone. Skip the override and
+   the host is simply unreachable from the LAN.
+
 3. **Certificate + Ingress:** add a cert-manager `Certificate` (issuer
    `letsencrypt-production`, HTTP-01) and an `Ingress` with matching
    `tls.secretName` — copy `apps/production/arize-phoenix/app-ingress*.yaml`.

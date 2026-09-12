@@ -1,0 +1,160 @@
+# Full read-only cluster access for the assistant, equivalent to the built-in `view` role, minus
+# ConfigMaps.
+#
+# `view` already excludes Secrets. ConfigMaps are the remaining gap: they routinely hold values
+# that are credential-adjacent or otherwise not meant to be read casually, and anything she reads
+# lands in an agent's context, where a prompt injection can get it repeated back out. Removing
+# them keeps that class of data out of reach entirely rather than relying on her not to look.
+#
+# RBAC has no deny rules, so "`view` minus ConfigMaps" cannot be expressed as a modification of
+# `view`. It has to be built by re-doing what `view` does.
+#
+# `view` is an AGGREGATED role: it ships with an empty authored rules list and an aggregationRule
+# selecting `rbac.authorization.k8s.io/aggregate-to-view: "true"`, and the controller-manager
+# unions every labeled ClusterRole's rules into it. Two kinds of role feed it:
+#
+#   - `system:aggregate-to-view`, labeled `kubernetes.io/bootstrapping: rbac-defaults`. A literal
+#     list compiled into Kubernetes covering core, apps, batch, autoscaling, policy,
+#     networking.k8s.io, discovery.k8s.io and extensions. `configmaps` is in it. No wildcards,
+#     and it knows nothing about CRDs.
+#   - Third-party roles shipped by operators: `cert-manager-view`, `flux-view-flux-system`,
+#     `system:aggregated-metrics-reader` today. This is the ONLY reason `kubectl get kustomization`
+#     or `get certificate` works under `view`, and it is why a fully hand-rolled ClusterRole is
+#     the wrong answer: it would lose all CRD coverage and never pick up the next operator.
+#
+# So olya-view aggregates the same way, excluding only the bootstrap role, and olya-view-core
+# below replaces that role's rules with the same list minus configmaps.
+#
+# Checking what this actually resolves to, after Flux applies it:
+#   kubectl --context nas get clusterrole olya-view -o yaml
+#   kubectl --context nas auth can-i --as=system:serviceaccount:olya:olya get configmaps -A
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: olya
+  namespace: olya
+---
+# `rules` is deliberately absent: the controller-manager owns that field on an aggregated role
+# and fills it in. Do not add rules here, or they will fight the aggregation controller. Put
+# them in olya-view-core instead.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: olya-view
+aggregationRule:
+  # A list of label selectors, OR'd. matchLabels and matchExpressions within one entry are ANDed.
+  clusterRoleSelectors:
+    # Everything that aggregates into `view` EXCEPT the compiled-in bootstrap role. Operators
+    # installed later are picked up automatically, exactly as they are by `view`.
+    - matchLabels:
+        rbac.authorization.k8s.io/aggregate-to-view: "true"
+      matchExpressions:
+        - key: kubernetes.io/bootstrapping
+          operator: NotIn
+          values: ["rbac-defaults"]
+    # Our replacement for the bootstrap role's rules.
+    - matchLabels:
+        rbac.activescott.com/aggregate-to-olya-view: "true"
+---
+# `system:aggregate-to-view` verbatim, with `configmaps` removed from the first rule. Nothing
+# else is changed, so anything `view` grants is granted here, and any difference is a bug.
+#
+# To re-derive after a Kubernetes upgrade adds a resource:
+#   kubectl --context nas get clusterrole system:aggregate-to-view -o json \
+#     | jq -r '.rules[] | "\(.apiGroups|join(","))  ->  \(.resources|join(", "))"'
+#
+# pods/log is kept on purpose. It lets her read any pod's logs cluster-wide, but Loki holds the
+# same content and she has Grafana, so removing it would restrict nothing and look like it did.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: olya-view-core
+  labels:
+    rbac.activescott.com/aggregate-to-olya-view: "true"
+rules:
+  - apiGroups: [""]
+    # configmaps omitted. Secrets were never in `view` to begin with.
+    resources:
+      - endpoints
+      - persistentvolumeclaims
+      - persistentvolumeclaims/status
+      - pods
+      - replicationcontrollers
+      - replicationcontrollers/scale
+      - serviceaccounts
+      - services
+      - services/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - bindings
+      - events
+      - limitranges
+      - namespaces/status
+      - pods/log
+      - pods/status
+      - replicationcontrollers/status
+      - resourcequotas
+      - resourcequotas/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - controllerrevisions
+      - daemonsets
+      - daemonsets/status
+      - deployments
+      - deployments/scale
+      - deployments/status
+      - replicasets
+      - replicasets/scale
+      - replicasets/status
+      - statefulsets
+      - statefulsets/scale
+      - statefulsets/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers", "horizontalpodautoscalers/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "cronjobs/status", "jobs", "jobs/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources:
+      - daemonsets
+      - daemonsets/status
+      - deployments
+      - deployments/scale
+      - deployments/status
+      - ingresses
+      - ingresses/status
+      - networkpolicies
+      - replicasets
+      - replicasets/scale
+      - replicasets/status
+      - replicationcontrollers/scale
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets", "poddisruptionbudgets/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "ingresses/status", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: olya-view
+subjects:
+  - kind: ServiceAccount
+    name: olya
+    namespace: olya
+roleRef:
+  kind: ClusterRole
+  name: olya-view
+  apiGroup: rbac.authorization.k8s.io

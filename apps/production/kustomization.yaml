@@ -56,3 +56,16 @@ resources:
   # 2000:2000 before the pod starts, or Stalwart silently re-bootstraps and
   # looks exactly like data loss. Created 2026-08-28.
   - ./email-stalwart
+  # Olya, an OpenClaw assistant that opens PRs under her own GitHub identity.
+  #
+  # DELIBERATELY COMMENTED OUT. Two prerequisites, both of which fail badly if skipped:
+  #
+  #   1. ghcr.io/activescott/olya:v0.1.0 must exist. Tag activescott/activeassistant v0.1.0
+  #      to publish it. Without it every pod is ImagePullBackOff.
+  #   2. /mnt/thedatapool/app-data/olya must exist on the NAS owned by 1000:1000. hostPath
+  #      volumes are not chowned by the kubelet, and OpenClaw treats an unreadable state dir
+  #      as a first run and bootstraps an empty one -- the same silent failure as stalwart
+  #      above.
+  #
+  # See apps/production/olya/README.md.
+  # - ./olya

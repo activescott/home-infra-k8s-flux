@@ -1,0 +1,102 @@
+# Commits and pushes Olya's memory files to git, hourly. See scripts/memory-sync.mts.
+#
+# It mounts the assistant's volume READ-ONLY and treats the memory files as data: the commit is
+# built in a fresh clone in this pod's own emptyDir, never in the working tree on the volume.
+# Both properties are load-bearing, and the reasoning is in the script header and in the private
+# repo's runbook.
+#
+# Its commits are UNSIGNED, since there is no signing key here.
+#
+# If this stops running, memory keeps accumulating on the PV and stays in the B2 backup, but the
+# git history goes stale with no visible symptom. The Prometheus alert on
+# kube_cronjob_status_last_successful_time is what catches that. Do not remove it.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: olya-memory-sync
+  namespace: olya
+spec:
+  schedule: "17 * * * *"
+  # Off the hour: the cluster's other jobs cluster at :00, and nothing here needs to be precise.
+  timeZone: America/Los_Angeles
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: olya-memory-sync
+        spec:
+          restartPolicy: OnFailure
+          # This job talks to GitHub, never to the Kubernetes API.
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          imagePullSecrets:
+            - name: github-container-registry-secret
+          containers:
+            - name: sync
+              image: ghcr.io/activescott/olya:v0.1.0
+              command: ["/scripts/memory-sync.mts"]
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: WORKSPACE_DIR
+                  value: /state/workspace
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: 64Mi
+                limits:
+                  cpu: "500m"
+                  memory: 256Mi
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                # The assistant's volume, for reading the memory files out of her workspace.
+                # READ-ONLY: this job must not be able to write there, and must not run git there.
+                - name: state
+                  mountPath: /state
+                  readOnly: true
+                # memory-sync.mts and seed-workspace.sh, from the olya-scripts ConfigMap.
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                # The push credential, as a file rather than an env var so it is not inherited by
+                # every child process. The script reads it and hands it to git via GIT_ASKPASS.
+                - name: github-pat
+                  mountPath: /etc/olya-sync
+                  readOnly: true
+                # Scratch: holds the clone, and is where readOnlyRootFilesystem forces git and
+                # node to write. Pod-local, so nothing here is reachable from the assistant.
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: state
+              persistentVolumeClaim:
+                claimName: olya-state
+            - name: scripts
+              configMap:
+                name: olya-scripts
+                defaultMode: 0555
+            - name: github-pat
+              secret:
+                secretName: olya-memory-sync
+                items:
+                  - key: github_pat
+                    path: token
+                defaultMode: 0400
+            - name: tmp
+              emptyDir: {}

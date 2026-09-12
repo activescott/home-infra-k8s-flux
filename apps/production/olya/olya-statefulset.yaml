@@ -1,0 +1,243 @@
+# The assistant. Single replica, and it must stay that way: OpenClaw keeps all state in local
+# SQLite on one volume and documents no leader election or multi-replica support.
+#
+# `replicas` here is also the kill switch: set it to 0, commit, and Flux applies within seconds
+# of the webhook. `kubectl scale` is NOT the mechanism: Flux reverts it inside 10 minutes, which
+# looks like the assistant restarting itself.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: olya
+  namespace: olya
+spec:
+  replicas: 1
+  serviceName: olya
+  selector:
+    matchLabels:
+      app: olya
+  template:
+    metadata:
+      labels:
+        # Alloy promotes this to the Loki `app` label and builds service_name as
+        # namespace/app, so logs are queryable as {app="olya"} with no extra config.
+        app: olya
+    spec:
+      serviceAccountName: olya
+      imagePullSecrets:
+        - name: github-container-registry-secret
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        # Has no effect on a hostPath volume, which is why the PV comment insists the directory
+        # is chowned to 1000:1000 on the NAS by hand. Kept because it does apply to the
+        # emptyDir volumes below.
+        fsGroup: 1000
+
+      # Both initContainers repeat the container securityContext below. Pod-level settings do
+      # NOT include the container-level ones, so without this an initContainer runs with
+      # allowPrivilegeEscalation defaulting to true, no dropped capabilities, and a writable
+      # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
+      # with the ssh key mounted, so it is the last place to leave at the defaults.
+      initContainers:
+        # Config is declarative and git wins: this overwrites unconditionally, every boot.
+        # Anything set through the Control UI or `openclaw config set` is discarded here. That
+        # is the deliberate inversion of OpenClaw's own seed-if-missing k8s pattern.
+        - name: seed-config
+          image: ghcr.io/activescott/olya:v0.1.0
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              mkdir -p /state/openclaw
+              cp /cfg/openclaw.json /state/openclaw/openclaw.json
+              echo "seeded openclaw.json from ConfigMap"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 16Mi
+            limits:
+              cpu: "200m"
+              memory: 64Mi
+          volumeMounts:
+            # The persistent volume. Written here: this is the copy of openclaw.json the
+            # gateway actually reads, at /state/openclaw/openclaw.json.
+            - name: state
+              mountPath: /state
+            # The olya-config ConfigMap, holding this directory's openclaw.json. The source
+            # side of the copy, and the reason a Control UI edit does not survive a restart.
+            - name: config
+              mountPath: /cfg
+              readOnly: true
+
+        # Credentials and workspace. Mixed policy: the memory files are copied aside, the
+        # checkout is forced to origin/main, and they are restored. Instruction files therefore
+        # come from git and cannot be changed except by a reviewed PR, while memory files
+        # survive because they exist nowhere else until the hourly sync pushes them.
+        # See scripts/seed-workspace.sh.
+        - name: seed-workspace
+          image: ghcr.io/activescott/olya:v0.1.0
+          command: ["/scripts/seed-workspace.sh"]
+          env:
+            - name: HOME
+              value: /state/home
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            # The persistent volume. This writes $HOME (/state/home: .ssh, dotfiles, the gh
+            # OAuth profile) and the agent workspace checkout (/state/workspace).
+            - name: state
+              mountPath: /state
+            # The olya-scripts ConfigMap: seed-workspace.sh itself, plus memory-sync.mts. The
+            # scripts live as files in this directory so they are reviewable in a diff instead
+            # of being a YAML heredoc.
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            # Her ed25519 private key, from the olya-ssh Secret. Needed here because the first
+            # clone of the private dotfiles repo happens in this initContainer, over SSH.
+            # ~/.ssh/config points IdentityFile at this path rather than copying the key.
+            - name: ssh-key
+              mountPath: /etc/olya-ssh
+              readOnly: true
+            # Scratch. readOnlyRootFilesystem means git, node and npm have nowhere else to
+            # write; this is also where the known_hosts pin is fetched to.
+            - name: tmp
+              mountPath: /tmp
+
+      containers:
+        - name: olya
+          image: ghcr.io/activescott/olya:v0.1.0
+          env:
+            # $HOME cannot stay at the image's /home/node because the root filesystem is
+            # read-only. This is the per-user config tree, so it holds her credential set.
+            - name: HOME
+              value: /state/home
+            # Kept separate from $HOME so "wipe OpenClaw state" and "lose her credentials" are
+            # different operations.
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /state/openclaw/openclaw.json
+            # Exactly the two keys openclaw.json substitutes, named individually rather than
+            # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
+            # telegram_bot_token, which the `items` projection further down exists to keep OUT
+            # of the environment: env is inherited by npx, the ACP adapters, and every shell
+            # command they run, and shows up in /proc/<pid>/environ.
+            #
+            # Keep this list in sync with `grep -o '\${[A-Z_]*}' openclaw.json`. A missing one
+            # is a startup failure, not a silent default.
+            #
+            # olya-env also holds telegram_bot_token and tinkerbell_api_token, and NEITHER is
+            # delivered as an env var on purpose. The bot token is a file (see the `items`
+            # projection below); the tinkerbell token has no consumer yet, because openclaw.json
+            # configures no MCP servers. Add a secretKeyRef here when one is configured.
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: openclaw_gateway_token
+            - name: TELEGRAM_ALLOW_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: telegram_allow_from
+          ports:
+            - name: http
+              containerPort: 18789
+          # /startupz rather than /readyz for admission. /readyz additionally requires every
+          # configured channel to pass a deep health check, so a Telegram hiccup would pull the
+          # pod out of service for a problem that has nothing to do with serving traffic.
+          # timeoutSeconds is explicit on all three: the default is 1s, and a single-threaded
+          # Node process busy with a compaction or a large model response can plausibly miss
+          # that. On the liveness probe a missed response restarts the pod mid-task.
+          startupProbe:
+            httpGet:
+              path: /startupz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /startupz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: ssh-key
+              mountPath: /etc/olya-ssh
+              readOnly: true
+            - name: telegram-token
+              mountPath: /etc/olya-telegram
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: olya-state
+        - name: config
+          configMap:
+            name: olya-config
+        - name: scripts
+          configMap:
+            name: olya-scripts
+            defaultMode: 0555
+        - name: ssh-key
+          secret:
+            secretName: olya-ssh
+            defaultMode: 0400
+        # Projects just the bot token out of olya-env, renamed to `token`, because
+        # channels.telegram.tokenFile wants a path to a regular file rather than an env var.
+        # `items` keeps the rest of that Secret from also appearing on disk.
+        - name: telegram-token
+          secret:
+            secretName: olya-env
+            items:
+              - key: telegram_bot_token
+                path: token
+            defaultMode: 0400
+        # readOnlyRootFilesystem means node, npm, and git all need somewhere to write.
+        - name: tmp
+          emptyDir: {}

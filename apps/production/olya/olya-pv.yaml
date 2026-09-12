@@ -1,0 +1,36 @@
+# One volume, four subdirectories rather than four volumes:
+#
+#   home/       $HOME, including her credential set. Cannot stay at the image's /home/node
+#               because the pod runs readOnlyRootFilesystem.
+#   openclaw/   $OPENCLAW_STATE_DIR. openclaw.json, the SQLite databases, transcripts.
+#   workspace/  The agent workspace, a live checkout of activescott/activeassistant.
+#   archive/    Nightly audit and transcript exports.
+#
+# The path sits under /mnt/thedatapool/app-data/, which is what puts it in the backup set: the
+# B2 cloud sync task's include list is an allowlist and /app-data/** is already on it. ZFS
+# snapshots and sanoid cover the same tree.
+#
+# Retain, so deleting the PVC leaves the data behind.
+#
+# THE DIRECTORY MUST EXIST AND BE OWNED BY 1000:1000 BEFORE THIS IS APPLIED. hostPath volumes
+# are not chowned by the kubelet. The image runs as uid 1000 / gid 1000 (`node`, verified
+# against ghcr.io/openclaw/openclaw:slim 2026.9.4). A wrong owner does not fail loudly: OpenClaw
+# treats the unreadable state dir as a first run and bootstraps an empty one. See
+# docs/specs/arize-phoenix-postgres-data-loss/ in the private repo for what that costs. On the
+# NAS:
+#
+#   sudo mkdir -p /mnt/thedatapool/app-data/olya
+#   sudo chown -R 1000:1000 /mnt/thedatapool/app-data/olya
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: olya-prod-pv-state
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/app-data/olya

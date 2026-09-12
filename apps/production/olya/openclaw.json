@@ -1,0 +1,164 @@
+// OpenClaw gateway configuration. JSON5: comments and trailing commas are allowed.
+//
+// THIS FILE IS THE SOURCE OF TRUTH. The seed-config initContainer copies it over
+// $OPENCLAW_STATE_DIR/openclaw.json on EVERY pod start, unconditionally. That inverts OpenClaw's
+// own documented k8s pattern, which seeds only when the file is missing and then treats the
+// persisted copy as authoritative. The consequence is deliberate: anything changed through the
+// Control UI, `openclaw config set`, or `doctor --fix` is lost on the next restart. Change it
+// here, in git, or it does not stick.
+//
+// OpenClaw validates strictly and REFUSES TO START on an unknown key, a wrong type, or an
+// invalid value. Validate before committing:
+//   docker run --rm ghcr.io/openclaw/openclaw:slim openclaw config schema > schema.json
+// Every key below was checked against the schema of 2026.9.4.
+//
+// Runtime state that is NOT here and cannot be: model auth profiles, the managed `gh` OAuth
+// profile, exec approval grants, channel pairings, and all cron jobs. Those live in SQLite on
+// the PV and are re-established by hand after a volume loss. See the runbook.
+{
+  gateway: {
+    // Must be "lan" rather than the default loopback, or Traefik cannot reach the pod.
+    bind: "lan",
+    port: 18789,
+    auth: {
+      // Second of two independent auth layers; the Traefik basicAuth middleware in
+      // olya-ingress.yaml is the first. Both are required. Do not set this to "none".
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+    },
+    controlUi: {
+      enabled: true,
+    },
+  },
+
+  logging: {
+    level: "info",
+    // Alloy tails every pod's stdout and promotes `level` when the JSON is pino-shaped. Leaving
+    // logging.file unset keeps stdout as the only sink, so there is no log file growing on the PV.
+    consoleStyle: "json",
+    redactPatterns: [
+      "\\b(gh[pousr]_[A-Za-z0-9]{20,})\\b",
+      "\\b(github_pat_[A-Za-z0-9_]{20,})\\b",
+      "\\b(sk-ant-[A-Za-z0-9-]{20,})\\b",
+      "\\b([0-9]{8,10}:[A-Za-z0-9_-]{30,})\\b",
+    ],
+  },
+
+  diagnostics: {
+    // Required for the Prometheus plugin to expose /api/diagnostics/prometheus.
+    enabled: true,
+  },
+
+  plugins: {
+    // acpx and diagnostics-prometheus are NOT bundled with the image. Stock plugins live in
+    // /app/dist/extensions; these two are external npm packages that `openclaw plugins install`
+    // would fetch into $OPENCLAW_STATE_DIR at runtime.
+    //
+    // We bake them into the image instead, and point the loader at them here. Two reasons:
+    // the install is a network operation that would otherwise run on every cold start, and
+    // `openclaw plugins install` rewrites openclaw.json, which the seed-config initContainer
+    // discards on the next boot. Declaring them here is the only form that survives.
+    //
+    // Paths are package roots, the directory holding openclaw.plugin.json. Pointing at the npm
+    // project wrapper above it does not register the plugin. Verified against 2026.9.4.
+    load: {
+      paths: [
+        "/opt/olya/plugins/acpx/node_modules/@openclaw/acpx",
+        "/opt/olya/plugins/diagnostics-prometheus/node_modules/@openclaw/diagnostics-prometheus",
+      ],
+    },
+    entries: {
+      "diagnostics-prometheus": { enabled: true },
+      acpx: { enabled: true },
+    },
+  },
+
+  agents: {
+    // Explicit roster. With ownership "explicit", an unmatched binding fails closed rather than
+    // silently falling through to some default agent.
+    ownership: "explicit",
+    defaults: {
+      workspace: "/state/workspace",
+      model: {
+        primary: "anthropic/claude-opus-4-6",
+      },
+      // With an explicit multi-agent roster there is no ambient agent, so heartbeats stay
+      // disabled until one is named here. Required, not optional.
+      heartbeat: {
+        agentId: "olya",
+      },
+      systemAgent: {
+        agentId: "olya",
+      },
+    },
+    entries: {
+      // The controller. Everything real is delegated from here.
+      olya: {
+        name: "Olya",
+        workspace: "/state/workspace",
+        tools: {
+          // Routes work to sessions_spawn instead of being done here. NOT a security boundary:
+          // the sub-agents share this container, uid, mounts and environment. See the private
+          // repo's docs/specs/autonomous-ai-assistant/deployment.md before relying on it.
+          //
+          // The three filesystem verbs are listed individually rather than as group:fs because
+          // `read` must stay available, and because denying "write" alone does NOT deny
+          // "apply_patch".
+          deny: ["write", "edit", "apply_patch", "group:runtime"],
+        },
+        subagents: {
+          delegationMode: "prefer",
+          allowAgents: ["coder-opencode", "coder-claude"],
+        },
+      },
+
+      // Coding harnesses, reached over ACP. Each is a separate agent entry so it can carry its
+      // own model and be named explicitly in sessions_spawn.
+      "coder-opencode": {
+        name: "opencode",
+        runtime: {
+          type: "acp",
+          acp: { agent: "opencode" },
+        },
+      },
+      "coder-claude": {
+        name: "claude",
+        runtime: {
+          type: "acp",
+          acp: { agent: "claude" },
+        },
+      },
+    },
+  },
+
+  acp: {
+    enabled: true,
+    backend: "acpx",
+    defaultAgent: "opencode",
+    allowedAgents: ["opencode", "claude"],
+  },
+
+  channels: {
+    telegram: {
+      enabled: true,
+      // Regular file, read at startup. Projected from the SOPS-managed Secret.
+      tokenFile: "/etc/olya-telegram/token",
+      // Inbound allowlist. A Telegram bot is publicly addressable, so without this anyone who
+      // finds t.me/olyapopbot could talk to her. "pairing" would instead bind to whoever
+      // messages first, which is a race not worth running on a bot that can open PRs.
+      dmPolicy: "allowlist",
+      allowFrom: ["${TELEGRAM_ALLOW_FROM}"],
+      groupPolicy: "disabled",
+    },
+  },
+
+  skills: {
+    load: {
+      // <workspace>/skills is discovered automatically and is the highest-precedence root, so
+      // nothing needs listing here. shared/ is deliberately NOT added: it holds prose rules read
+      // by the coding harnesses, not SKILL.md directories, and pointing a skill root at it would
+      // scan a directory that can never contain a skill.
+      watch: true,
+    },
+  },
+}

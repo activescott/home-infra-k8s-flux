@@ -1,0 +1,20 @@
+# Pinned to the pre-declared PV by volumeName rather than letting local-path provision one, so
+# the data lands on the ZFS pool (and therefore in the B2 backup set) rather than in the k3s
+# data dir on the scratch NVMe.
+#
+# ReadWriteOnce is not a constraint here even though two pods mount it: RWO is per-node, not
+# per-pod, and this is a single-node cluster. The olya StatefulSet and the olya-memory-sync
+# CronJob both mount it, deliberately, so the sync operates on the live working tree.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: olya-state
+  namespace: olya
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  volumeName: olya-prod-pv-state
+  resources:
+    requests:
+      storage: 20Gi

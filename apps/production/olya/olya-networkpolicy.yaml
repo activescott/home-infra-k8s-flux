@@ -1,0 +1,130 @@
+# Restricts what the assistant can reach on the local network.
+#
+# She is the one workload in this cluster that acts on untrusted input: anything arriving over
+# Telegram, and any web page a sub-agent fetches, can carry an instruction aimed at her. Without
+# this, a successful prompt injection makes outbound requests from inside the LAN, where services
+# largely authenticate by network position.
+#
+# Internet access is unrestricted and stays that way; it is inherent to the job. What this
+# removes is her ability to reach other namespaces in the cluster, and LAN hosts that are not
+# already published at the edge. It is NOT a full LAN block: anything reachable through the
+# edge firewall stays reachable by hairpin, since that traffic leaves with a public destination
+# address. Hosts that are only reachable from inside are the ones this protects.
+#
+# TWO THINGS TO KNOW BEFORE EDITING:
+#
+#  1. Egress rules match the packet's DESTINATION address, not the next hop. The default
+#     gateway at 10.1.111.1 does not need a rule for internet traffic to work, and is
+#     deliberately not allowed: reaching OPNsense itself should be a decision, not a side
+#     effect.
+#  2. A destination that is missing from this file fails as a CONNECTION TIMEOUT, with nothing
+#     logged. If something that should work hangs, suspect this file first.
+#
+# nas1 addressing, for reference: pods 172.16.0.0/16, services 172.17.0.0/16, node 10.1.111.20,
+# LAN 10.1.111.0/24.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: olya
+  namespace: olya
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Traefik, for the Control UI. Traefik runs in kube-system on k3s. Narrowed to the Traefik
+    # pods rather than the whole namespace: kube-system holds several other workloads and none
+    # of them has any business reaching this port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              # Set automatically on every namespace, so this matches without the target
+              # namespace carrying a label of ours.
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 18789
+          protocol: TCP
+    # Prometheus, for /api/diagnostics/prometheus. Not wired up yet; the rule is here so that
+    # enabling the scrape is a one-file change rather than a debugging session.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 18789
+          protocol: TCP
+
+  egress:
+    # The internet, and nothing on any private network. The `except` blocks carve out all of
+    # RFC1918 plus link-local and loopback; everything she is allowed to reach inside those
+    # ranges is named explicitly in the rules below.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+
+    # DNS. Without this nothing else resolves and every rule above looks broken.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # The Kubernetes API, so `kubectl` works for the read-only diagnosis in olya-rbac.yaml.
+    #
+    # Three addresses, because the node has two LAN addresses and the intuitive choice is not
+    # the one that gets matched.
+    #
+    # The API server answers on BOTH 10.1.111.20 (the node's InternalIP) and 10.1.111.10. But
+    # the `kubernetes` Service has exactly one registered endpoint, and it is .10:
+    #
+    #   kubectl get endpointslice -n default kubernetes -o jsonpath='{.endpoints[*].addresses[*]}'
+    #
+    # So a pod connecting to 172.17.0.1:443 is DNAT'd to .10, and kube-router's rules are in the
+    # filter table, which runs after nat -- meaning .10 is the address actually evaluated, no
+    # matter that .20 is listening too. Allowing only .20 makes every kubectl call hang to a
+    # timeout. The Service address is listed as well so this does not rest on being right about
+    # the nat/filter ordering, and .20 is kept because it would be matched if the endpoint ever
+    # re-registers to the InternalIP.
+    - to:
+        - ipBlock:
+            cidr: 172.17.0.1/32
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.10/32
+        - ipBlock:
+            cidr: 10.1.111.20/32
+      ports:
+        - port: 6443
+          protocol: TCP
+
+    # Grafana, Loki and Prometheus. Her instructions point at Loki as the normal way to read
+    # logs, so this is load-bearing for ordinary work, not just for diagnosis.
+    #
+    # This allows the IN-CLUSTER addresses only. grafana.activescott.com resolves to the LAN
+    # override 10.1.111.20, which the except list above denies, so the public hostnames time out
+    # from in here. Use:
+    #   http://loki.monitoring.svc:3100
+    #   http://grafana.monitoring.svc
+    #   http://prometheus-server.monitoring.svc
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring

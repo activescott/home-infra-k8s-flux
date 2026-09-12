@@ -1,0 +1,145 @@
+# Entry point for the Control UI, at https://olya.activescott.com/
+#
+# ###########################################################################################
+# # THIS HOSTNAME IS NOT REACHABLE FROM THE INTERNET, BY DESIGN.                            #
+# #                                                                                         #
+# # The olya-lan-only middleware below restricts it to the LAN (10.1.111.0/24). The DNS      #
+# # record is public and the cert is real, so it LOOKS reachable; from outside it returns    #
+# # 403. That is intentional, not a misconfiguration.                                        #
+# #                                                                                          #
+# # To allow access from outside the LAN, either:                                            #
+# #   - remove olya-lan-only from the router.middlewares annotation below (which puts an     #
+# #     operator terminal on the public internet behind one password), or                    #
+# #   - reach the LAN first over a VPN (WireGuard on OPNsense, Tailscale, etc.) and leave     #
+# #     this restriction in place. PREFER THIS.                                              #
+# ###########################################################################################
+#
+# THREE layers, applied in the order listed in the annotation. Do not remove any of them:
+#
+#   1. olya-lan-only     source-IP restriction (see above).
+#   2. olya-rate-limit   per-source-IP cap, before basicAuth so that a flood is dropped
+#                        before any bcrypt work is done.
+#   3. olya-basic-auth   the password, which also strips the Authorization header before
+#                        forwarding (removeHeader: true).
+#
+# And behind all three, OpenClaw's own gateway.auth.mode "token", checked in the WebSocket
+# handshake. That one is in openclaw.json, not here.
+#
+# The exposure analysis is in the private repo, under docs/specs/autonomous-ai-assistant/.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: olya-activescott-com
+  namespace: olya
+spec:
+  secretName: olya-activescott-com-cert
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: olya.activescott.com
+  dnsNames:
+    - olya.activescott.com
+---
+# LAN only. See the banner at the top of this file before changing or removing it.
+#
+# Matching is on the TCP source address, not X-Forwarded-For. That is the default and it is the
+# right one at the edge: X-Forwarded-For is a header the client sends, so an allowlist keyed on
+# it is bypassable with `curl -H 'X-Forwarded-For: 10.1.111.50'`.
+#
+# This only works because the Traefik service runs externalTrafficPolicy: Local, set in
+# infrastructure/prod/configs/traefik-config.yaml for an unrelated reason (PostHog geo-location).
+# Without it, k3s's svclb MASQUERADEs and every request arrives as the node.
+#
+# WHY THIS RANGE EXCLUDES THE GATEWAY AND THE NODE (.1, .10, .20), AND MUST KEEP DOING SO:
+#
+# If externalTrafficPolicy is ever changed to Cluster, or the LAN DNS override below is missing
+# and traffic hairpins through the router, requests arrive bearing one of those addresses
+# instead of the client's. Had the range been the obvious 10.1.111.0/24, all three would have
+# matched -- and the failure would be the entire internet quietly allowed in, with nothing in
+# any log to say so. Excluded, the same regression instead presents as "I cannot reach the UI",
+# which is the direction a security control should fail.
+#
+# The block entries cover the DHCP range; individual /32s are devices addressed outside it. The
+# full addressing plan is in the private repo.
+#
+# To allow another device, add its /32. NEVER add .1, .10 or .20, and never "simplify" this back
+# to a /24 -- that would put the gateway and both of the node's addresses inside the range and
+# turn the fail-closed property above into a fail-open one.
+#
+# REQUIRES the LAN DNS override for olya.activescott.com -> 10.1.111.20 (step 2 of the New
+# hostname checklist in the repo README, which is optional for other hosts and mandatory for
+# this one). Without it, LAN clients resolve the public IP and hairpin through OPNsense, whose
+# NAT reflection can rewrite the source to 10.1.111.1 -- now correctly denied.
+#
+# Verify after deploying, from a LAN client and from off-LAN. The Traefik access log's ClientAddr
+# must be the client's own address, never .1 or .20:
+#   kubectl --context nas logs -n kube-system deploy/traefik | grep olya.activescott.com
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: olya-lan-only
+  namespace: olya
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/ipallowlist/
+  ipAllowList:
+    sourceRange:
+      - 10.1.111.5/32 # Scott's Mac
+      - 10.1.111.32/27 # .32-.63
+      - 10.1.111.64/26 # .64-.127
+      - 10.1.111.128/25 # .128-.255
+---
+# Per-source-IP cap, listed before basicAuth so a flood is shed before Traefik spends CPU on
+# bcrypt. Sized for the Control UI: `burst` covers a page load, `average` is the sustained rate.
+#
+# This is insurance, not the control that matters. At 5/s an attacker still gets 400k+ attempts
+# a day, so what actually makes the password safe is its entropy. It also protects Traefik
+# itself: each bcrypt check costs real CPU, so an unthrottled flood is a denial of service
+# whether or not it ever guesses right.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: olya-rate-limit
+  namespace: olya
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/ratelimit/
+  rateLimit:
+    average: 5
+    period: 1s
+    burst: 60
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: olya-basic-auth
+  namespace: olya
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/basicauth/
+  basicAuth:
+    secret: olya-basic-auth
+    removeHeader: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: olya
+  namespace: olya
+  annotations:
+    # Comma-separated, APPLIED IN ORDER. Each entry is namespace-name@kubernetescrd, and
+    # nothing validates the string: a typo drops that middleware silently rather than erroring.
+    traefik.ingress.kubernetes.io/router.middlewares: olya-olya-lan-only@kubernetescrd,olya-olya-rate-limit@kubernetescrd,olya-olya-basic-auth@kubernetescrd
+spec:
+  rules:
+    - host: olya.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: olya
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - olya.activescott.com
+      secretName: olya-activescott-com-cert
