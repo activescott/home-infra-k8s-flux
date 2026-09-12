@@ -78,29 +78,12 @@ spec:
               mountPath: /cfg
               readOnly: true
 
-        # acpx needs openKeyedStore to persist ACP session state. That capability is gated on
-        # a trust record in the runtime SQLite store, which only exists for plugins installed
-        # through `openclaw plugins install` (origin "managed"). Loading via plugins.load.paths
-        # gives origin "config", which is not trusted for keyed-store access.
-        #
-        # This initContainer does a one-time managed install on a fresh volume, then skips on
-        # every subsequent boot. The pinned version must match the OpenClaw version baked into
-        # the image -- a mismatch causes a startup conflict between the managed copy and the
-        # built-in plugin registry.
+        # Installs managed plugins from /cfg/managed-plugins.txt via
+        # scripts/install-plugins.sh. Idempotent: skips plugins whose trust record already
+        # exists. See managed-plugins.txt for the plugin list and pinning notes.
         - name: install-plugins
           image: ghcr.io/activescott/olya:v0.1.0
-          command:
-            - sh
-            - -c
-            - |
-              set -eu
-              if openclaw plugins inspect acpx --json 2>/dev/null \
-                 | grep -q '"reason":"record-missing"'; then
-                echo "acpx trust record missing; installing managed copy"
-                openclaw plugins install @openclaw/acpx@2026.9.4 --accept-capabilities
-              else
-                echo "acpx trust record present; skipping install"
-              fi
+          command: ["/scripts/install-plugins.sh"]
           env:
             - name: HOME
               value: /state/home
@@ -123,6 +106,12 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /state
+            - name: config
+              mountPath: /cfg
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
             - name: tmp
               mountPath: /tmp
 
