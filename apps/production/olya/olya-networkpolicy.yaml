@@ -22,12 +22,42 @@
 #
 # nas1 addressing, for reference: pods 172.16.0.0/16, services 172.17.0.0/16, node 10.1.111.20,
 # LAN 10.1.111.0/24.
+---
+# cert-manager stands up a short-lived HTTP-01 solver pod IN THIS NAMESPACE for every issuance
+# and renewal. The policy below uses `podSelector: {}`, which selects it too -- so without this,
+# Traefik cannot reach the solver on 8089 and the challenge hangs.
+#
+# The symptom is confusing: the app answers normally (a fast 401 from basicAuth on /), while
+# only the /.well-known/acme-challenge/ path times out, and the Certificate sits `pending` with
+# "failed to perform self check". Nothing points at this file. It cost about 90 minutes the
+# first time.
+#
+# Any namespace, because the solver serves one public ACME token and nothing else, and because
+# a tighter rule that breaks silently is worse here than a loose one. Same shape as
+# `allow-cert-manager-resolver` in flux-system.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+  namespace: olya
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: olya
   namespace: olya
 spec:
+  # Selects EVERY pod in the namespace, including cert-manager's HTTP-01 solver pods. See the
+  # companion policy above, which is what keeps ACME working.
   podSelector: {}
   policyTypes:
     - Ingress
