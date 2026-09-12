@@ -106,18 +106,17 @@
       model: {
         primary: "anthropic/claude-opus-4-6",
       },
-      // Run this model through the installed `claude` executable rather than the Anthropic API,
-      // so turns draw on Claude Max subscription instead of per-token API billing.
+      // Route all Anthropic models through the installed `claude` executable rather than
+      // the Anthropic API, so turns draw on Claude Max subscription instead of per-token
+      // API billing. This includes utility models (session titles, observer headlines)
+      // which default to claude-haiku-4-5.
       //
       // The credential is NOT here and cannot be. `claude auth login` was run once inside the
       // pod and its login lives under $HOME/.claude on the PV; OpenClaw only records a route
       // marker and never reads, refreshes or forwards the token. That makes this another
       // redo-by-hand item after a volume loss -- see the runbook.
-      //
-      // Keep the model ref canonical (`anthropic/*`) and put the backend here. `claude-cli/*`
-      // model refs still work but are the legacy form.
       models: {
-        "anthropic/claude-opus-4-6": {
+        "anthropic/*": {
           agentRuntime: { id: "claude-cli" },
         },
       },
