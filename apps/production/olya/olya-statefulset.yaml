@@ -215,8 +215,16 @@ spec:
             - name: ssh-key
               mountPath: /etc/olya-ssh
               readOnly: true
+            # subPath is REQUIRED, not tidiness. Mounting the volume at a directory gives the
+            # usual Kubernetes symlink chain (token -> ..data/token), and OpenClaw's secret
+            # loader will not follow it: the channel fails with "credential file is
+            # unavailable" while the file is plainly readable from a shell. subPath bind-mounts
+            # it as a regular file. The trade is that subPath mounts do not update in place
+            # when the Secret changes, which is fine here -- the generator's name hash changes
+            # on every edit, so the pod is replaced anyway.
             - name: telegram-token
-              mountPath: /etc/olya-telegram
+              mountPath: /etc/olya-telegram/token
+              subPath: token
               readOnly: true
             - name: tmp
               mountPath: /tmp

@@ -151,10 +151,30 @@
     allowedAgents: ["opencode", "claude"],
   },
 
+  // Telegram has to be told which agent owns the conversation. With more than one agent
+  // configured it refuses to start the channel rather than guessing:
+  //   "Multiple agents are configured, but telegram account default routing has no explicit
+  //    owner. Add a channel-wide binding for telegram:default or configure a sole agent."
+  // She is the controller and the coder agents are only ever reached through sessions_spawn,
+  // so everything inbound routes to her.
+  bindings: [
+    {
+      type: "route",
+      agentId: "olya",
+      comment: "All Telegram traffic belongs to the controller.",
+      match: { channel: "telegram", accountId: "default" },
+    },
+  ],
+
   channels: {
     telegram: {
       enabled: true,
-      // Regular file, read at startup. Projected from the SOPS-managed Secret.
+      // MUST resolve to a regular file, which is why the StatefulSet mounts this with subPath.
+      // A normal Kubernetes Secret volume is a symlink chain (token -> ..data/token), and
+      // OpenClaw's secret loader does not follow it -- it reports "Secret owner
+      // account:telegram:default is configured but unavailable (credential file is
+      // unavailable)", which reads like a missing or unreadable file rather than a symlink it
+      // declined to follow. Verified both layouts against this image.
       tokenFile: "/etc/olya-telegram/token",
       // Inbound allowlist. A Telegram bot is publicly addressable, so without this anyone who
       // finds t.me/olyapopbot could talk to her. "pairing" would instead bind to whoever
