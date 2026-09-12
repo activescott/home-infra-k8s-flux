@@ -17,6 +17,13 @@
 // the PV and are re-established by hand after a volume loss. See the runbook.
 {
   gateway: {
+    // REQUIRED, even though `openclaw config validate` passes without it. The gateway refuses
+    // to start on a config that has no gateway.mode, treating it as clobbered:
+    //   "Gateway start blocked: existing config is missing gateway.mode."
+    // Validation is therefore necessary but not sufficient -- it does not catch this.
+    // "local" runs channels and the agent runtime in this pod; "remote" is for a split
+    // topology we do not have.
+    mode: "local",
     // Must be "lan" rather than the default loopback, or Traefik cannot reach the pod.
     bind: "lan",
     port: 18789,
@@ -28,6 +35,12 @@
     },
     controlUi: {
       enabled: true,
+      // Required for a non-loopback Control UI. The gateway auto-seeds only
+      // http://localhost:18789 and http://127.0.0.1:18789 for bind=lan, and the browser
+      // origin here is the ingress hostname -- so without this the page loads and its
+      // WebSocket is rejected, which looks like a broken UI rather than a config gap.
+      // Full origins only, and never ["*"].
+      allowedOrigins: ["https://olya.activescott.com"],
     },
   },
 
