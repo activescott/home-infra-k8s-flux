@@ -172,6 +172,20 @@ spec:
       adopt: cabfa6b9b70450c414996c706985bc71
       ttl: 1
       content: k8s.activescott.com
+    - key: olya-cname
+      name: olya.activescott.com
+      type: CNAME
+      ttl: 1
+      # No `adopt`: this record does not exist in Cloudflare yet, so Crossplane creates it
+      # rather than taking over an existing one.
+      #
+      # Public only so cert-manager can solve the HTTP-01 challenge. The service itself is NOT
+      # reachable from the internet: apps/production/olya/olya-ingress.yaml puts a Traefik
+      # ipAllowList in front of it, so an off-LAN request to this name gets a 403. The LAN
+      # resolver carries an A-record override to 10.1.111.20, which for this host is required
+      # rather than the usual performance tweak -- see the New hostname checklist in the README.
+      comment: Public for letsencrypt issuance; service is LAN-restricted at the ingress
+      content: k8s.activescott.com
     - key: phoenix-cname
       name: phoenix.activescott.com
       type: CNAME
