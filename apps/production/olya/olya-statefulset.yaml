@@ -137,6 +137,14 @@ spec:
               value: /state/openclaw
             - name: OPENCLAW_CONFIG_PATH
               value: /state/openclaw/openclaw.json
+            # REQUIRED for any git-over-ssh, not a preference. OpenSSH finds ~/.ssh from the
+            # passwd entry, not from $HOME: uid 1000 here is `node`, whose passwd home is
+            # /home/node on the read-only root filesystem. Without -F, ssh ignores the config
+            # and known_hosts that seed-workspace wrote under $HOME and every clone fails with
+            # "Host key verification failed". Inherited by the ACP adapters and by every shell
+            # command they run, which is the point -- she clones work repos at runtime.
+            - name: GIT_SSH_COMMAND
+              value: ssh -F $(HOME)/.ssh/config
             # Exactly the two keys openclaw.json substitutes, named individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
             # telegram_bot_token, which the `items` projection further down exists to keep OUT

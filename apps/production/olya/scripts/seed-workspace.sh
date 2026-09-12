@@ -31,6 +31,20 @@ if [ ! -r "$ssh_key" ]; then
   exit 1
 fi
 
+# ssh MUST be pointed at this config explicitly, and every path inside it must be absolute.
+#
+# OpenSSH does not use $HOME to find ~/.ssh. It reads the home directory out of the passwd
+# entry, and uid 1000 in this image is `node`, whose passwd home is /home/node -- which is on
+# the read-only root filesystem and holds nothing. So without -F, ssh silently ignores
+# everything written below and fails with "Host key verification failed", which reads like a
+# bad known_hosts rather than a config it never opened. Verified with `ssh -G`: user,
+# StrictHostKeyChecking and UserKnownHostsFile all came back as built-in defaults.
+#
+# -F fixes which file is read. It does NOT fix `~` INSIDE that file: tilde expansion also uses
+# the passwd entry, so `UserKnownHostsFile ~/.ssh/known_hosts` still resolves to /home/node.
+# Hence $HOME expanded at write time below, and absolute paths in olyapop/dotfiles' ssh/config.
+export GIT_SSH_COMMAND="ssh -F $HOME/.ssh/config"
+
 # Minimal ssh config, enough to clone the private dotfiles repo. Her dotfiles' script/setup
 # installs the real one immediately afterward; this exists only to break the circular dependency
 # of "the config needed to clone the repo that provides the config".
@@ -61,6 +75,14 @@ else
   exit 1
 fi
 rm -f "$tmp_known"
+
+# What ssh will ACTUALLY use, as ssh resolves it, rather than what we think we wrote. Keep this:
+# it is the difference between diagnosing the problem above from one log line and diagnosing it
+# by reproducing the image locally. Every value here should be ours, not a default.
+echo "==> ssh setup: HOME=$HOME, $(wc -l < "$HOME/.ssh/known_hosts" | tr -d ' ') host keys pinned"
+ssh -F "$HOME/.ssh/config" -G github.com 2>/dev/null \
+  | grep -iE '^(userknownhostsfile|stricthostkeychecking|identityfile|user) ' \
+  | sed 's/^/    /'
 
 # Clone if missing, otherwise force the checkout to origin's tip on the given branch. Local
 # commits and local modifications are DISCARDED, and what was discarded is logged. Callers that
