@@ -131,6 +131,8 @@
       systemAgent: {
         agentId: "olya",
       },
+      // Pacific time for message envelopes, scheduled events, and the system prompt date context.
+      userTimezone: "America/Los_Angeles",
     },
     entries: {
       // The controller. Everything real is delegated from here.
@@ -197,6 +199,8 @@
   channels: {
     telegram: {
       enabled: true,
+      // Bot API 10.3 rich formatting: tables, details, checklists, collapsible sections.
+      richMessages: true,
       // MUST resolve to a regular file, which is why the StatefulSet mounts this with subPath.
       // A normal Kubernetes Secret volume is a symlink chain (token -> ..data/token), and
       // OpenClaw's secret loader does not follow it -- it reports "Secret owner
