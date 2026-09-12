@@ -120,10 +120,9 @@
           agentRuntime: { id: "claude-cli" },
         },
       },
-      // IDENTITY.md and USER.md are memory files maintained by the agent and synced by the
-      // CronJob. Without this, OpenClaw overwrites them with blank templates on every gateway
-      // start, and the sync job then commits the templates to main.
-      skipOptionalBootstrapFiles: ["IDENTITY.md", "USER.md"],
+      // All optional bootstrap files are managed in git. Without this, OpenClaw overwrites
+      // them with blank templates on every gateway start.
+      skipOptionalBootstrapFiles: ["SOUL.md", "IDENTITY.md", "USER.md"],
       // With an explicit multi-agent roster there is no ambient agent, so heartbeats stay
       // disabled until one is named here. Required, not optional.
       heartbeat: {
