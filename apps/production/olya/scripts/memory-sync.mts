@@ -110,6 +110,20 @@ function git(args: string[], opts: { cwd?: string; allowFail?: boolean } = {}): 
   }
 }
 
+// REFUSE TO RUN AGAINST A WORKSPACE THAT IS NOT THERE.
+//
+// This job propagates deletions, which is correct when she removes a memory file and wrong in
+// every other case. On 2026-09-12 the assistant pod was crashlooping, so seed-workspace had
+// never cloned the workspace. This job ran on schedule anyway, found no memory files in a
+// directory that did not exist, and committed that as the deletion of MEMORY.md, USER.md and
+// IDENTITY.md -- 156 lines, pushed to the default branch under the bypass credential.
+//
+// An absent or uninitialised workspace is a failure to report, never an instruction to delete.
+if (!existsSync(join(workspace, ".git"))) {
+  console.error(`${workspace} is not a git checkout; refusing to sync. Is the assistant pod healthy?`)
+  process.exit(1)
+}
+
 // Shallow: this only ever adds one commit on top of the branch tip, and pushing from a shallow
 // clone is supported as long as the remote already has the history.
 git(["clone", "--quiet", "--depth", "1", "--branch", branch, remote, clone], { cwd: scratch })
@@ -152,18 +166,32 @@ for (const path of MEMORY_PATHS) {
   }
 }
 
-// -A so a memory file she deleted is staged as a deletion. Pathspec matching considers the
-// index, so a path that is tracked in the clone but absent in the workspace still matches;
-// a path that is neither tracked nor present would abort the whole `git add`, which is how an
-// earlier version silently synced nothing while looking like a healthy quiet hour.
-const candidates = MEMORY_PATHS.filter(
-  (p) => existsSync(join(clone, p)) || git(["ls-files", "--", p]) !== "",
-)
+// THIS JOB ADDS AND UPDATES. IT NEVER DELETES.
+//
+// --ignore-removal is required to get that, and is not the default: since Git 2.0 a bare
+// `git add <pathspec>` stages removals too, so the flag is the whole safeguard.
+//
+// An earlier version used `-A` so that a memory file she removed would disappear from the
+// branch as well. Nothing in the OpenClaw docs describes memory files ever being deleted or
+// rotated, so that handled a case we cannot show exists -- and on 2026-09-12 it fired on a case
+// that does: the assistant pod was crashlooping, the workspace had never been cloned, and this
+// job read "no files" as "delete them all", removing MEMORY.md, USER.md and IDENTITY.md from
+// the default branch in a commit titled "sync memory".
+//
+// Refusing to delete is also the safer behaviour when the agent is the one doing the deleting.
+// A removed memory file is not propagated, so the next pod start restores it from origin: the
+// boot reset copies aside only files that exist, resets to the branch, then puts them back. A
+// deletion therefore survives until the next restart instead of becoming permanent. Were it
+// propagated, an agent could drop an inconvenient directive out of USER.md for good.
+//
+// The cost is stale files accumulating here if memory files ever are legitimately removed.
+// That is recoverable and visible; the other direction is neither.
+const candidates = MEMORY_PATHS.filter((p) => existsSync(join(clone, p)))
 if (candidates.length === 0) {
-  console.log("no memory files exist yet")
+  console.log("no memory files to sync yet")
   process.exit(0)
 }
-git(["add", "-A", "--", ...candidates])
+git(["add", "--ignore-removal", "--", ...candidates])
 
 const staged = git(["diff", "--cached", "--name-only"])
 if (!staged) {
