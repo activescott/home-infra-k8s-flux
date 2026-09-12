@@ -3,7 +3,6 @@ resources:
   - logs-pv.yaml
   - ../../base/scott-willeke-com/
   - certificate.yaml
-  - image-scanning/
   - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-ingress.yaml
@@ -20,5 +19,5 @@ namespace: scott-willeke-com-prod
 # the imagepolicy markers: https://fluxcd.io/flux/guides/image-update/#configure-image-update-for-custom-resources
 images:
   - name: scott-willeke-com-image
-    newName: ghcr.io/activescott/www # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:name"}
-    newTag: "v202608181846" # {"$imagepolicy": "scott-willeke-com-prod:policy-scott-willeke-com:tag"}
+    newName: ghcr.io/activescott/www # {"$imagepolicy": "flux-system:policy-scott-willeke-com:name"}
+    newTag: "v202608181846" # {"$imagepolicy": "flux-system:policy-scott-willeke-com:tag"}

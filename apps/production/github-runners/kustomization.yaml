@@ -9,7 +9,5 @@ resources:
   - ./runners/tinkerbell
   - ./runners/ramblefeed
   - ./runners/fernfiles
-  - ./image-scanning-controller
-  - ./image-scanning-runner
 
 buildMetadata: [originAnnotations, transformerAnnotations]

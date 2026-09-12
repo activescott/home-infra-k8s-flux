@@ -8,7 +8,6 @@ resources:
   # clients reach the app through the Service instead.
   - app-ops-middleware.yaml
   - app-ops-ingress.yaml
-  - image-scanning/
   - ../shared/ghcr-pull-secret/
 patches:
   - path: patch-app-deployment.yaml
@@ -51,19 +50,19 @@ secretGenerator:
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 images:
   - name: fernfiles-image-app
-    newName: ghcr.io/activescott/fernfiles/app # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:name"}
-    newTag: v0.66.1 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-app:tag"}
+    newName: ghcr.io/activescott/fernfiles/app # {"$imagepolicy": "flux-system:policy-fernfiles-app:name"}
+    newTag: v0.66.1 # {"$imagepolicy": "flux-system:policy-fernfiles-app:tag"}
   # Transcode worker (activescott/fernfiles issue #140), built and tagged from
   # the same release as the app image, so the two tags move together. v0.41.0
   # is the release that introduced it — no earlier tag of this image exists.
   - name: fernfiles-image-worker
-    newName: ghcr.io/activescott/fernfiles/worker # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:name"}
-    newTag: v0.66.1 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-worker:tag"}
+    newName: ghcr.io/activescott/fernfiles/worker # {"$imagepolicy": "flux-system:policy-fernfiles-worker:name"}
+    newTag: v0.66.1 # {"$imagepolicy": "flux-system:policy-fernfiles-worker:tag"}
   # Search inference service (activescott/fernfiles
   # docs/specs/036-search-inference-service/plan.md), tagged from the same
   # release as the app and worker images, so all three tags move together.
   # The tag below must be the first release that contains this image — an
   # earlier tag does not exist in the registry and the pod would never pull.
   - name: fernfiles-image-inference
-    newName: ghcr.io/activescott/fernfiles/inference-service # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-inference-service:name"}
-    newTag: v0.66.1 # {"$imagepolicy": "fernfiles-prod:policy-fernfiles-inference-service:tag"}
+    newName: ghcr.io/activescott/fernfiles/inference-service # {"$imagepolicy": "flux-system:policy-fernfiles-inference-service:name"}
+    newTag: v0.66.1 # {"$imagepolicy": "flux-system:policy-fernfiles-inference-service:tag"}

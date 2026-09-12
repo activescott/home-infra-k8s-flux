@@ -7,9 +7,6 @@ resources:
   - app-ingress-certificate.yaml
   - www-redirect-middleware.yaml
   - www-redirect-ingress.yaml
-  - image-scanning/
-  - image-scanning-amazon-searcher/
-  - image-scanning-indexnow/
   - indexnow-pv.yaml
   - ../shared/ghcr-pull-secret/
 patches:
@@ -84,14 +81,14 @@ secretGenerator:
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 images:
   - name: gpupoet-image-app
-    newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:name"}
-    newTag: v202609120601 # {"$imagepolicy": "gpupoet-prod:policy-gpupoet-app:tag"}
+    newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "flux-system:policy-gpupoet-app:name"}
+    newTag: v202609120601 # {"$imagepolicy": "flux-system:policy-gpupoet-app:tag"}
   - name: gpupoet-image-db
     newName: postgres
     newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
   - name: indexnow-notifier-image-placeholder
-    newName: ghcr.io/activescott/gpu-agent/indexnow-notifier # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:name"}
-    newTag: v202609032019 # {"$imagepolicy": "gpupoet-prod:policy-indexnow-notifier:tag"}
+    newName: ghcr.io/activescott/gpu-agent/indexnow-notifier # {"$imagepolicy": "flux-system:policy-indexnow-notifier:name"}
+    newTag: v202609032019 # {"$imagepolicy": "flux-system:policy-indexnow-notifier:tag"}
   - name: amazon-searcher-image-placeholder
-    newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:name"}
-    newTag: v202603300713 # {"$imagepolicy": "gpupoet-prod:policy-amazon-searcher:tag"}
+    newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "flux-system:policy-amazon-searcher:name"}
+    newTag: v202603300713 # {"$imagepolicy": "flux-system:policy-amazon-searcher:tag"}

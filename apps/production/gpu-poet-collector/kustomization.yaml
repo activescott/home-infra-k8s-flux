@@ -11,7 +11,6 @@ resources:
   - pvc.yaml
   - service.yaml
   - deployment.yaml
-  - image-scanning/
 
 # Generates a Secret named `gpu-poet-collector-secrets` from the encrypted
 # .env file. SOPS-decryption happens automatically via flux's kustomize

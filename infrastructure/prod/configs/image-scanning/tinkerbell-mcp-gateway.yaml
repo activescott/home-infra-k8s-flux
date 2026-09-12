@@ -1,0 +1,20 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-tinkerbell-mcp-gateway
+spec:
+  image: ghcr.io/activescott/tinkerbell/mcp-gateway
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-tinkerbell-mcp-gateway
+spec:
+  imageRepositoryRef:
+    name: repo-tinkerbell-mcp-gateway
+  policy:
+    semver:
+      range: ">=0.0.0"

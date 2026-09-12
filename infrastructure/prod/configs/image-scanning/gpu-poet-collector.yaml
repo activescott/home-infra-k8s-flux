@@ -1,0 +1,22 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-gpu-poet-collector
+spec:
+  image: ghcr.io/activescott/gpu-poet-data/collector
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-gpu-poet-collector
+spec:
+  imageRepositoryRef:
+    name: repo-gpu-poet-collector
+  filterTags:
+    pattern: '^v[0-9]{12}$'
+  policy:
+    alphabetical:
+      order: asc

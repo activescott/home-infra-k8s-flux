@@ -1,0 +1,20 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-tinkerbell-app
+spec:
+  image: ghcr.io/activescott/tinkerbell/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-tinkerbell-app
+spec:
+  imageRepositoryRef:
+    name: repo-tinkerbell-app
+  policy:
+    semver:
+      range: ">=0.0.0"

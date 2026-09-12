@@ -1,0 +1,22 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-amazon-searcher
+spec:
+  image: ghcr.io/activescott/amazon-searcher
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-amazon-searcher
+spec:
+  imageRepositoryRef:
+    name: repo-amazon-searcher
+  filterTags:
+    pattern: '^v[0-9]{12}$'
+  policy:
+    alphabetical:
+      order: asc
