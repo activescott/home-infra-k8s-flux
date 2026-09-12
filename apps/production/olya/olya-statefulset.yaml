@@ -78,6 +78,54 @@ spec:
               mountPath: /cfg
               readOnly: true
 
+        # acpx needs openKeyedStore to persist ACP session state. That capability is gated on
+        # a trust record in the runtime SQLite store, which only exists for plugins installed
+        # through `openclaw plugins install` (origin "managed"). Loading via plugins.load.paths
+        # gives origin "config", which is not trusted for keyed-store access.
+        #
+        # This initContainer does a one-time managed install on a fresh volume, then skips on
+        # every subsequent boot. The pinned version must match the OpenClaw version baked into
+        # the image -- a mismatch causes a startup conflict between the managed copy and the
+        # built-in plugin registry.
+        - name: install-plugins
+          image: ghcr.io/activescott/olya:v0.1.0
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              if openclaw plugins inspect acpx --json 2>/dev/null \
+                 | grep -q '"reason":"record-missing"'; then
+                echo "acpx trust record missing; installing managed copy"
+                openclaw plugins install @openclaw/acpx@2026.9.4 --accept-capabilities
+              else
+                echo "acpx trust record present; skipping install"
+              fi
+          env:
+            - name: HOME
+              value: /state/home
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /state/openclaw/openclaw.json
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: tmp
+              mountPath: /tmp
+
         # Credentials and workspace. Mixed policy: the memory files are copied aside, the
         # checkout is forced to origin/main, and they are restored. Instruction files therefore
         # come from git and cannot be changed except by a reviewed PR, while memory files
