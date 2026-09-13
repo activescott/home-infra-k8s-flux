@@ -136,20 +136,20 @@
         workspace: "/state/workspace",
         subagents: {
           delegationMode: "prefer",
-          allowAgents: ["coder-opencode", "coder-claude"],
+          allowAgents: ["opencode", "claude"],
         },
       },
 
       // Coding harnesses, reached over ACP. Each is a separate agent entry so it can carry its
       // own model and be named explicitly in sessions_spawn.
-      "coder-opencode": {
+      "opencode": {
         name: "opencode",
         runtime: {
           type: "acp",
           acp: { agent: "opencode" },
         },
       },
-      "coder-claude": {
+      "claude": {
         name: "claude",
         runtime: {
           type: "acp",
