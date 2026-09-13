@@ -144,8 +144,6 @@
         "ghcr.io/activescott/tinkerbell/mcp-gateway",
         "ghcr.io/tayle-co/tayle/app",
         "ghcr.io/tayle-co/tayle/worker",
-        "ghcr.io/actions/gha-runner-scale-set-controller",
-        "ghcr.io/actions/actions-runner",
       ],
       enabled: false,
     },

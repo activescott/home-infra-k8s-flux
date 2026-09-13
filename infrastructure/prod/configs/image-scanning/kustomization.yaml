@@ -5,9 +5,7 @@ namespace: flux-system
 
 resources:
   - ../ghcr-pull-secret/
-  - actions-runner.yaml
   - amazon-searcher.yaml
-  - arc-controller.yaml
   - fernfiles-app.yaml
   - fernfiles-inference-service.yaml
   - fernfiles-worker.yaml
