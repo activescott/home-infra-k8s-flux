@@ -13,7 +13,6 @@ resources:
   # Image is private on GHCR, same as the other first-party images in this repo.
   - ../shared/ghcr-pull-secret/
 namespace: olya
-
 configMapGenerator:
   # The gateway plugin list. seed-workspace copies the gateway config from the workspace
   # repo after cloning, so this ConfigMap no longer carries it. OpenClaw refuses to start
@@ -31,7 +30,6 @@ configMapGenerator:
       - scripts/instruction-sync.mts
       - scripts/memory-sync.mts
       - scripts/install-plugins.mts
-
 secretGenerator:
   # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
   # openclaw_gateway_token, anthropic_api_key, openrouter_api_key.
@@ -39,7 +37,6 @@ secretGenerator:
   - name: olya-env
     envs:
       - .env.secret.olya.encrypted
-
   # htpasswd line for the Traefik basicAuth middleware in front of the Control UI. Separate
   # from olya-env because the middleware resolves the Secret by name and reads only `users`.
   #
@@ -54,20 +51,17 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.olya-basic-auth.encrypted
-
   # PAT for the memory-sync CronJob. Scott's, not Olya's, scoped to activeassistant only.
   - name: olya-memory-sync
     envs:
       - .env.secret.olya-memory-sync.encrypted
-
   # Her ssh private key, for git transport and commit signing. Binary rather than dotenv: a PEM
   # is multi-line. Note the generator KEY, not the filename, is what selects the SOPS input
   # format, so this must stay `id_ed25519=`.
   - name: olya-ssh
     files:
       - id_ed25519=olya-ssh.secret.encrypted
-
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1789283389 # {"$imagepolicy": "flux-system:policy-olya:tag"}
