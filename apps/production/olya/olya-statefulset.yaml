@@ -251,6 +251,40 @@ spec:
             - name: tmp
               mountPath: /tmp
 
+        # Pulls instruction files from origin/main every 15 minutes so merged PRs
+        # take effect without a pod restart. Memory files are preserved.
+        - name: instruction-sync
+          image: ghcr.io/activescott/olya:v0.1.0
+          command: ["/scripts/instruction-sync.mts"]
+          env:
+            - name: HOME
+              value: /state/home
+            - name: GIT_SSH_COMMAND
+              value: ssh -F $(HOME)/.ssh/config
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "500m"
+              memory: 256Mi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: ssh-key
+              mountPath: /etc/olya-ssh
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
       volumes:
         - name: state
           persistentVolumeClaim:
