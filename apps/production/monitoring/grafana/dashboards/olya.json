@@ -1,0 +1,166 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Infra events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "target": { "type": "tags", "matchAny": false, "tags": ["infra-event"], "limit": 100 }
+      }
+    ]
+  },
+  "title": "Olya / OpenClaw",
+  "uid": "olya",
+  "tags": ["olya", "openclaw"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-12h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Uptime",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "expr": "time() - kube_pod_start_time{namespace=\"olya\", pod=~\"olya.*\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Restarts",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"olya\", pod=~\"olya.*\"})", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Pod phase",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "1": { "text": "Running", "color": "green" }, "0": { "text": "Not Running", "color": "red" } } }],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "targets": [{ "expr": "kube_pod_status_phase{namespace=\"olya\", pod=~\"olya.*\", phase=\"Running\"}", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Current image tag",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "name" },
+      "targets": [{ "expr": "kube_pod_container_info{namespace=\"olya\", container=\"olya\"}", "legendFormat": "{{image}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error log rate (per 5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 20, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }]
+          }
+        }
+      },
+      "targets": [{ "expr": "sum(count_over_time({namespace=\"olya\", app=\"olya\", level=\"error\"}[5m]))", "legendFormat": "errors / 5m", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Log volume by level",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 80, "lineWidth": 1, "stacking": { "mode": "normal" } }
+        }
+      },
+      "targets": [{ "expr": "sum by (level) (count_over_time({namespace=\"olya\", app=\"olya\"}[5m]))", "legendFormat": "{{level}}", "refId": "A" }]
+    },
+    {
+      "type": "logs",
+      "title": "Recent errors and warnings",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true, "dedupStrategy": "none" },
+      "targets": [{ "expr": "{namespace=\"olya\", app=\"olya\", level=~\"error|warn\"}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Container restarts",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum by (container) (increase(kube_pod_container_status_restarts_total{namespace=\"olya\"}[1h]))", "legendFormat": "{{container}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory usage",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum by (container) (container_memory_working_set_bytes{namespace=\"olya\", container!=\"\"})", "legendFormat": "{{container}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU usage",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum by (container) (rate(container_cpu_usage_seconds_total{namespace=\"olya\", container!=\"\"}[5m]))", "legendFormat": "{{container}}", "refId": "A" }]
+    },
+    {
+      "type": "text",
+      "title": "Application metrics (not yet wired)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "options": {
+        "mode": "markdown",
+        "content": "The OpenClaw diagnostics-prometheus plugin exposes application metrics (sessions, model calls, tokens, cost, tool executions) at `/api/diagnostics/prometheus` but Prometheus is not yet configured to scrape them.\n\nSee [issue #39](https://github.com/activescott/activeassistant/issues/39) for the scrape job setup, which will add panels for:\n- Session counts and run history\n- Model usage, tokens, and cost\n- Tool execution stats\n- Automation status and history"
+      }
+    }
+  ]
+}
