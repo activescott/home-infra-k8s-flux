@@ -144,6 +144,7 @@
       // own model and be named explicitly in sessions_spawn.
       "opencode": {
         name: "opencode",
+        workspace: "/state/home/workspaces/opencode",
         runtime: {
           type: "acp",
           acp: { agent: "opencode" },
@@ -151,6 +152,7 @@
       },
       "claude": {
         name: "claude",
+        workspace: "/state/home/workspaces/claude",
         runtime: {
           type: "acp",
           acp: { agent: "claude" },
