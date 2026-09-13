@@ -45,7 +45,7 @@ spec:
             - name: github-container-registry-secret
           containers:
             - name: sync
-              image: ghcr.io/activescott/olya:v0.1.0
+              image: olya-image
               command: ["/scripts/memory-sync.mts"]
               env:
                 - name: HOME
