@@ -255,7 +255,7 @@ spec:
         # take effect without a pod restart. Memory files are preserved.
         - name: instruction-sync
           image: ghcr.io/activescott/olya:v0.1.0
-          command: ["/scripts/instruction-sync.sh"]
+          command: ["/scripts/instruction-sync.mts"]
           env:
             - name: HOME
               value: /state/home

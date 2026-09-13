@@ -28,7 +28,7 @@ configMapGenerator:
   - name: olya-scripts
     files:
       - scripts/seed-workspace.sh
-      - scripts/instruction-sync.sh
+      - scripts/instruction-sync.mts
       - scripts/memory-sync.mts
       - scripts/install-plugins.mts
 
