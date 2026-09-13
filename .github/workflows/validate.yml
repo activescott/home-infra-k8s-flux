@@ -12,12 +12,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned to match the cluster's Flux controllers:
+      #   kustomize-controller v1.9.5 embeds kustomize API v0.21.1 (= CLI v5.8.1)
+      #   helm-controller v1.6.4 embeds Helm v4.2.4
+      # Source: clusters/nas1/flux-system/gotk-components.yaml
       - name: Install kustomize
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s 5.8.1
           sudo mv kustomize /usr/local/bin/
 
       - uses: azure/setup-helm@v4
+        with:
+          version: v4.2.4
 
       - name: Build apps/production
         run: |
