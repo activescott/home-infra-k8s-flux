@@ -37,7 +37,7 @@ function syncOnce(): void {
   const origin = git(["rev-parse", "origin/main"])
   if (head === origin) return
 
-  log("changes detected:")
+  log("detected instruction files changed in git:")
   for (const line of git(["diff", "--name-only", "HEAD", "origin/main"]).split("\n")) {
     if (line) console.log(`    ${line}`)
   }
@@ -75,11 +75,11 @@ function syncOnce(): void {
     copyFileSync(claudeSrc, join(home, ".claude", "CLAUDE.md"))
   }
 
-  log(`synced workspace to ${origin}`)
+  log(`synced workspace instructions to activescott/activeassistant @ ${origin}`)
 }
 
 // Give the main container time to finish starting before the first fetch.
-execFileSync("sleep", ["60"])
+await new Promise(resolve => setTimeout(resolve, 60_000))
 
 while (true) {
   try {
@@ -89,5 +89,5 @@ while (true) {
     const e = err as { message?: string }
     log(`sync failed, will retry: ${e.message ?? err}`)
   }
-  execFileSync("sleep", ["300"])
+  await new Promise(resolve => setTimeout(resolve, 900_000))
 }
