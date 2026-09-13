@@ -145,6 +145,19 @@ for p in "${memory_paths[@]}"; do
 done
 rm -rf "$saved"
 
+# Config seeding. Moved from the former seed-config initContainer: the source of truth
+# is now this workspace repo rather than the ConfigMap, so it can only happen after the
+# clone. install-plugins runs after this initContainer and needs the config in place.
+cfg_src="$workspace/openclaw.json"
+cfg_dst="$state/openclaw/openclaw.json"
+if [ -f "$cfg_src" ]; then
+  cp "$cfg_src" "$cfg_dst"
+  echo "==> seeded openclaw.json from workspace"
+else
+  echo "FATAL: $cfg_src not found after clone" >&2
+  exit 1
+fi
+
 # The coding harnesses read their own instruction files from their own config paths, so the
 # shared rules have to be copied into place rather than referenced. Copies, not symlinks:
 # OpenClaw's skill loader enforces symlink containment and the harnesses are inconsistent about
