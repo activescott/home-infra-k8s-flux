@@ -30,7 +30,7 @@ configMapGenerator:
     files:
       - scripts/seed-workspace.sh
       - scripts/memory-sync.mts
-      - scripts/install-plugins.sh
+      - scripts/install-plugins.mts
 
 secretGenerator:
   # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token, openclaw_gateway_token.

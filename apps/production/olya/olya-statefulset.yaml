@@ -83,7 +83,7 @@ spec:
         # exists. See managed-plugins.txt for the plugin list and pinning notes.
         - name: install-plugins
           image: ghcr.io/activescott/olya:v0.1.0
-          command: ["/scripts/install-plugins.sh"]
+          command: ["/scripts/install-plugins.mts"]
           env:
             - name: HOME
               value: /state/home
