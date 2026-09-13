@@ -1,0 +1,4 @@
+# Plugins installed as managed copies by the install-plugins initContainer.
+# Managed installs create the trust record required for openKeyedStore access
+# (ACP session state). Pinned versions must match the OpenClaw version in the image.
+@openclaw/acpx@2026.9.4

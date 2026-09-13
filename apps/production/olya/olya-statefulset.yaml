@@ -78,6 +78,43 @@ spec:
               mountPath: /cfg
               readOnly: true
 
+        # Installs managed plugins from /cfg/managed-plugins.txt via
+        # scripts/install-plugins.sh. Idempotent: skips plugins whose trust record already
+        # exists. See managed-plugins.txt for the plugin list and pinning notes.
+        - name: install-plugins
+          image: ghcr.io/activescott/olya:v0.1.0
+          command: ["/scripts/install-plugins.mts"]
+          env:
+            - name: HOME
+              value: /state/home
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /state/openclaw/openclaw.json
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: config
+              mountPath: /cfg
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
         # Credentials and workspace. Mixed policy: the memory files are copied aside, the
         # checkout is forced to origin/main, and they are restored. Instruction files therefore
         # come from git and cannot be changed except by a reviewed PR, while memory files

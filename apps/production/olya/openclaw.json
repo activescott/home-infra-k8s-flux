@@ -74,20 +74,15 @@
   },
 
   plugins: {
-    // acpx and diagnostics-prometheus are NOT bundled with the image. Stock plugins live in
-    // /app/dist/extensions; these two are external npm packages that `openclaw plugins install`
-    // would fetch into $OPENCLAW_STATE_DIR at runtime.
+    // acpx is installed as a managed plugin by the install-plugins initContainer, which
+    // creates the trust record required for openKeyedStore (ACP session state). The managed
+    // install persists on the PV at $OPENCLAW_STATE_DIR. Do not add acpx back to load.paths:
+    // loading both the managed copy and a baked-in copy causes an install-path-mismatch.
     //
-    // We bake them into the image instead, and point the loader at them here. Two reasons:
-    // the install is a network operation that would otherwise run on every cold start, and
-    // `openclaw plugins install` rewrites openclaw.json, which the seed-config initContainer
-    // discards on the next boot. Declaring them here is the only form that survives.
-    //
-    // Paths are package roots, the directory holding openclaw.plugin.json. Pointing at the npm
-    // project wrapper above it does not register the plugin. Verified against 2026.9.4.
+    // diagnostics-prometheus remains baked into the image and loaded by path because it does
+    // not need keyed-store trust.
     load: {
       paths: [
-        "/opt/olya/plugins/acpx/node_modules/@openclaw/acpx",
         "/opt/olya/plugins/diagnostics-prometheus/node_modules/@openclaw/diagnostics-prometheus",
       ],
     },

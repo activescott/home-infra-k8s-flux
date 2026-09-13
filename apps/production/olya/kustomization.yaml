@@ -25,10 +25,12 @@ configMapGenerator:
   - name: olya-config
     files:
       - openclaw.json
+      - managed-plugins.txt
   - name: olya-scripts
     files:
       - scripts/seed-workspace.sh
       - scripts/memory-sync.mts
+      - scripts/install-plugins.mts
 
 secretGenerator:
   # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token, openclaw_gateway_token.
