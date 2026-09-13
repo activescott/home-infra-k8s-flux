@@ -16,8 +16,6 @@ resources:
   - indexnow-notifier.yaml
   - ramblefeed-app.yaml
   - scott-willeke-com.yaml
-  - tayle-app.yaml
-  - tayle-worker.yaml
   - tinkerbell-app.yaml
   - tinkerbell-mcp-gateway.yaml
 
