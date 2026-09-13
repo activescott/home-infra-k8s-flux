@@ -42,79 +42,6 @@ spec:
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
       # with the ssh key mounted, so it is the last place to leave at the defaults.
       initContainers:
-        # Config is declarative and git wins: this overwrites unconditionally, every boot.
-        # Anything set through the Control UI or `openclaw config set` is discarded here. That
-        # is the deliberate inversion of OpenClaw's own seed-if-missing k8s pattern.
-        - name: seed-config
-          image: ghcr.io/activescott/olya:v0.1.0
-          command:
-            - sh
-            - -c
-            - |
-              set -eu
-              mkdir -p /state/openclaw
-              cp /cfg/openclaw.json /state/openclaw/openclaw.json
-              echo "seeded openclaw.json from ConfigMap"
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: "10m"
-              memory: 16Mi
-            limits:
-              cpu: "200m"
-              memory: 64Mi
-          volumeMounts:
-            # The persistent volume. Written here: this is the copy of openclaw.json the
-            # gateway actually reads, at /state/openclaw/openclaw.json.
-            - name: state
-              mountPath: /state
-            # The olya-config ConfigMap, holding this directory's openclaw.json. The source
-            # side of the copy, and the reason a Control UI edit does not survive a restart.
-            - name: config
-              mountPath: /cfg
-              readOnly: true
-
-        # Installs managed plugins from /cfg/managed-plugins.txt via
-        # scripts/install-plugins.sh. Idempotent: skips plugins whose trust record already
-        # exists. See managed-plugins.txt for the plugin list and pinning notes.
-        - name: install-plugins
-          image: ghcr.io/activescott/olya:v0.1.0
-          command: ["/scripts/install-plugins.mts"]
-          env:
-            - name: HOME
-              value: /state/home
-            - name: OPENCLAW_STATE_DIR
-              value: /state/openclaw
-            - name: OPENCLAW_CONFIG_PATH
-              value: /state/openclaw/openclaw.json
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: "50m"
-              memory: 64Mi
-            limits:
-              cpu: "1"
-              memory: 256Mi
-          volumeMounts:
-            - name: state
-              mountPath: /state
-            - name: config
-              mountPath: /cfg
-              readOnly: true
-            - name: scripts
-              mountPath: /scripts
-              readOnly: true
-            - name: tmp
-              mountPath: /tmp
-
         # Credentials and workspace. Mixed policy: the memory files are copied aside, the
         # checkout is forced to origin/main, and they are restored. Instruction files therefore
         # come from git and cannot be changed except by a reviewed PR, while memory files
@@ -160,6 +87,44 @@ spec:
             - name: tmp
               mountPath: /tmp
 
+        # Installs managed plugins from /cfg/managed-plugins.txt via
+        # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
+        # exists. See managed-plugins.txt for the plugin list and pinning notes. Runs after
+        # seed-workspace because plugin commands need the seeded config in place.
+        - name: install-plugins
+          image: ghcr.io/activescott/olya:v0.1.0
+          command: ["/scripts/install-plugins.mts"]
+          env:
+            - name: HOME
+              value: /state/home
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /state/openclaw/openclaw.json
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: config
+              mountPath: /cfg
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
       containers:
         - name: olya
           image: ghcr.io/activescott/olya:v0.1.0
@@ -182,14 +147,17 @@ spec:
             # command they run, which is the point -- she clones work repos at runtime.
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config
-            # Exactly the two keys openclaw.json substitutes, named individually rather than
+            # The two keys openclaw.json substitutes, plus provider API keys, named
+            # individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
             # telegram_bot_token, which the `items` projection further down exists to keep OUT
             # of the environment: env is inherited by npx, the ACP adapters, and every shell
             # command they run, and shows up in /proc/<pid>/environ.
             #
-            # Keep this list in sync with `grep -o '\${[A-Z_]*}' openclaw.json`. A missing one
-            # is a startup failure, not a silent default.
+            # Keep substituted keys in sync with `grep -o '\${[A-Z_]*}' openclaw.json`.
+            # A missing substituted key is a startup failure, not a silent default.
+            # Provider API keys (ANTHROPIC_API_KEY, OPENROUTER_API_KEY) are read from the
+            # environment by OpenClaw's provider plugins, not substituted in the config.
             #
             # olya-env also holds telegram_bot_token and tinkerbell_api_token, and NEITHER is
             # delivered as an env var on purpose. The bot token is a file (see the `items`
@@ -205,6 +173,19 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: telegram_allow_from
+            # Model provider API keys for the fallback chain. The primary model uses
+            # claude-cli (subscription auth on the PV), so these are only reached when
+            # the subscription is unavailable.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: anthropic_api_key
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: openrouter_api_key
           ports:
             - name: http
               containerPort: 18789
