@@ -145,6 +145,20 @@ for p in "${memory_paths[@]}"; do
 done
 rm -rf "$saved"
 
+# Claude Code's auto-memory writes to a computed path based on the project
+# directory ($HOME/.claude/projects/-state-workspace/memory), while MEMORY.md
+# references memory/ relative to the workspace and the sync cronjob commits
+# from there. Link the two so those writes land in the workspace.
+mkdir -p "$workspace/memory"
+mkdir -p "$HOME/.claude/projects/-state-workspace"
+cc_mem="$HOME/.claude/projects/-state-workspace/memory"
+if [ -d "$cc_mem" ] && [ ! -L "$cc_mem" ]; then
+  cp -n "$cc_mem"/* "$workspace/memory/" 2>/dev/null || true
+  rm -rf "$cc_mem"
+fi
+ln -sfn "$workspace/memory" "$cc_mem"
+echo "==> linked Claude Code memory dir -> $workspace/memory"
+
 # Config seeding. Moved from the former seed-config initContainer: the source of truth
 # is now this workspace repo rather than the ConfigMap, so it can only happen after the
 # clone. install-plugins runs after this initContainer and needs the config in place.
