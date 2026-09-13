@@ -35,7 +35,10 @@ function syncOnce(): void {
 
   const head = git(["rev-parse", "HEAD"])
   const origin = git(["rev-parse", "origin/main"])
-  if (head === origin) return
+  if (head === origin) {
+    log("no changes")
+    return
+  }
 
   log("detected instruction files changed in git:")
   for (const line of git(["diff", "--name-only", "HEAD", "origin/main"]).split("\n")) {
