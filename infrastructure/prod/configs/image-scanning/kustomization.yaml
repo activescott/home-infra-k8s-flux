@@ -14,6 +14,7 @@ resources:
   - gpu-poet-collector.yaml
   - gpupoet-app.yaml
   - indexnow-notifier.yaml
+  - olya.yaml
   - ramblefeed-app.yaml
   - scott-willeke-com.yaml
   - tinkerbell-app.yaml

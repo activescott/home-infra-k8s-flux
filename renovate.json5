@@ -133,6 +133,7 @@
       matchPackageNames: [
         "ghcr.io/activescott/fernfiles/app",
         "ghcr.io/activescott/fernfiles/worker",
+        "ghcr.io/activescott/olya",
         "ghcr.io/activescott/gpu-poet-data/collector",
         "ghcr.io/activescott/amazon-searcher",
         "ghcr.io/activescott/gpu-agent/app",

@@ -48,7 +48,7 @@ spec:
         # survive because they exist nowhere else until the hourly sync pushes them.
         # See scripts/seed-workspace.sh.
         - name: seed-workspace
-          image: ghcr.io/activescott/olya:v0.1.0
+          image: olya-image
           command: ["/scripts/seed-workspace.sh"]
           env:
             - name: HOME
@@ -92,7 +92,7 @@ spec:
         # exists. See managed-plugins.txt for the plugin list and pinning notes. Runs after
         # seed-workspace because plugin commands need the seeded config in place.
         - name: install-plugins
-          image: ghcr.io/activescott/olya:v0.1.0
+          image: olya-image
           command: ["/scripts/install-plugins.mts"]
           env:
             - name: HOME
@@ -127,7 +127,7 @@ spec:
 
       containers:
         - name: olya
-          image: ghcr.io/activescott/olya:v0.1.0
+          image: olya-image
           env:
             # $HOME cannot stay at the image's /home/node because the root filesystem is
             # read-only. This is the per-user config tree, so it holds her credential set.
@@ -254,7 +254,7 @@ spec:
         # Pulls instruction files from origin/main every 15 minutes so merged PRs
         # take effect without a pod restart. Memory files are preserved.
         - name: instruction-sync
-          image: ghcr.io/activescott/olya:v0.1.0
+          image: olya-image
           command: ["/scripts/instruction-sync.mts"]
           env:
             - name: HOME
