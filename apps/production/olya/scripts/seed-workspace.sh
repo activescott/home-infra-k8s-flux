@@ -135,6 +135,8 @@ if [ -d "$workspace/.git" ]; then
   done
 fi
 
+echo "==> saved ${#memory_paths[@]} memory path(s) before reset (will restore after)"
+
 clone_or_reset git@github.com:activescott/activeassistant.git "$workspace" main
 
 for p in "${memory_paths[@]}"; do
@@ -144,6 +146,13 @@ for p in "${memory_paths[@]}"; do
   fi
 done
 rm -rf "$saved"
+restored=()
+for p in "${memory_paths[@]}"; do
+  [ -e "$workspace/$p" ] && restored+=("$p")
+done
+if [ ${#restored[@]} -gt 0 ]; then
+  echo "==> restored memory: ${restored[*]}"
+fi
 
 # Config seeding. Moved from the former seed-config initContainer: the source of truth
 # is now this workspace repo rather than the ConfigMap, so it can only happen after the
