@@ -65,6 +65,7 @@
       "\\b(github_pat_[A-Za-z0-9_]{20,})\\b",
       "\\b(sk-ant-[A-Za-z0-9-]{20,})\\b",
       "\\b([0-9]{8,10}:[A-Za-z0-9_-]{30,})\\b",
+      "\\b(sk-or-v1-[A-Za-z0-9]{20,})\\b",
     ],
   },
 
@@ -100,19 +101,27 @@
       workspace: "/state/workspace",
       model: {
         primary: "anthropic/claude-opus-4-6",
+        fallbacks: [
+          "anthropic/claude-sonnet-4-20250514",
+          "openrouter/google/gemini-2.5-pro",
+        ],
       },
-      // Route all Anthropic models through the installed `claude` executable rather than
-      // the Anthropic API, so turns draw on Claude Max subscription instead of per-token
-      // API billing. This includes utility models (session titles, observer headlines)
-      // which default to claude-haiku-4-5.
+      // Route Anthropic models through claude-cli (Claude Max subscription) by default.
+      // The fallback chain overrides this for specific models: Sonnet 4 uses the direct
+      // Anthropic API key, and Gemini 2.5 Pro goes through OpenRouter.
       //
-      // The credential is NOT here and cannot be. `claude auth login` was run once inside the
-      // pod and its login lives under $HOME/.claude on the PV; OpenClaw only records a route
-      // marker and never reads, refreshes or forwards the token. That makes this another
-      // redo-by-hand item after a volume loss -- see the runbook.
+      // The claude-cli credential is NOT here and cannot be. `claude auth login` was run
+      // once inside the pod and its login lives under $HOME/.claude on the PV; OpenClaw
+      // only records a route marker and never reads, refreshes or forwards the token.
+      // That makes this another redo-by-hand item after a volume loss -- see the runbook.
       models: {
         "anthropic/*": {
           agentRuntime: { id: "claude-cli" },
+        },
+        // Exact entry overrides the wildcard above: uses the direct Anthropic API
+        // with ANTHROPIC_API_KEY rather than the claude-cli subscription.
+        "anthropic/claude-sonnet-4-20250514": {
+          agentRuntime: { id: "openclaw" },
         },
       },
       // All optional bootstrap files are managed in git. Without this, OpenClaw overwrites

@@ -182,14 +182,17 @@ spec:
             # command they run, which is the point -- she clones work repos at runtime.
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config
-            # Exactly the two keys openclaw.json substitutes, named individually rather than
+            # The two keys openclaw.json substitutes, plus provider API keys, named
+            # individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
             # telegram_bot_token, which the `items` projection further down exists to keep OUT
             # of the environment: env is inherited by npx, the ACP adapters, and every shell
             # command they run, and shows up in /proc/<pid>/environ.
             #
-            # Keep this list in sync with `grep -o '\${[A-Z_]*}' openclaw.json`. A missing one
-            # is a startup failure, not a silent default.
+            # Keep substituted keys in sync with `grep -o '\${[A-Z_]*}' openclaw.json`.
+            # A missing substituted key is a startup failure, not a silent default.
+            # Provider API keys (ANTHROPIC_API_KEY, OPENROUTER_API_KEY) are read from the
+            # environment by OpenClaw's provider plugins, not substituted in the config.
             #
             # olya-env also holds telegram_bot_token and tinkerbell_api_token, and NEITHER is
             # delivered as an env var on purpose. The bot token is a file (see the `items`
@@ -205,6 +208,19 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: telegram_allow_from
+            # Model provider API keys for the fallback chain. The primary model uses
+            # claude-cli (subscription auth on the PV), so these are only reached when
+            # the subscription is unavailable.
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: anthropic_api_key
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: openrouter_api_key
           ports:
             - name: http
               containerPort: 18789

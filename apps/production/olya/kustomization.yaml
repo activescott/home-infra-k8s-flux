@@ -33,7 +33,8 @@ configMapGenerator:
       - scripts/install-plugins.mts
 
 secretGenerator:
-  # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token, openclaw_gateway_token.
+  # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
+  # openclaw_gateway_token, anthropic_api_key, openrouter_api_key.
   # The statefulset names the ones openclaw.json substitutes individually; see the comment there.
   - name: olya-env
     envs:
