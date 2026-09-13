@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --experimental-strip-types
-// Sidecar loop. Pulls instruction files from origin/main every 5 minutes.
+// Sidecar loop. Pulls instruction files from origin/main every 15 minutes.
 //
 // Memory files live only as working-tree files until the hourly sync pushes them, so they are
 // copied aside before the reset destroys them and restored after.

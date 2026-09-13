@@ -251,7 +251,7 @@ spec:
             - name: tmp
               mountPath: /tmp
 
-        # Pulls instruction files from origin/main every 5 minutes so merged PRs
+        # Pulls instruction files from origin/main every 15 minutes so merged PRs
         # take effect without a pod restart. Memory files are preserved.
         - name: instruction-sync
           image: ghcr.io/activescott/olya:v0.1.0
