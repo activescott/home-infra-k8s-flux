@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: flux-system
 
 resources:
-  - ../../../../apps/production/shared/ghcr-pull-secret/
+  - ../ghcr-pull-secret/
   - actions-runner.yaml
   - amazon-searcher.yaml
   - arc-controller.yaml

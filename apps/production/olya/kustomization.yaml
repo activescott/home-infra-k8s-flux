@@ -11,7 +11,7 @@ resources:
   - olya-networkpolicy.yaml
   - olya-memory-sync-cronjob.yaml
   # Image is private on GHCR, same as the other first-party images in this repo.
-  - ../shared/ghcr-pull-secret/
+  - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 namespace: olya
 configMapGenerator:
   # The gateway plugin list. seed-workspace copies the gateway config from the workspace

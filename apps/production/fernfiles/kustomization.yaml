@@ -8,7 +8,7 @@ resources:
   # clients reach the app through the Service instead.
   - app-ops-middleware.yaml
   - app-ops-ingress.yaml
-  - ../shared/ghcr-pull-secret/
+  - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 patches:
   - path: patch-app-deployment.yaml
     target:
