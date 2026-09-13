@@ -15,16 +15,15 @@ resources:
 namespace: olya
 
 configMapGenerator:
-  # The gateway configuration. The seed-config initContainer copies this over the PV copy on
-  # every boot, so this file is the source of truth and Control UI edits do not survive a
-  # restart. OpenClaw refuses to start on an invalid config, so validate before committing:
+  # The gateway plugin list. seed-workspace copies the gateway config from the workspace
+  # repo after cloning, so this ConfigMap no longer carries it. OpenClaw refuses to start
+  # on an invalid config, so validate before committing:
   #   docker run --rm -v $PWD/openclaw.json:/cfg/openclaw.json:ro \
   #     -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
   #     -e OPENCLAW_GATEWAY_TOKEN=dummy -e TELEGRAM_ALLOW_FROM=1 \
   #     ghcr.io/activescott/olya:v0.1.0 openclaw config validate
   - name: olya-config
     files:
-      - openclaw.json
       - managed-plugins.txt
   - name: olya-scripts
     files:
