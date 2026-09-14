@@ -2,6 +2,8 @@ apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
   name: repo-olya
+  annotations:
+    activescott.com/source-repo: activescott/activeassistant
 spec:
   image: ghcr.io/activescott/olya
   interval: 5h
