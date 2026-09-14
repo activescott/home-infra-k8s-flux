@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - authelia-pvc.yaml
+  - authelia-config.yaml
+  - authelia-deployment.yaml
+  - authelia-service.yaml
+  - authelia-ingress.yaml
+  - authelia-networkpolicy.yaml
+namespace: authelia
+secretGenerator:
+  # Keys: jwt_secret, session_secret, storage_encryption_key. The deployment names each one
+  # individually in an AUTHELIA_* env var rather than using envFrom, because the env var names
+  # do not match the keys. Hashed name, so rotating a value rolls the pod, which Authelia needs:
+  # it reads all three once at startup.
+  - name: authelia-secrets
+    envs:
+      - .env.secret.authelia.encrypted
+  # The file authentication backend's user database, projected into /config/users.yml.
+  #
+  # disableNameSuffixHash here is a stable-name choice, NOT the correctness requirement it is
+  # for olya-basic-auth and zot-htpasswd -- kustomize's name-reference transformer does rewrite
+  # a projected volume's secret source, verified against the built output. The cost of the
+  # stable name is that re-encrypting the file produces no spec change, so Flux has nothing to
+  # roll and the pod keeps serving the old database until it is restarted by hand. Drop these
+  # two lines if you would rather have the automatic rollout.
+  #
+  # The generator KEY, not the filename, selects the SOPS format kustomize-controller decrypts
+  # with, so this must stay `users=` (no extension) to be read as binary.
+  - name: authelia-users
+    options:
+      disableNameSuffixHash: true
+    files:
+      - users=authelia-users.secret.encrypted

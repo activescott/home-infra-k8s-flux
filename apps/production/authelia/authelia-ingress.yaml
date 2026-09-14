@@ -1,0 +1,64 @@
+# The login portal, at https://auth.activescott.com/
+#
+# Unlike olya.activescott.com this one has no LAN restriction: every host Authelia protects
+# redirects the browser here, so anywhere a protected host is reachable, this must be too.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: auth-activescott-com
+  namespace: authelia
+spec:
+  secretName: auth-activescott-com-cert
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: auth.activescott.com
+  dnsNames:
+    - auth.activescott.com
+---
+# The middleware other namespaces attach to their Ingress to require a login. Nothing uses it
+# yet; switching olya.activescott.com over to it is a separate change.
+#
+# Traefik resolves a cross-namespace middleware by the annotation value
+# `authelia-authelia-forwardauth@kubernetescrd`. A typo in that string fails closed: Traefik
+# drops the router entirely (404), it does not pass traffic without the middleware. Still worth
+# verifying after attaching that an unauthenticated request redirects here.
+#
+# trustForwardHeader is safe only because Traefik is the edge and sets X-Forwarded-* itself,
+# overwriting whatever the client sent.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: authelia-forwardauth
+  namespace: authelia
+spec:
+  forwardAuth:
+    address: http://authelia.authelia.svc.cluster.local/api/authz/forward-auth
+    trustForwardHeader: true
+    authResponseHeaders:
+      - Remote-User
+      - Remote-Groups
+      - Remote-Name
+      - Remote-Email
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: authelia
+  namespace: authelia
+spec:
+  rules:
+    - host: auth.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: authelia
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - auth.activescott.com
+      secretName: auth-activescott-com-cert
