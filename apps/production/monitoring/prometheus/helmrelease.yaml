@@ -1351,6 +1351,52 @@ spec:
                 annotations:
                   summary: 'No syslog received from the edge firewall for 15 minutes.'
                   description: 'The edge firewall log feed has stopped, so WAN flap alerting is blind until restored. Check the alloy-syslog Service, the Alloy pod, and the firewall''s Logging / Targets settings.'
+          # Flux reconciliation health. The 10h incident on 2026-09-13 (issue #32)
+          # showed that infra-configs can wedge on a stuck ImagePolicy and cascade
+          # failure through apps and crossplane without anyone noticing.
+          - name: flux-system
+            rules:
+              - alert: FluxKustomizationNotReady
+                expr: 'gotk_reconcile_condition{type="Ready", kind="Kustomization"} == 0'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Flux Kustomization {{ $labels.name }} not ready for 15m"
+                  description: >-
+                    Kustomization {{ $labels.name }} in {{ $labels.namespace }} has not been
+                    Ready for over 15 minutes. Downstream Kustomizations that depend on it
+                    will also stop reconciling.
+              - alert: FluxKustomizationNotReadyCritical
+                expr: 'gotk_reconcile_condition{type="Ready", kind="Kustomization"} == 0'
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Flux Kustomization {{ $labels.name }} not ready for 1h"
+                  description: >-
+                    Kustomization {{ $labels.name }} has been unhealthy for over an hour.
+                    Check the kustomize-controller logs and the resource's status conditions.
+              - alert: FluxHelmReleaseNotReady
+                expr: 'gotk_reconcile_condition{type="Ready", kind="HelmRelease"} == 0'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Flux HelmRelease {{ $labels.name }} not ready for 15m"
+                  description: >-
+                    HelmRelease {{ $labels.name }} in {{ $labels.namespace }} has not been
+                    Ready for over 15 minutes.
+              - alert: FluxReconcileErrors
+                expr: 'sum by (controller) (rate(controller_runtime_reconcile_errors_total{namespace="flux-system"}[10m])) > 0'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Flux controller {{ $labels.controller }} has sustained errors"
+                  description: >-
+                    The {{ $labels.controller }} controller in flux-system has been producing
+                    reconciliation errors for 15 minutes. Check its logs.
 
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |

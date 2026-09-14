@@ -1,0 +1,226 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "name": "Annotations & Alerts",
+        "type": "dashboard",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)"
+      },
+      {
+        "name": "Infra events",
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "target": { "type": "tags", "matchAny": false, "tags": ["infra-event"], "limit": 100 }
+      }
+    ]
+  },
+  "title": "Flux / Health",
+  "uid": "flux-health",
+  "tags": ["flux"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Not-ready resources",
+      "description": "Total number of Flux resources whose Ready condition is currently False. Green at 0, red at 1 or more.",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "area", "colorMode": "background" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "count(gotk_reconcile_condition{type=\"Ready\"} == 0) or vector(0)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Kustomization status",
+      "description": "Current Ready status per Kustomization, as an instant query.",
+      "gridPos": { "h": 8, "w": 9, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Not Ready", "color": "red", "index": 0 },
+                "1": { "text": "Ready", "color": "green", "index": 1 }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background" } }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [
+        { "id": "filterFieldsByName", "options": { "include": { "names": ["name", "Value"] } } },
+        { "id": "organize", "options": { "renameByName": { "name": "Name", "Value": "Status" } } }
+      ],
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "gotk_reconcile_condition{type=\"Ready\", kind=\"Kustomization\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "HelmRelease status",
+      "description": "Current Ready status per HelmRelease, as an instant query.",
+      "gridPos": { "h": 8, "w": 9, "x": 15, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Not Ready", "color": "red", "index": 0 },
+                "1": { "text": "Ready", "color": "green", "index": 1 }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background" } }]
+          }
+        ]
+      },
+      "options": { "showHeader": true },
+      "transformations": [
+        { "id": "filterFieldsByName", "options": { "include": { "names": ["name", "Value"] } } },
+        { "id": "organize", "options": { "renameByName": { "name": "Name", "Value": "Status" } } }
+      ],
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "gotk_reconcile_condition{type=\"Ready\", kind=\"HelmRelease\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kustomization readiness",
+      "description": "Ready status over time per Kustomization. 1 = Ready, 0 = Not Ready.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 10, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "gotk_reconcile_condition{type=\"Ready\", kind=\"Kustomization\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HelmRelease readiness",
+      "description": "Ready status over time per HelmRelease. 1 = Ready, 0 = Not Ready.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 10, "lineWidth": 2 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "gotk_reconcile_condition{type=\"Ready\", kind=\"HelmRelease\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconciliation duration",
+      "description": "Average reconciliation duration per kind and name.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["max", "lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "rate(gotk_reconcile_duration_seconds_sum[5m]) / rate(gotk_reconcile_duration_seconds_count[5m])",
+          "legendFormat": "{{kind}}/{{name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconciliation errors",
+      "description": "Reconciliation error rate per controller.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+          "expr": "sum by (controller) (rate(controller_runtime_reconcile_errors_total{namespace=\"flux-system\"}[5m]))",
+          "legendFormat": "{{controller}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
