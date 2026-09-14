@@ -159,11 +159,11 @@ spec:
             # Provider API keys (ANTHROPIC_API_KEY, OPENROUTER_API_KEY) are read from the
             # environment by OpenClaw's provider plugins, not substituted in the config.
             #
-            # olya-env also holds telegram_bot_token and tinkerbell_api_token. Neither
-            # is delivered as an env var: the bot token is a file (see the `items`
-            # projection below), and the tinkerbell token still has no consumer.
-            # grafana_service_account_token IS delivered below, for the mcp-grafana
-            # MCP server configured in openclaw.json.
+            # olya-env also holds telegram_bot_token, which is NOT delivered as an env
+            # var: it is a file (see the `items` projection below).
+            # grafana_service_account_token and tinkerbell_api_token ARE delivered
+            # below, for the mcp-grafana and tinkerbell MCP servers configured in
+            # openclaw.json.
             - name: OPENCLAW_GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -192,6 +192,11 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: grafana_service_account_token
+            - name: TINKERBELL_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: tinkerbell_api_token
           ports:
             - name: http
               containerPort: 18789
