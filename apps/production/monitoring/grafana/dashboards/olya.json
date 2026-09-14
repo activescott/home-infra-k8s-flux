@@ -40,7 +40,7 @@
         }
       },
       "options": { "colorMode": "background", "graphMode": "none" },
-      "targets": [{ "expr": "time() - kube_pod_start_time{namespace=\"olya\", pod=~\"olya.*\"}", "refId": "A" }]
+      "targets": [{ "expr": "time() - kube_pod_start_time{namespace=\"olya\", pod=~\"olya.*\"}", "legendFormat": "{{pod}}", "instant": true, "refId": "A" }]
     },
     {
       "type": "stat",
@@ -74,20 +74,36 @@
         }
       },
       "options": { "colorMode": "background", "graphMode": "none" },
-      "targets": [{ "expr": "kube_pod_status_phase{namespace=\"olya\", pod=~\"olya.*\", phase=\"Running\"}", "refId": "A" }]
+      "targets": [{ "expr": "kube_pod_status_phase{namespace=\"olya\", pod=~\"olya.*\", phase=\"Running\"}", "legendFormat": "{{pod}}", "instant": true, "refId": "A" }]
     },
     {
-      "type": "stat",
-      "title": "Current image tag",
+      "type": "state-timeline",
+      "title": "Deployed version",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 85, "lineWidth": 0 },
+          "mappings": [],
+          "unit": "none"
         }
       },
-      "options": { "colorMode": "background", "graphMode": "none", "textMode": "name" },
-      "targets": [{ "expr": "kube_pod_container_info{namespace=\"olya\", container=\"olya\"}", "legendFormat": "{{image}}", "refId": "A" }]
+      "options": {
+        "alignValue": "center",
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "mergeValues": true,
+        "rowHeight": 0.9,
+        "showValue": "auto",
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [{
+        "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+        "expr": "count by (version) (label_replace(kube_pod_container_info{namespace=\"olya\", container=\"olya\"}, \"version\", \"$1\", \"image_spec\", \".*:(.*)\"))",
+        "legendFormat": "{{version}}",
+        "range": true,
+        "refId": "A"
+      }]
     },
     {
       "type": "timeseries",
@@ -155,11 +171,11 @@
     },
     {
       "type": "text",
-      "title": "Application metrics (not yet wired)",
+      "title": "Application metrics",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
       "options": {
         "mode": "markdown",
-        "content": "The OpenClaw diagnostics-prometheus plugin exposes application metrics (sessions, model calls, tokens, cost, tool executions) at `/api/diagnostics/prometheus` but Prometheus is not yet configured to scrape them.\n\nSee [issue #39](https://github.com/activescott/activeassistant/issues/39) for the scrape job setup, which will add panels for:\n- Session counts and run history\n- Model usage, tokens, and cost\n- Tool execution stats\n- Automation status and history"
+        "content": "Prometheus is now scraping OpenClaw metrics from `/api/diagnostics/prometheus` (scrape job `openclaw`, 30s interval). Application-level panels (sessions, model usage, tokens, cost, tool executions) will be added here as the metric names stabilize."
       }
     }
   ]
