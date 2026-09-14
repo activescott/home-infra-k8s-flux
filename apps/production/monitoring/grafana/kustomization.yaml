@@ -72,6 +72,14 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-flux
+    namespace: monitoring
+    files:
+      - dashboards/flux.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
   - name: grafana-dashboard-olya
     namespace: monitoring
     files:
