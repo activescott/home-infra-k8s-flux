@@ -26,3 +26,11 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.stalwart-metrics.encrypted
+  # Bearer token for the openclaw scrape job, same reasoning as above. Same value as
+  # openclaw_gateway_token in apps/production/olya/.env.secret.olya.encrypted, which the
+  # gateway reads as OPENCLAW_GATEWAY_TOKEN.
+  - name: openclaw-metrics-auth
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.openclaw-metrics.encrypted

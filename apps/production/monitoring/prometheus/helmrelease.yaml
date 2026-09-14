@@ -46,6 +46,12 @@ spec:
           mountPath: /etc/prometheus/secrets
           secretName: stalwart-metrics-auth
           readOnly: true
+        # Its own subdirectory: a second mount at /etc/prometheus/secrets would
+        # shadow the stalwart one rather than merge with it.
+        - name: openclaw-metrics-auth
+          mountPath: /etc/prometheus/secrets/openclaw
+          secretName: openclaw-metrics-auth
+          readOnly: true
 
       # Ingress managed separately via raw K8s Ingress + cert-manager Certificate
       ingress:
@@ -1614,6 +1620,18 @@ spec:
       # crossplane-cloudflare-api alerts below rather than failing visibly.
       # Confirmed with:
       #   upjet_resource_ext_api_duration_count -> job="kubernetes-pods"
+      # OpenClaw (Olya) gateway metrics. The endpoint requires operator.read auth
+      # via a bearer token — the same OPENCLAW_GATEWAY_TOKEN the gateway itself
+      # uses. File-based rather than inline because extraScrapeConfigs renders
+      # into a ConfigMap, not a Secret.
+      - job_name: "openclaw"
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        metrics_path: "/api/diagnostics/prometheus"
+        authorization:
+          credentials_file: /etc/prometheus/secrets/openclaw/openclaw_gateway_token
+        static_configs:
+          - targets: ["olya.olya.svc.cluster.local:18789"]
       - job_name: "prometheus self scrape"
         static_configs:
           - targets: ["localhost:9090"]
