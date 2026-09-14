@@ -56,6 +56,13 @@ spec:
     #   curl -H "grafana-version: <grafana-ver>" -H "grafana-os: linux" \
     #     -H "grafana-arch: amd64" \
     #     https://grafana.com/api/plugins/<plugin-id>/versions | jq -r .items[0].version
+    # shadowBundledPlugins hides the read-only bundled plugins directory shipped
+    # in the distroless image. The preinstaller downloads every extracted-from-core
+    # datasource plugin into the writable PVC on first start; the PVC copy persists.
+    shadowBundledPlugins: true
+    # Ensure loki is in the preinstall list (it was extracted from core in Grafana 13).
+    plugins:
+      - loki
     grafana.ini:
       plugins:
         preinstall: "grafana-lokiexplore-app@2.5.2,grafana-metricsdrilldown-app@2.5.1,grafana-exploretraces-app@2.2.0,grafana-pyroscope-app@2.3.0"
