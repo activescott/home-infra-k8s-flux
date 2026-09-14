@@ -158,13 +158,3 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
-
-    # Tinkerbell MCP. The web_search and web_fetch tools are hosted by the
-    # tinkerbell web-app in tinkerbell-prod namespace.
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: tinkerbell-prod
-      ports:
-        - port: 3100
-          protocol: TCP
