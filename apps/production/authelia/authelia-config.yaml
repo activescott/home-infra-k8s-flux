@@ -34,6 +34,8 @@ data:
     # regenerating the hash and re-encrypting the file (see authelia-users.secret.template).
     # https://www.authelia.com/configuration/first-factor/file/
     authentication_backend:
+      password_reset:
+        disable: true
       file:
         path: /config/users.yml
 
@@ -58,12 +60,15 @@ data:
           name: authelia_session
           expiration: 1h
           inactivity: 5m
+          remember_me: -1
 
     # https://www.authelia.com/configuration/security/regulation/
     regulation:
       max_retries: 3
       find_time: 2m
       ban_time: 15m
+      modes:
+        - ip
 
     # https://www.authelia.com/configuration/storage/sqlite/
     storage:

@@ -20,9 +20,9 @@ spec:
 # yet; switching olya.activescott.com over to it is a separate change.
 #
 # Traefik resolves a cross-namespace middleware by the annotation value
-# `authelia-authelia-forwardauth@kubernetescrd`, and nothing validates that string: a typo drops
-# the middleware silently rather than erroring, which fails open. Verify after attaching it that
-# an unauthenticated request actually redirects here.
+# `authelia-authelia-forwardauth@kubernetescrd`. A typo in that string fails closed: Traefik
+# drops the router entirely (404), it does not pass traffic without the middleware. Still worth
+# verifying after attaching that an unauthenticated request redirects here.
 #
 # trustForwardHeader is safe only because Traefik is the edge and sets X-Forwarded-* itself,
 # overwriting whatever the client sent.
