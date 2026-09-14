@@ -64,3 +64,10 @@ resources:
   # Created 2026-09-12. Enabled 2026-09-12, once that directory, the published image tag, and
   # both DNS views were in place. See apps/production/olya/README.md.
   - ./olya
+  # Authelia, the login portal at auth.activescott.com. Deliberately commented out: its
+  # kustomization generates two Secrets from .encrypted files that do not exist yet, and
+  # `kustomize build apps/production` fails on a missing generator source, which would take
+  # every other app in this list down with it. Uncomment once
+  # apps/production/authelia/{.env.secret.authelia,authelia-users.secret}.encrypted are
+  # committed and /mnt/thedatapool/app-data/authelia/prod/data exists owned by 2000:2000.
+  # - ./authelia

@@ -1,0 +1,70 @@
+# Authelia's whole configuration except the three secrets, which arrive as AUTHELIA_* env vars
+# from the authelia-secrets Secret (see authelia-deployment.yaml). Authelia rejects unknown keys
+# at startup rather than ignoring them, so a typo here is a CrashLoopBackOff, not a silent
+# default.
+#
+# This is a plain ConfigMap, not a configMapGenerator, so its name has no hash suffix and
+# editing it does NOT roll the Deployment. The kubelet refreshes the projected file within about
+# a minute and Authelia does not re-read it, so after changing anything below:
+#
+#   kubectl --context nas rollout restart -n authelia deploy/authelia
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-config
+  namespace: authelia
+data:
+  configuration.yml: |
+    theme: dark
+
+    server:
+      address: 'tcp://:9091'
+
+    log:
+      level: info
+
+    totp:
+      issuer: activescott.com
+
+    # users.yml is the authelia-users Secret, projected into the same /config directory. It is
+    # read-only, so password self-service would fail at the write; enrollment is done by
+    # regenerating the hash and re-encrypting the file (see authelia-users.secret.template).
+    authentication_backend:
+      file:
+        path: /config/users.yml
+
+    # Deny by default: a host added to the ForwardAuth middleware without a matching rule here
+    # is locked out rather than let through.
+    access_control:
+      default_policy: deny
+      rules:
+        - domain: '*.activescott.com'
+          subject: 'user:scott'
+          policy: two_factor
+
+    # One cookie covering activescott.com and everything under it, which is what lets a login at
+    # auth.activescott.com carry over to olya.activescott.com. No leading period: Authelia 4.38+
+    # rejects one, and the Domain attribute already matches subdomains without it.
+    session:
+      cookies:
+        - domain: activescott.com
+          authelia_url: https://auth.activescott.com
+          name: authelia_session
+          expiration: 1h
+          inactivity: 5m
+
+    regulation:
+      max_retries: 3
+      find_time: 2m
+      ban_time: 5m
+
+    storage:
+      local:
+        path: /data/db.sqlite3
+
+    # Filesystem notifier rather than SMTP: the only notification that matters right now is the
+    # TOTP enrollment link, and reading it out of the file avoids wiring up mail for one message.
+    #   kubectl --context nas exec -n authelia deploy/authelia -- cat /data/notification.txt
+    notifier:
+      filesystem:
+        filename: /data/notification.txt

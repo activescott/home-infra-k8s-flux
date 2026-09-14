@@ -1,0 +1,46 @@
+# SQLite database (TOTP device registrations, session metadata, the regulation ban table) plus
+# the filesystem notifier's notification.txt. Small, but it is the only copy of the registered
+# TOTP devices: lose it and every user re-enrolls their authenticator.
+#
+# The path sits under /mnt/thedatapool/app-data/, which is what puts it in the backup set: the
+# B2 cloud sync task's include list is an allowlist and /app-data/** is already on it. ZFS
+# snapshots and sanoid cover the same tree.
+#
+# THE DIRECTORY MUST EXIST AND BE OWNED BY 2000:2000 BEFORE THIS IS APPLIED. hostPath volumes
+# are not chowned by the kubelet, and 2000 is the uid the Deployment's securityContext pins (the
+# image itself has no USER, so the uid is ours to choose). On the NAS:
+#
+#   sudo mkdir -p /mnt/thedatapool/app-data/authelia/prod/data
+#   sudo chown -R 2000:2000 /mnt/thedatapool/app-data/authelia/prod/data
+#
+# Retain, so deleting the PVC leaves the data behind.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: authelia-prod-pv-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/app-data/authelia/prod/data
+---
+# Pinned to the PV above by volumeName rather than letting local-path provision one, so the data
+# lands on the ZFS pool (and therefore in the B2 backup set) rather than in the k3s data dir on
+# the scratch NVMe.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: authelia-data
+  namespace: authelia
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  volumeName: authelia-prod-pv-data
+  resources:
+    requests:
+      storage: 1Gi
