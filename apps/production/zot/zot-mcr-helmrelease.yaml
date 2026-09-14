@@ -9,7 +9,7 @@ spec:
     spec:
       chart: zot
       # See "Upgrading" in README.md.
-      version: "0.1.122" # appVersion v2.1.18
+      version: "0.1.124" # appVersion v2.1.18
       sourceRef:
         kind: HelmRepository
         name: zot
