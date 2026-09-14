@@ -56,9 +56,11 @@ spec:
     #   curl -H "grafana-version: <grafana-ver>" -H "grafana-os: linux" \
     #     -H "grafana-arch: amd64" \
     #     https://grafana.com/api/plugins/<plugin-id>/versions | jq -r .items[0].version
+    # Grafana 13 also extracted the Loki datasource from core, alongside
+    # elasticsearch and mysql, so it needs an explicit pin too.
     grafana.ini:
       plugins:
-        preinstall: "grafana-lokiexplore-app@2.5.2,grafana-metricsdrilldown-app@2.5.1,grafana-exploretraces-app@2.2.0,grafana-pyroscope-app@2.3.0"
+        preinstall: "grafana-lokiexplore-app@2.5.2,grafana-metricsdrilldown-app@2.5.1,grafana-exploretraces-app@2.2.0,grafana-pyroscope-app@2.3.0,loki@13.2.0"
         # These two datasource plugins ship inside the image, under
         # /usr/share/grafana/data/plugins-bundled, and are also in Grafana's
         # default preinstall list. Whenever the catalog holds a newer version
