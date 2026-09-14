@@ -10,6 +10,7 @@ interface ImageRepository {
   name: string;
   namespace: string;
   image: string;
+  annotations?: Record<string, string>;
 }
 
 interface GitHubRepo {
@@ -187,6 +188,7 @@ class UpdateFluxImageScanningWebhooks {
       name: item.metadata.name,
       namespace: item.metadata.namespace,
       image: item.spec.image,
+      annotations: item.metadata.annotations,
     }));
 
     console.log(`Found ${imageRepos.length} ImageRepositories:`);
@@ -242,7 +244,22 @@ class UpdateFluxImageScanningWebhooks {
     const githubRepos = new Map<string, GitHubRepo>();
 
     for (const imageRepo of imageRepos) {
-      const parsed = this.parseImageToGitHub(imageRepo.image);
+      let parsed: { owner: string; repo: string } | null = null;
+
+      // Check for explicit source-repo annotation first
+      const sourceRepo = imageRepo.annotations?.['activescott.com/source-repo'];
+      if (sourceRepo) {
+        const parts = sourceRepo.split('/');
+        if (parts.length === 2 && parts[0] && parts[1]) {
+          parsed = { owner: parts[0], repo: parts[1] };
+        }
+      }
+
+      // Fall back to deriving from image name
+      if (!parsed) {
+        parsed = this.parseImageToGitHub(imageRepo.image);
+      }
+
       if (!parsed) {
         console.log(`⚠️  Skipping non-GHCR image: ${imageRepo.image}`);
         continue;
