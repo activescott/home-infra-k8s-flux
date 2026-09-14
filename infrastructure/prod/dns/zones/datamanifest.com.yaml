@@ -46,6 +46,11 @@ spec:
       adopt: 3920d492b7e4a081d91afe11c72b8f3c
       ttl: 1
       content: '"v=spf1 include:_spf.mx.cloudflare.net ~all"'
+    - key: apex-sedo-verification
+      name: datamanifest.com
+      type: TXT
+      content: a0bc85eaa82517101cbd12886f579defe9c11ed6
+      comment: for sedo.com
     - key: cf2024-1-domainkey-txt
       name: cf2024-1._domainkey.datamanifest.com
       type: TXT
