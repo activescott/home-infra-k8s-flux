@@ -8,7 +8,7 @@ spec:
   chart:
     spec:
       chart: grafana
-      version: "13.2.1"
+      version: "13.2.2"
       sourceRef:
         kind: HelmRepository
         name: grafana-community
@@ -82,11 +82,13 @@ spec:
         apiVersion: 1
         datasources:
           - name: Prometheus
+            uid: PBFA97CFB590B2093
             type: prometheus
             url: http://prometheus-server.monitoring.svc:80
             access: proxy
             isDefault: true
           - name: Loki
+            uid: P8E80F9AEF21F6940
             type: loki
             url: http://loki.monitoring.svc:3100
             access: proxy
