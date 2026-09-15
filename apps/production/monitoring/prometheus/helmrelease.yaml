@@ -1191,6 +1191,14 @@ spec:
                 #
                 # The gauge carries the level, so this fires on the first bad run, and the
                 # next clean run sets it to 0 and resolves without anyone touching it.
+                #
+                # sum() rather than max() because the gauge is one series per CronJob pod
+                # (the pod name changes every run), so a run reporting 2 bad accounts must
+                # not be read as 2 separate series of 1. The series are expired after 26h
+                # in alloy/helmrelease.yaml specifically so this sum cannot accumulate
+                # older runs — see the note there. Consequence worth knowing when
+                # verifying a fix: clearing takes up to ~2h, because the previous bad run
+                # is still counted until its series expires.
                 expr: 'sum(loki_process_custom_stalwart_sieve_unmanaged_accounts) > 0'
                 for: 0m
                 labels:
