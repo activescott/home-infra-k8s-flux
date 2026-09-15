@@ -12,56 +12,81 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # A flipped default policy fails open, so refuse anything but deny.
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s 5.8.1
+          sudo mv kustomize /usr/local/bin/
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.2.4
+
+      - name: Render manifests
+        run: |
+          kustomize build apps/production --enable-helm > /tmp/apps.yaml
+          kustomize build infrastructure/prod/configs --enable-helm > /tmp/infra.yaml
+
       - name: Authelia default_policy must be deny
         run: |
-          if ! grep -q 'default_policy: deny' apps/production/authelia/authelia-config.yaml; then
-            echo "FAIL: Authelia default_policy is not 'deny'"
+          policy=$(yq eval-all 'select(.kind == "ConfigMap" and .metadata.name == "authelia-config") | .data["configuration.yml"]' /tmp/apps.yaml | yq '.access_control.default_policy')
+          if [ "$policy" != "deny" ]; then
+            echo "FAIL: Authelia default_policy is '$policy', expected 'deny'"
             exit 1
           fi
 
-      # ClusterIP preserves source IP for Traefik's whitelist middlewares.
       - name: Traefik externalTrafficPolicy must be Local
         run: |
-          if ! grep -q 'externalTrafficPolicy: Local' infrastructure/prod/configs/traefik-config.yaml; then
-            echo "FAIL: Traefik externalTrafficPolicy is not 'Local'"
+          etp=$(yq eval-all 'select(.kind == "HelmChartConfig" and .metadata.name == "traefik") | .spec.valuesContent' /tmp/infra.yaml | yq '.service.spec.externalTrafficPolicy')
+          if [ "$etp" != "Local" ]; then
+            echo "FAIL: Traefik externalTrafficPolicy is '$etp', expected 'Local'"
             exit 1
           fi
 
-      # Only Authelia's ForwardAuth middleware may trust X-Forwarded-* headers.
       - name: trustForwardHeader only in Authelia ForwardAuth
         run: |
-          offenders=$(grep -rl 'trustForwardHeader: true' apps/ infrastructure/ | grep -v '^apps/production/authelia/authelia-ingress.yaml$' || true)
-          if [ -n "$offenders" ]; then
-            echo "FAIL: trustForwardHeader found outside authelia-ingress.yaml:"
-            echo "$offenders"
+          count=$(yq eval-all 'select(.kind == "Middleware" and .spec.forwardAuth.trustForwardHeader == true) | .metadata.name + "/" + .metadata.namespace' /tmp/apps.yaml /tmp/infra.yaml | wc -l)
+          names=$(yq eval-all 'select(.kind == "Middleware" and .spec.forwardAuth.trustForwardHeader == true) | .metadata.namespace + "/" + .metadata.name' /tmp/apps.yaml /tmp/infra.yaml)
+          if [ "$count" -ne 1 ] || [ "$names" != "authelia/authelia-forwardauth" ]; then
+            echo "FAIL: trustForwardHeader found on unexpected middleware(s): $names"
             exit 1
           fi
 
       - name: Authelia container hardening
         run: |
-          file=apps/production/authelia/authelia-deployment.yaml
+          deploy=$(yq eval-all 'select(.kind == "Deployment" and .metadata.name == "authelia" and .metadata.namespace == "authelia")' /tmp/apps.yaml)
           fail=0
-          for pattern in 'runAsNonRoot: true' 'allowPrivilegeEscalation: false' 'automountServiceAccountToken: false'; do
-            if ! grep -q "$pattern" "$file"; then
-              echo "FAIL: '$pattern' missing from $file"
+
+          asat=$(echo "$deploy" | yq '.spec.template.spec.automountServiceAccountToken')
+          if [ "$asat" != "false" ]; then
+            echo "FAIL: automountServiceAccountToken is '$asat', expected 'false'"
+            fail=1
+          fi
+
+          sc=$(echo "$deploy" | yq '.spec.template.spec.containers[0].securityContext')
+          for check in \
+            "runAsNonRoot=true" \
+            "allowPrivilegeEscalation=false"; do
+            key=${check%%=*}
+            expected=${check#*=}
+            actual=$(echo "$sc" | yq ".$key")
+            if [ "$actual" != "$expected" ]; then
+              echo "FAIL: container securityContext.$key is '$actual', expected '$expected'"
               fail=1
             fi
           done
-          if ! grep -A2 'drop:' "$file" | grep -q '\- ALL'; then
-            echo "FAIL: 'drop: ALL' capabilities missing from $file"
+
+          caps=$(echo "$sc" | yq '.capabilities.drop[]')
+          if ! echo "$caps" | grep -q 'ALL'; then
+            echo "FAIL: capabilities.drop does not include ALL"
             fail=1
           fi
+
           exit $fail
 
       - name: Authelia NetworkPolicy denies by default
         run: |
-          file=apps/production/authelia/authelia-networkpolicy.yaml
-          if [ ! -f "$file" ]; then
-            echo "FAIL: $file does not exist"
-            exit 1
-          fi
-          if ! grep -q 'Ingress' "$file" || ! grep -q 'Egress' "$file"; then
-            echo "FAIL: $file must list Ingress and Egress in policyTypes"
+          nps=$(yq eval-all 'select(.kind == "NetworkPolicy" and .metadata.namespace == "authelia" and .metadata.name == "authelia") | .spec.policyTypes[]' /tmp/apps.yaml)
+          if ! echo "$nps" | grep -q 'Ingress' || ! echo "$nps" | grep -q 'Egress'; then
+            echo "FAIL: Authelia NetworkPolicy must list both Ingress and Egress policyTypes, found: $nps"
             exit 1
           fi
