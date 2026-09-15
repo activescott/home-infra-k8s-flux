@@ -44,6 +44,13 @@ const REPO_PATH_FIELD = "repo_path"
 const DEFAULT_VAULT = process.env.OP_VAULT ?? "Private"
 const AGE_KEY_FILENAME = "home-infra-private.agekey"
 
+// All three are surrogate pairs: same UTF-16 length and same terminal width, so padding
+// a status column stays aligned whichever one is used. Single-code-unit marks like ✅
+// count as 1 but render as 2 columns, which skews every line after them.
+const OK = "🟢"
+const WARN = "🟡"
+const BAD = "🔴"
+
 const EXCLUDED_DIRS = new Set([".git", "node_modules"])
 const EXCLUDED_SUFFIXES = [".encrypted", ".example", ".template"]
 
@@ -121,6 +128,8 @@ interface PushEntry {
   sourcePath: string
   localHash: string
   status: "new" | "changed" | "unchanged"
+  /** matched 1Password only after blank lines were ignored on both sides */
+  matchedIgnoringBlankLines?: boolean
 }
 
 /** Thrown instead of calling process.exit so temp-file cleanup in `finally` still runs. */
@@ -204,11 +213,21 @@ function requireSops(repoRoot: string): string {
   if (version.status !== 0) {
     fail(`sops --version failed:\n${version.stderr.trim()}`)
   }
+  // An already-exported SOPS_AGE_KEY_FILE wins, so the key can live outside the tree being
+  // scanned — otherwise testing against a scratch repo would mean copying the private key
+  // into it.
+  const fromEnv = process.env.SOPS_AGE_KEY_FILE
+  if (fromEnv) {
+    if (!existsSync(fromEnv)) {
+      fail(`SOPS_AGE_KEY_FILE points at ${fromEnv}, which does not exist`)
+    }
+    return fromEnv
+  }
   const ageKeyPath = join(repoRoot, AGE_KEY_FILENAME)
   if (!existsSync(ageKeyPath)) {
     fail(
-      `age key not found at ${ageKeyPath}; it is required to decrypt secrets whose ` +
-        `plaintext is missing locally`,
+      `age key not found at ${ageKeyPath} and SOPS_AGE_KEY_FILE is unset; one is required ` +
+        `to decrypt secrets whose plaintext is missing locally`,
     )
   }
   return ageKeyPath
@@ -330,11 +349,47 @@ function escapeFieldName(name: string): string {
   if (name.includes("[") || name.includes("]")) {
     fail(`file name "${name}" contains [ or ], which op assignment statements cannot express`)
   }
+  // An assignment is a bare argv token, so a leading dash is parsed by op as a flag. No
+  // shell is involved, so this is argument injection rather than command injection, but a
+  // repo file named "-foo" would still reach op's flag parser.
+  if (name.startsWith("-")) {
+    fail(`file name "${name}" starts with "-", which op would parse as a flag`)
+  }
   return name.replace(/([\\.=])/g, "\\$1")
 }
 
+function sha256(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex")
+}
+
 function sha256File(path: string): string {
-  return createHash("sha256").update(readFileSync(path)).digest("hex")
+  return sha256(readFileSync(path))
+}
+
+/**
+ * Drops blank lines. A sops dotenv round-trip is byte-identical to the original except
+ * that blank lines are discarded — comments, quoting and values all survive. Once a file's
+ * local plaintext is deleted, the only thing left to compare against 1Password is that
+ * round-trip, so without this every dotenv file that had a blank line reports `changed`
+ * forever and each push overwrites the pristine stored original with the reconstruction.
+ */
+function stripBlankLines(bytes: Buffer): Buffer {
+  const kept = bytes
+    .toString("utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+  return Buffer.from(kept.join("\n"), "utf8")
+}
+
+interface ContentHashes {
+  /** sha256 of the bytes as-is */
+  raw: string
+  /** sha256 with blank lines removed, for comparing against a sops dotenv round-trip */
+  normalized: string
+}
+
+function hashesOf(bytes: Buffer): ContentHashes {
+  return { raw: sha256(bytes), normalized: sha256(stripBlankLines(bytes)) }
 }
 
 function sopsFormat(encryptedPath: string, label: string): "dotenv" | "binary" | "json" {
@@ -346,7 +401,12 @@ function sopsFormat(encryptedPath: string, label: string): "dotenv" | "binary" |
   return keys.length === 1 && keys[0] === "data" ? "binary" : "json"
 }
 
-function decryptTo(file: SecretFile, outPath: string, ageKeyPath: string): void {
+/** Decrypts to `outPath` and reports which sops format was used. */
+function decryptTo(
+  file: SecretFile,
+  outPath: string,
+  ageKeyPath: string,
+): "dotenv" | "binary" | "json" {
   const encryptedPath = `${file.absPath}.encrypted`
   const format = sopsFormat(encryptedPath, file.label)
   const result = run(
@@ -358,6 +418,7 @@ function decryptTo(file: SecretFile, outPath: string, ageKeyPath: string): void 
     fail(`sops decrypt failed for ${file.relPath}.encrypted:\n${result.stderr.trim()}`)
   }
   writeFileSync(outPath, result.stdout, { mode: 0o600 })
+  return format
 }
 
 function listItemsByTitle(vault: string): Map<string, string> {
@@ -381,17 +442,22 @@ function attachmentFor(item: OpItem, label: string): OpFile | undefined {
 }
 
 /**
- * Downloads an attachment to `outPath`, returns its sha256, and always removes outPath —
+ * Downloads an attachment to `outPath`, returns its hashes, and always removes outPath —
  * a second plaintext copy on disk must not outlive the comparison it exists for.
  */
-function hashAttachment(vault: string, itemId: string, label: string, outPath: string): string {
+function hashAttachment(
+  vault: string,
+  itemId: string,
+  label: string,
+  outPath: string,
+): ContentHashes {
   try {
     const result = op(["read", "--out-file", outPath, `op://${vault}/${itemId}/${label}`])
     if (result.status !== 0) {
       fail(`op read of "${label}" from item ${itemId} failed:\n${result.stderr.trim()}`)
     }
     chmodSync(outPath, 0o600)
-    return sha256File(outPath)
+    return hashesOf(readFileSync(outPath))
   } finally {
     if (existsSync(outPath)) unlinkSync(outPath)
   }
@@ -507,27 +573,46 @@ function commandList(options: Options): void {
   const groups = selectGroups(discover(options.repoRoot), options.only)
   const titles = options.offline ? new Map<string, string>() : listItemsByTitle(options.vault)
 
+  // Column widths come from what is actually being printed, so a --only run of one short
+  // group doesn't inherit the whole repo's longest name.
+  const titleWidth = Math.max(...groups.map((group) => group.title.length))
+  const dirWidth = Math.max(...groups.map((group) => group.relDir.length + 2))
+  const labelWidth = Math.max(
+    ...groups.flatMap((group) => group.files.map((file) => file.label.length)),
+  )
+
   let fileCount = 0
   let decryptCount = 0
+  let missingCount = 0
   for (const group of groups) {
     const itemId = titles.get(group.title)
     const item = itemId ? getItem(itemId, options.vault) : undefined
     const itemState = options.offline ? "" : `  ${item ? "item exists" : "NO ITEM"}`
-    console.log(`\n${group.title}  [${group.relDir}]${itemState}`)
+    const dirColumn = `[${group.relDir}]`.padEnd(dirWidth)
+    console.log(`\n${group.title.padEnd(titleWidth)}  ${dirColumn}${itemState}`.trimEnd())
     for (const file of group.files) {
       fileCount += 1
       if (file.needsDecrypt) decryptCount += 1
       const source = file.needsDecrypt ? "sops-decrypt" : "local plaintext"
+      const attachment = item ? attachmentFor(item, file.label) : undefined
+      if (!options.offline && !attachment) missingCount += 1
       const attached = options.offline
         ? ""
-        : `${item && attachmentFor(item, file.label) ? "attached" : "missing"} `.padEnd(10)
-      console.log(`  ${file.label.padEnd(44)} ${attached}${source}`)
+        : `${attachment ? OK : WARN} ${attachment ? "attached" : "missing"} `.padEnd(13)
+      console.log(`  ${attached}${file.label.padEnd(labelWidth)}  ${source}`)
     }
   }
   console.log(
     `\n${fileCount} secret file(s) in ${groups.length} group(s); ` +
       `${decryptCount} need sops decryption (no local plaintext)`,
   )
+  if (!options.offline) {
+    console.log(
+      missingCount === 0
+        ? `${OK} every file is backed up in 1Password ${options.vault} vault`
+        : `${WARN} ${missingCount} file(s) not yet in 1Password ${options.vault} vault — run push`,
+    )
+  }
 }
 
 /** True when --delete-after-push is allowed to remove this file's local plaintext. */
@@ -546,30 +631,39 @@ function classify(
   const entries: PushEntry[] = []
   for (const file of group.files) {
     let sourcePath = file.absPath
+    let decryptFormat: "dotenv" | "binary" | "json" | undefined
     if (file.needsDecrypt) {
       sourcePath = join(tmpRoot, `decrypted-${group.name}-${file.label}`)
-      decryptTo(file, sourcePath, ageKeyPath)
+      decryptFormat = decryptTo(file, sourcePath, ageKeyPath)
     } else if (!existsSync(sourcePath)) {
       fail(`${file.relPath} disappeared mid-run`)
     }
-    const localHash = sha256File(sourcePath)
+    const local = hashesOf(readFileSync(sourcePath))
 
     const attached = item ? attachmentFor(item, file.label) : undefined
     if (!item || !attached) {
-      entries.push({ file, sourcePath, localHash, status: "new" })
+      entries.push({ file, sourcePath, localHash: local.raw, status: "new" })
       continue
     }
-    const remoteHash = hashAttachment(
+    const remote = hashAttachment(
       options.vault,
       item.id,
       file.label,
       join(tmpRoot, `readback-${group.name}-${file.label}`),
     )
+    // The blank-line tolerance is only sound when the local side came out of sops as
+    // dotenv. For a real local plaintext, or a binary/json decrypt, a byte difference is
+    // a real difference and must still count as changed.
+    const blankLinesOnly =
+      decryptFormat === "dotenv" &&
+      remote.raw !== local.raw &&
+      remote.normalized === local.normalized
     entries.push({
       file,
       sourcePath,
-      localHash,
-      status: remoteHash === localHash ? "unchanged" : "changed",
+      localHash: local.raw,
+      status: remote.raw === local.raw || blankLinesOnly ? "unchanged" : "changed",
+      matchedIgnoringBlankLines: blankLinesOnly,
     })
   }
   return entries
@@ -582,67 +676,11 @@ function commandPush(options: Options, tmpRoot: string): void {
   const ageKeyPath = needsSops ? requireSops(options.repoRoot) : ""
   const titles = listItemsByTitle(options.vault)
 
-  const counts = { unchanged: 0, changed: 0, uploaded: 0, deleted: 0 }
+  const counts = { unchanged: 0, changed: 0, uploaded: 0, deleted: 0, blankLineOnly: 0 }
   const wouldDelete: string[] = []
 
   for (const group of groups) {
-    const itemId = titles.get(group.title)
-    let item = itemId ? getItem(itemId, options.vault) : undefined
-    const entries = classify(group, item, options, tmpRoot, ageKeyPath)
-
-    console.log(`\n${group.title}  [${group.relDir}]`)
-    for (const entry of entries) {
-      console.log(`  ${entry.status.padEnd(9)} ${entry.file.label}`)
-    }
-
-    for (const entry of entries) {
-      if (entry.status === "unchanged") counts.unchanged += 1
-      else if (entry.status === "changed") counts.changed += 1
-      else counts.uploaded += 1
-    }
-
-    if (options.dryRun) {
-      for (const entry of entries) {
-        if (options.deleteAfterPush && !entry.file.needsDecrypt && deletable(entry.file, options)) {
-          wouldDelete.push(entry.file.relPath)
-        }
-      }
-      continue
-    }
-
-    if (!item) {
-      item = createItem(group, options.vault, entries)
-    } else {
-      ensureRepoPathField(item, options.vault, group.relDir)
-      for (const entry of entries) {
-        if (entry.status === "unchanged") continue
-        item = attachFile(item.id, options.vault, entry.file.label, entry.sourcePath)
-      }
-    }
-
-    if (!options.deleteAfterPush) continue
-    for (const entry of entries) {
-      // Nothing local to delete: the plaintext only ever existed as a temp decrypt.
-      if (entry.file.needsDecrypt) continue
-      if (!deletable(entry.file, options)) {
-        console.log(`  kept      ${entry.file.label} (age key; needs --delete-age-key)`)
-        continue
-      }
-      // Exit code 0 is not proof the bytes landed; the read-back hash is.
-      const remoteHash = hashAttachment(
-        options.vault,
-        item.id,
-        entry.file.label,
-        join(tmpRoot, `verify-${group.name}-${entry.file.label}`),
-      )
-      if (remoteHash !== entry.localHash) {
-        console.error(`  KEPT      ${entry.file.label} (read-back hash mismatch; not deleting)`)
-        continue
-      }
-      unlinkSync(entry.file.absPath)
-      counts.deleted += 1
-      console.log(`  deleted   ${entry.file.relPath}`)
-    }
+    pushGroup(group, options, tmpRoot, ageKeyPath, titles, counts, wouldDelete)
   }
 
   if (options.dryRun) {
@@ -660,6 +698,110 @@ function commandPush(options: Options, tmpRoot: string): void {
     `\n${counts.uploaded} uploaded, ${counts.changed} replaced, ${counts.unchanged} unchanged` +
       (options.deleteAfterPush ? `, ${counts.deleted} local plaintext file(s) deleted` : ""),
   )
+  if (counts.blankLineOnly > 0) {
+    console.log(
+      `${counts.blankLineOnly} of those matched only after ignoring blank lines — their ` +
+        `local plaintext is gone, so they were compared against a sops dotenv round-trip, ` +
+        `which drops blank lines. 1Password keeps the original.`,
+    )
+  }
+}
+
+interface PushCounts {
+  unchanged: number
+  changed: number
+  uploaded: number
+  deleted: number
+  blankLineOnly: number
+}
+
+/**
+ * Handles one group. Split out of commandPush so the decrypted temp files it creates can be
+ * unlinked in a `finally` as soon as the group is done, rather than accumulating in tmpRoot
+ * for the whole run — a process killed by a signal runs no cleanup at all, so the fewer
+ * plaintext copies sitting there at any moment, the better.
+ */
+function pushGroup(
+  group: SecretGroup,
+  options: Options,
+  tmpRoot: string,
+  ageKeyPath: string,
+  titles: Map<string, string>,
+  counts: PushCounts,
+  wouldDelete: string[],
+): void {
+  const itemId = titles.get(group.title)
+  let item = itemId ? getItem(itemId, options.vault) : undefined
+  const entries = classify(group, item, options, tmpRoot, ageKeyPath)
+  try {
+    console.log(`\n${group.title}  [${group.relDir}]`)
+    for (const entry of entries) {
+      const mark = entry.status === "unchanged" ? OK : WARN
+      const note = entry.matchedIgnoringBlankLines ? "  (matched ignoring blank lines)" : ""
+      console.log(`  ${mark} ${entry.status.padEnd(9)} ${entry.file.label}${note}`)
+    }
+
+    for (const entry of entries) {
+      if (entry.status === "unchanged") counts.unchanged += 1
+      else if (entry.status === "changed") counts.changed += 1
+      else counts.uploaded += 1
+      if (entry.matchedIgnoringBlankLines) counts.blankLineOnly += 1
+    }
+
+    if (options.dryRun) {
+      for (const entry of entries) {
+        if (options.deleteAfterPush && !entry.file.needsDecrypt && deletable(entry.file, options)) {
+          wouldDelete.push(entry.file.relPath)
+        }
+      }
+      return
+    }
+
+    if (!item) {
+      item = createItem(group, options.vault, entries)
+    } else {
+      ensureRepoPathField(item, options.vault, group.relDir)
+      for (const entry of entries) {
+        if (entry.status === "unchanged") continue
+        item = attachFile(item.id, options.vault, entry.file.label, entry.sourcePath)
+      }
+    }
+
+    if (!options.deleteAfterPush) return
+    for (const entry of entries) {
+      // Nothing local to delete: the plaintext only ever existed as a temp decrypt.
+      if (entry.file.needsDecrypt) continue
+      if (!deletable(entry.file, options)) {
+        console.log(`  ${WARN} kept      ${entry.file.label} (age key; needs --delete-age-key)`)
+        continue
+      }
+      // Exit code 0 is not proof the bytes landed; the read-back hash is. Compare the raw
+      // hash, never the normalized one — the blank-line tolerance must not decide a delete.
+      const remote = hashAttachment(
+        options.vault,
+        item.id,
+        entry.file.label,
+        join(tmpRoot, `verify-${group.name}-${entry.file.label}`),
+      )
+      if (remote.raw !== entry.localHash) {
+        console.error(`  ${BAD} KEPT      ${entry.file.label} (read-back hash mismatch; not deleting)`)
+        continue
+      }
+      // Re-hash immediately before unlinking: the local file was hashed back in classify(),
+      // and an edit made since then was never uploaded and would be destroyed silently.
+      if (sha256File(entry.file.absPath) !== entry.localHash) {
+        console.error(`  ${BAD} KEPT      ${entry.file.label} (changed on disk during this run)`)
+        continue
+      }
+      unlinkSync(entry.file.absPath)
+      counts.deleted += 1
+      console.log(`  ${OK} deleted   ${entry.file.relPath}`)
+    }
+  } finally {
+    for (const entry of entries) {
+      if (entry.file.needsDecrypt && existsSync(entry.sourcePath)) unlinkSync(entry.sourcePath)
+    }
+  }
 }
 
 function repoPathOf(item: OpItem): string | undefined {
@@ -703,19 +845,75 @@ function resolvePullTarget(vault: string, target: string): { item: OpItem; repoP
   )
 }
 
+/**
+ * Both of these come out of the 1Password item, not out of this repo, so neither is
+ * trusted. An item edited in the 1Password UI — a `repo_path` of `../../..`, an attachment
+ * renamed to contain a slash — would otherwise let `pull` write plaintext to an arbitrary
+ * path outside the destination directory.
+ */
+function assertSafeDestination(baseDir: string, repoPath: string, names: string[]): void {
+  const resolvedBase = resolve(baseDir)
+  const resolvedDir = resolve(resolvedBase, repoPath)
+  if (resolvedDir !== resolvedBase && !resolvedDir.startsWith(`${resolvedBase}/`)) {
+    fail(`${REPO_PATH_FIELD} "${repoPath}" resolves outside ${resolvedBase}; refusing to write`)
+  }
+  for (const name of names) {
+    if (name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+      fail(`attachment name "${name}" is not a plain file name; refusing to write`)
+    }
+  }
+}
+
+/**
+ * Refuses to write a plaintext secret to a path git would track. This repo is public, so a
+ * pull landing outside the gitignore patterns is one `git add .` away from publishing a
+ * secret. Today every destination is ignored, but that is convention spread across several
+ * .gitignore files rather than anything enforced.
+ */
+function assertGitIgnored(repoRoot: string, destPaths: string[]): void {
+  if (destPaths.length === 0) return
+  const result = spawnSync("git", ["check-ignore", "--stdin"], {
+    cwd: repoRoot,
+    input: `${destPaths.join("\n")}\n`,
+    maxBuffer: 4 * 1024 * 1024,
+  })
+  const ignored = new Set(result.stdout.toString().split("\n").filter(Boolean))
+  const tracked = destPaths.filter((path) => !ignored.has(path))
+  if (tracked.length > 0) {
+    fail(
+      `git does not ignore these destinations, so pulling would put plaintext secrets in a ` +
+        `committable path:\n  ${tracked.join("\n  ")}\n` +
+        `Fix .gitignore, or pull to a scratch directory with --out.`,
+    )
+  }
+}
+
 function commandPull(options: Options, target: string, tmpRoot: string): void {
   preflight(options.vault)
   const { item, repoPath } = resolvePullTarget(options.vault, target)
+  const attachments = item.files ?? []
+
+  const baseDir = options.out ? resolve(options.out) : options.repoRoot
+  assertSafeDestination(
+    baseDir,
+    repoPath,
+    attachments.map((attachment) => attachment.name),
+  )
 
   let written = 0
   let skipped = 0
-  const destDir = options.out
-    ? join(resolve(options.out), repoPath)
-    : join(options.repoRoot, repoPath)
+  const destDir = join(baseDir, repoPath)
+  // Only meaningful when writing into the repo; --out points somewhere else entirely.
+  if (!options.out) {
+    assertGitIgnored(
+      options.repoRoot,
+      attachments.map((attachment) => join(repoPath, attachment.name)),
+    )
+  }
   mkdirSync(destDir, { recursive: true })
 
   console.log(`\n${item.title} -> ${destDir}`)
-  for (const attachment of item.files ?? []) {
+  for (const attachment of attachments) {
     const destPath = join(destDir, attachment.name)
     if (existsSync(destPath) && !options.force) {
       console.log(`  skipped   ${attachment.name} (exists; use --force to overwrite)`)
@@ -733,6 +931,10 @@ function commandPull(options: Options, target: string, tmpRoot: string): void {
       if (result.status !== 0) {
         fail(`op read of "${attachment.name}" failed:\n${result.stderr.trim()}`)
       }
+      // copyFileSync creates the destination with the SOURCE file's mode, and op chose
+      // staging's mode. Tighten staging first so the destination is never briefly readable
+      // in a 0755 repo directory; chmod after the copy would leave exactly that window.
+      chmodSync(staging, 0o600)
       copyFileSync(staging, destPath)
       chmodSync(destPath, 0o600)
     } finally {
@@ -747,21 +949,76 @@ function commandPull(options: Options, target: string, tmpRoot: string): void {
 function usage(): void {
   console.log(
     [
+      "onepassword-secrets.mts — mirror this repo's plaintext secrets to 1Password.",
+      "",
+      "Each directory holding secrets maps to one Secure Note titled",
+      `"${ITEM_TITLE_PREFIX}<group>", with one file attachment per secret`,
+      `file and a ${REPO_PATH_FIELD} field naming the directory. Files are matched by`,
+      "sha256, so re-running a command that has nothing to do writes nothing.",
+      "",
       "Usage:",
       "  onepassword-secrets.mts list [--offline] [--only <path|group>]...",
-      "  onepassword-secrets.mts push [--only <path|group>]... [--dry-run] [--delete-after-push]",
+      "  onepassword-secrets.mts push [--only <path|group>]... [--dry-run]",
+      "                               [--delete-after-push [--delete-age-key]]",
       "  onepassword-secrets.mts pull <dir|group> [--force] [--out <dir>]",
       "",
-      "Flags:",
-      `  --vault <name>         1Password vault (default ${DEFAULT_VAULT}, or $OP_VAULT)`,
-      "  --repo-root <path>     repo root (default: parent of this script)",
-      "  --only <path|group>    limit to a directory, file, or group name (repeatable)",
-      "  --offline              list only: skip 1Password entirely, show local inventory",
-      "  --dry-run              classify without writing anything",
-      "  --delete-after-push    delete local plaintext after a verified read-back",
-      "  --delete-age-key       also allow deleting home-infra-private.agekey",
-      "  --force                overwrite existing files on pull",
-      "  --out <dir>            pull into this directory instead of the repo",
+      "Commands:",
+      "  list    Every secret file found on disk, and whether 1Password already holds a",
+      "          matching attachment. Read-only.",
+      "",
+      "  push    Upload files that are new or whose content changed. Files whose plaintext",
+      "          is already gone locally (the create-*.sh scripts delete it after",
+      "          encrypting) are sops-decrypted to a 0600 temp file, uploaded, and the temp",
+      `          file removed; that needs ${AGE_KEY_FILENAME} at the repo root, or`,
+      "          $SOPS_AGE_KEY_FILE pointing at it. Those files are compared ignoring blank",
+      "          lines, because a sops dotenv round-trip drops them and would otherwise",
+      "          report every such file as changed on every run.",
+      "",
+      "  pull    Restore a directory's plaintext from 1Password so you can edit it and",
+      "          re-encrypt. Resolves the target from 1Password (group name or",
+      `          ${REPO_PATH_FIELD}), not from what is on disk, so it still works after the`,
+      "          local copy is gone. Files are written 0600.",
+      "",
+      "Options:",
+      "  --vault <name>",
+      `      1Password vault to read and write. Default: ${DEFAULT_VAULT} (or $OP_VAULT).`,
+      "",
+      "  --repo-root <path>",
+      "      Repo to scan. Default: the parent of this script.",
+      "",
+      "  --only <path|group>",
+      "      Limit push/list to one group name, directory, or file. Repeatable. Without",
+      "      it, every secret in the repo is in scope.",
+      "",
+      "  --dry-run",
+      "      push only. Classify every file as new / changed / unchanged and print what",
+      "      would happen, writing nothing to 1Password and deleting nothing locally.",
+      "",
+      "  --offline",
+      "      list only. Skip 1Password entirely and show just the local inventory. Useful",
+      "      when op is not signed in.",
+      "",
+      "  --delete-after-push",
+      "      push only. Delete each local plaintext file once it is safely in 1Password.",
+      "      Exit code 0 is not treated as proof: the attachment is downloaded again and",
+      "      its sha256 compared to the local file, and only an exact match allows the",
+      "      delete. A mismatch keeps the file and reports it. After this, 1Password holds",
+      "      the only plaintext copy and pull is the only way back.",
+      "",
+      "  --delete-age-key",
+      "      Lets --delete-after-push delete home-infra-private.agekey too. Without it that",
+      "      one file is always kept, because losing it makes every *.encrypted file in",
+      "      this repo permanently unreadable — including the ones this script decrypts.",
+      "      Has no effect on its own.",
+      "",
+      "  --force",
+      "      pull only. Overwrite files that already exist. Without it, existing files are",
+      "      skipped and reported.",
+      "",
+      "  --out <dir>",
+      "      pull only. Write under this directory instead of into the repo, preserving the",
+      `      ${REPO_PATH_FIELD} layout. Use it to inspect or diff a restore without touching`,
+      "      the working tree.",
     ].join("\n"),
   )
 }

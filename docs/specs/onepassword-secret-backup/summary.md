@@ -19,11 +19,17 @@ cd /Users/scott/src/activescott/home-infra-k8s-flux
 ## Current state
 
 - Script written and exercised end-to-end.
-- Pushed for real so far: **`transmission` only** (1 file). Everything else is
-  still unpushed — `push --dry-run` reports them as `new`.
+- **Full push done**: `list` reports all 31 groups as `item exists` and all 56
+  files as `attached` — `🟢 every file is backed up in Private`.
 - The hand-created `home-infra kubernetes secrets authelia` item classifies
   `unchanged`, which is the proof that hashing + read-back agree with a file
   uploaded through the 1Password UI.
+- `--delete-after-push` has been run across the repo: **no local plaintext
+  remains**, and `push` now works entirely from ciphertext + 1Password. Six
+  orphan files (no `.encrypted` sibling) now exist only in 1Password — see
+  "Deleting plaintext can drop a file out of discovery entirely" below.
+- The age key is still on disk; it needs `--delete-age-key` to be removed and
+  that has deliberately not been used.
 
 ## What the repo actually contains
 
@@ -53,6 +59,126 @@ plaintext and are sops-decrypted on the fly.
   `sopsFormat()` detects by filename then by JSON shape.
 - **`process.exit()` skips `finally` blocks.** The script throws `CliError` instead,
   so the 0700 `mkdtemp` directory holding decrypted plaintext is always removed.
+
+## The sops dotenv round-trip drops blank lines
+
+The single most surprising behaviour here. Once `--delete-after-push` removes a
+file's local plaintext, `push` has nothing authoritative left to compare against
+1Password, so it falls back to `sops decrypt` of the `.encrypted` sibling. That
+round-trip is **not** byte-identical to the original: comments, quoting, spacing
+inside values and key order all survive, but **blank lines are discarded**.
+
+Measured on a synthetic dotenv file, encrypted and decrypted with this repo's exact
+flags:
+
+```
+orig 178 bytes 9 lines
+rt   176 bytes 7 lines
+diff (line ends marked $):
+  3d2
+  < $
+  8d6
+  < $
+identical after stripping blank lines? YES
+```
+
+It is not sops metadata. The keys sops appends to a dotenv ciphertext —
+`sops_lastmodified`, `sops_mac`, `sops_unencrypted_suffix`, `sops_version` — exist
+only in the ciphertext and are already removed by decrypt.
+
+Consequence before the fix: every dotenv secret that had a blank line reported
+`changed` on every run and each push overwrote the pristine stored original with the
+normalized reconstruction. That happened once for real — a `push --delete-after-push`
+reported "19 replaced" for files nobody had touched. No secret *value* was altered;
+only blank lines were lost from the 1Password copies. 1Password keeps per-item version
+history if an original is ever needed back.
+
+Fix: `hashesOf()` computes both a raw sha256 and one with blank lines stripped, and
+`classify()` accepts the normalized match **only** when the local side came from a
+*dotenv* decrypt. A real local plaintext, or a binary/json decrypt, still treats any
+byte difference as `changed`. Matches that needed the tolerance print
+`(matched ignoring blank lines)` and are counted in the run summary, so it is never
+silent.
+
+Verified three ways against a scratch repo: original-with-blank-lines pushed then
+plaintext deleted → `unchanged (matched ignoring blank lines)`; a rotated value in the
+ciphertext → still `changed`; tolerance never applied outside dotenv decrypts.
+
+## Deleting plaintext can drop a file out of discovery entirely
+
+Discovery is disk-driven: a candidate comes either from an `.encrypted` file or from a
+plaintext-only orphan pattern. For the orphans — files with **no** ciphertext sibling —
+`--delete-after-push` leaves nothing on disk at all, so they silently disappear from
+`list` and `push` while the footer still says `🟢 every file is backed up`. The count
+went 56 files / 31 groups → 50 / 30 without comment. `pull` still works for them
+(it resolves from 1Password), but nothing tells you they exist.
+
+The six affected, and what they were:
+
+| File | Status |
+|---|---|
+| `scripts/.env.secret.github` | zero references anywhere in the repo; dead |
+| `scripts/.env.secret.github.flux-bootstrap` | still read by `scripts/flux-bootstrap.sh:8` and `scripts/update-flux-image-scanning-webhooks/manage-webhooks.ts:152` as the `GITHUB_TOKEN` fallback |
+| `scripts/ghcr.dockeronfigjson` | transient working file — `create-image-pull-secret-ghcr.sh:39` writes, encrypts, deletes it |
+| `crossplane-config/.env.secret.cloudflare` | hand-pasted token *input* to `create-cloudflare-credentials.sh`; only the `{api_token}` JSON derivative was ever encrypted |
+| `crossplane-config/.env.secret.cloudflare-email` | same |
+| `olya/.env.secret.olya-basic-auth` | no longer needed; its attachment was deleted from the `olya` item |
+
+Still open: making `list` enumerate the vault as well as the disk, so 1Password-only
+files are visible instead of merely absent.
+
+Noticed while tracing the above: `create-image-pull-secret-ghcr.sh:54` writes its
+ciphertext to `apps/production/shared/ghcr-pull-secret/`, but the only such file on
+disk is at `infrastructure/prod/configs/ghcr-pull-secret/` — that path looks stale.
+
+## Security review (Fable, local, read-only)
+
+Run against the script and both spec docs. One genuine regression plus four hardening
+gaps; all fixed. What it checked and found sound is recorded here too, since that is
+the part worth not re-deriving.
+
+**Regression it caught, introduced by the blank-line fix itself.** `hashAttachment()`
+changed return type from `string` to `ContentHashes`, and `classify()` was updated but
+the `--delete-after-push` verify call site was not: `remoteHash !== entry.localHash`
+compared an object to a string, so it was **always true**. Deletion silently stopped
+working and every file printed a red "read-back hash mismatch". Fail-safe in the
+data-loss direction, but the feature was dead and the message was a lie. `node
+--experimental-strip-types` does no type checking, so nothing caught it — worth
+remembering: in this repo a `.mts` script gets no type enforcement at runtime.
+
+Fixed to `remote.raw !== entry.localHash`. Deliberately `.raw`, never `.normalized` —
+the blank-line tolerance must never be what decides a delete.
+
+**Other fixes:**
+
+- `pull` now validates `repo_path` and attachment names, which come from the vault and
+  are not trusted. A `repo_path` of `../../..` escaped the destination entirely; with
+  vault write access that turns secret disclosure into arbitrary file write (e.g.
+  `~/.zshrc`).
+- `pull` runs `git check-ignore` on every destination and refuses to write a plaintext
+  secret to a path git would track. This repo is public, so an item renamed in the 1P
+  UI was one `git add .` from publishing a secret. Verified all current destinations
+  are ignored — by `.gitignore:3` (`.env*`) and `apps/production/zot/.gitignore:2-3`.
+- `pull` chmods the staging file to 0600 *before* `copyFileSync`. `copyFileSync` creates
+  the destination with the source's mode, so chmod-after-copy left a window where the
+  plaintext was world-readable in a 0755 repo directory.
+- `escapeFieldName` rejects names starting with `-`; an assignment statement is a bare
+  argv token, so a repo file named `-foo` would reach op's flag parser.
+- `--delete-after-push` re-hashes the local file immediately before unlinking. It was
+  hashed back in `classify()`, so an edit made during the run would have been destroyed
+  without ever being uploaded.
+- Decrypted temp files are now unlinked per group in a `finally` instead of living for
+  the whole run. Signals run no cleanup at all, so this shrinks the window.
+
+**Confirmed sound, no change needed:** no secret values in argv, env, or output (only
+paths, item IDs and `op://` references); no `shell: true` anywhere; the walk skips
+symlinks so it cannot escape the repo; push-side discovery skips everything in `git
+ls-files`; the blank-line tolerance cannot cause data loss (it requires
+`decryptFormat === "dotenv"`, which only happens for `needsDecrypt` entries, and the
+delete loop skips those unconditionally); delete cannot fire on an absent remote (op
+read fails → run aborts) or a truncated one (hash mismatch); `CliError`-instead-of-
+`process.exit` holds everywhere, so `finally` cleanup always runs; a wrong
+`SOPS_AGE_KEY_FILE` fails loudly rather than silently.
 
 ## Bug found and fixed during verification
 
@@ -86,8 +212,11 @@ either path.
 
 ## Remaining / next
 
-- Run the full `push` (55 remaining files, ~30 new items).
-- After that, spot-check a few items in the 1Password UI and delete the legacy
-  monolithic `home-infra kubernetes secrets` item.
+- Spot-check a few items in the 1Password UI, then delete the legacy monolithic
+  `home-infra kubernetes secrets` item (26 attachments, sectioned by app). The
+  script never touches it: `ITEM_TITLE_PREFIX` has a trailing space, so the bare
+  title never matches.
 - `--delete-after-push` has not been run against any real repo secret. Doing so
   makes 1Password the only plaintext copy; `pull` is then the only way back.
+- Re-run `list` after any new app lands a secret — the footer says
+  `🟢 every file is backed up` or `🟡 N file(s) not yet in <vault> — run push`.
