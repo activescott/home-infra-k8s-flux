@@ -604,6 +604,36 @@ spec:
               }
             }
 
+            // Accounts the daily stalwart-sieve-reconcile CronJob could not give the
+            // archive-all rule to -- either it refused to overwrite a script it does not
+            // own, or the account errored outright.
+            //
+            // This exists because on 2026-09-13 the reconciler did the opposite: it
+            // overwrote a day of hand-written Bulwark filter rules, unrecoverably, and
+            // nothing reported it. The job now refuses to touch a script without its
+            // managed block, which is correct but converts loud data loss into a silent
+            // gap -- that mailbox stops getting an archive copy, and archive-all exists
+            // precisely so deleting from the Inbox does not destroy mail.
+            //
+            // One increment per affected account per run, not per run. The emitting
+            // phrase is an interface: it is fixed in stalwart-config/sieve-reconcile.py
+            // and commented as such there. A typo on either side yields no counter at
+            // all, which is indistinguishable from a healthy cluster -- so verify this
+            // end to end by forcing a skip, not by observing silence.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"sieve-reconcile: archive rule not applied\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "stalwart_sieve_unmanaged_total"
+                  description = "accounts left without the archive-all Sieve rule by the reconciler"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 

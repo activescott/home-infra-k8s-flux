@@ -1165,6 +1165,46 @@ spec:
                     stale password; possibly a password spray. Stalwart's auth-ban counts these
                     and bans here do not expire, so act before the source address is banned
                     permanently. Loki: {namespace="email-stalwart"} |= "(auth.failed)".
+              - alert: StalwartSieveArchiveRuleMissing
+                # An account whose active Sieve script has no managed block gets no
+                # archive copy of delivered mail, so deleting from the Inbox — or iOS
+                # purging Trash after seven days — destroys the only copy. That is the
+                # exact loss archive-all exists to prevent, and it is invisible from the
+                # mail client: nothing looks broken until something is already gone.
+                #
+                # The reconciler used to prevent this by overwriting whatever it found.
+                # On 2026-09-13 that unrecoverably destroyed a day of hand-written
+                # Bulwark filter rules, because Bulwark edits the same script the job
+                # owns. The job now refuses to touch a script it does not recognise,
+                # which trades loud data loss for a silent gap. This alert is what makes
+                # the gap loud instead.
+                #
+                # 26h, not 1h, because the source is a daily CronJob at 04:43 — a 1h
+                # window would sit at zero for 23 hours out of every 24 and the alert
+                # would resolve and re-fire daily. A 26h window overlaps consecutive
+                # runs, so the alert stays firing continuously until a run finally
+                # reports the account clean.
+                #
+                # Like the other Loki-derived counters here, the series does not exist
+                # until the first bad run, so this evaluates to empty rather than 0 on a
+                # healthy cluster.
+                expr: 'sum(increase(loki_process_custom_stalwart_sieve_unmanaged_total[26h])) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: A mailbox is not archiving delivered mail
+                  description: >-
+                    stalwart-sieve-reconcile could not apply the archive-all rule to at least one
+                    account in its last daily run, so that mailbox keeps no Archive copy and
+                    deleting a message destroys it. Usually means someone edited their filters and
+                    the managed block was lost; the fix is to restore the block to their active
+                    script, or deactivate that script so the job installs a fresh one. The job
+                    logs the previous script body before every write, and that log is the only
+                    backup — read it before re-authoring anything:
+                    `kubectl --context nas -n email-stalwart logs job/<stalwart-sieve-reconcile-...>`.
+                    Loki: {namespace="email-stalwart"} |= "sieve-reconcile: archive rule not
+                    applied".
               # THE HEALTH AND META ALERTS
               - alert: StalwartNotReady
                 expr: 'kube_statefulset_status_replicas_ready{namespace="email-stalwart",statefulset="stalwart"} == 0'

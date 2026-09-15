@@ -9,3 +9,4 @@ order.
 ## In progress
 
 - Renovate follow-ups (setup complete 2026-09-03; open loose ends in summary "Remaining / future": Micah's wp-admin DB-upgrade click after WP 7.0.4, grafana sidecar hot-reload 401, k3s upgrade then raise kubectl cap, gpu-agent Dependabot triage) — [summary](renovate-setup/summary.md)
+- Sieve reconciler destroyed user-written Bulwark filter rules on 2026-09-13; merge-not-replace fix written and unit-tested, still needs push, Flux reconcile, dry-run, and a real run verifying re-authored rules survive — [plan](sieve-user-rules-coexistence/plan.md)
