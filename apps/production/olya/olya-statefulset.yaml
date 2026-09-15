@@ -156,7 +156,7 @@ spec:
             #
             # Keep substituted keys in sync with `grep -o '\${[A-Z_]*}' openclaw.json`.
             # A missing substituted key is a startup failure, not a silent default.
-            # Provider API keys (ANTHROPIC_API_KEY, OPENROUTER_API_KEY) are read from the
+            # Provider API keys (OPENROUTER_API_KEY) are read from the
             # environment by OpenClaw's provider plugins, not substituted in the config.
             #
             # olya-env also holds telegram_bot_token, which is NOT delivered as an env
@@ -174,14 +174,7 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: telegram_allow_from
-            # Model provider API keys for the fallback chain. The primary model uses
-            # claude-cli (subscription auth on the PV), so these are only reached when
-            # the subscription is unavailable.
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: olya-env
-                  key: anthropic_api_key
+            # OpenRouter API key for the fallback model chain.
             - name: OPENROUTER_API_KEY
               valueFrom:
                 secretKeyRef:
