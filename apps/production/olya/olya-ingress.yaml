@@ -92,8 +92,8 @@ spec:
 # Per-source-IP cap, listed before ForwardAuth so a flood is shed before reaching Authelia.
 # Sized for the Control UI: `burst` covers a page load, `average` is the sustained rate.
 #
-# This is insurance, not the primary control. It limits how fast an attacker can hit Authelia's
-# login endpoint.
+# This is insurance, not the primary control. It limits how fast requests reach Authelia's
+# ForwardAuth endpoint for this host.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

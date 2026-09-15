@@ -16,8 +16,8 @@ spec:
   dnsNames:
     - auth.activescott.com
 ---
-# The middleware other namespaces attach to their Ingress to require a login. Nothing uses it
-# yet; switching olya.activescott.com over to it is a separate change.
+# The middleware other namespaces attach to their Ingress to require a login.
+# olya.activescott.com uses it (see apps/production/olya/olya-ingress.yaml).
 #
 # Traefik resolves a cross-namespace middleware by the annotation value
 # `authelia-authelia-forwardauth@kubernetescrd`. A typo in that string fails closed: Traefik
