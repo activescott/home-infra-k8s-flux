@@ -131,6 +131,55 @@ Noticed while tracing the above: `create-image-pull-secret-ghcr.sh:54` writes it
 ciphertext to `apps/production/shared/ghcr-pull-secret/`, but the only such file on
 disk is at `infrastructure/prod/configs/ghcr-pull-secret/` — that path looks stale.
 
+## Security review (Fable, local, read-only)
+
+Run against the script and both spec docs. One genuine regression plus four hardening
+gaps; all fixed. What it checked and found sound is recorded here too, since that is
+the part worth not re-deriving.
+
+**Regression it caught, introduced by the blank-line fix itself.** `hashAttachment()`
+changed return type from `string` to `ContentHashes`, and `classify()` was updated but
+the `--delete-after-push` verify call site was not: `remoteHash !== entry.localHash`
+compared an object to a string, so it was **always true**. Deletion silently stopped
+working and every file printed a red "read-back hash mismatch". Fail-safe in the
+data-loss direction, but the feature was dead and the message was a lie. `node
+--experimental-strip-types` does no type checking, so nothing caught it — worth
+remembering: in this repo a `.mts` script gets no type enforcement at runtime.
+
+Fixed to `remote.raw !== entry.localHash`. Deliberately `.raw`, never `.normalized` —
+the blank-line tolerance must never be what decides a delete.
+
+**Other fixes:**
+
+- `pull` now validates `repo_path` and attachment names, which come from the vault and
+  are not trusted. A `repo_path` of `../../..` escaped the destination entirely; with
+  vault write access that turns secret disclosure into arbitrary file write (e.g.
+  `~/.zshrc`).
+- `pull` runs `git check-ignore` on every destination and refuses to write a plaintext
+  secret to a path git would track. This repo is public, so an item renamed in the 1P
+  UI was one `git add .` from publishing a secret. Verified all current destinations
+  are ignored — by `.gitignore:3` (`.env*`) and `apps/production/zot/.gitignore:2-3`.
+- `pull` chmods the staging file to 0600 *before* `copyFileSync`. `copyFileSync` creates
+  the destination with the source's mode, so chmod-after-copy left a window where the
+  plaintext was world-readable in a 0755 repo directory.
+- `escapeFieldName` rejects names starting with `-`; an assignment statement is a bare
+  argv token, so a repo file named `-foo` would reach op's flag parser.
+- `--delete-after-push` re-hashes the local file immediately before unlinking. It was
+  hashed back in `classify()`, so an edit made during the run would have been destroyed
+  without ever being uploaded.
+- Decrypted temp files are now unlinked per group in a `finally` instead of living for
+  the whole run. Signals run no cleanup at all, so this shrinks the window.
+
+**Confirmed sound, no change needed:** no secret values in argv, env, or output (only
+paths, item IDs and `op://` references); no `shell: true` anywhere; the walk skips
+symlinks so it cannot escape the repo; push-side discovery skips everything in `git
+ls-files`; the blank-line tolerance cannot cause data loss (it requires
+`decryptFormat === "dotenv"`, which only happens for `needsDecrypt` entries, and the
+delete loop skips those unconditionally); delete cannot fire on an absent remote (op
+read fails → run aborts) or a truncated one (hash mismatch); `CliError`-instead-of-
+`process.exit` holds everywhere, so `finally` cleanup always runs; a wrong
+`SOPS_AGE_KEY_FILE` fails loudly rather than silently.
+
 ## Bug found and fixed during verification
 
 `pull` originally resolved its target by scanning the working tree. After

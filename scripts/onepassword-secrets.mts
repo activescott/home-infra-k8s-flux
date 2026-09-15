@@ -349,6 +349,12 @@ function escapeFieldName(name: string): string {
   if (name.includes("[") || name.includes("]")) {
     fail(`file name "${name}" contains [ or ], which op assignment statements cannot express`)
   }
+  // An assignment is a bare argv token, so a leading dash is parsed by op as a flag. No
+  // shell is involved, so this is argument injection rather than command injection, but a
+  // repo file named "-foo" would still reach op's flag parser.
+  if (name.startsWith("-")) {
+    fail(`file name "${name}" starts with "-", which op would parse as a flag`)
+  }
   return name.replace(/([\\.=])/g, "\\$1")
 }
 
@@ -674,66 +680,7 @@ function commandPush(options: Options, tmpRoot: string): void {
   const wouldDelete: string[] = []
 
   for (const group of groups) {
-    const itemId = titles.get(group.title)
-    let item = itemId ? getItem(itemId, options.vault) : undefined
-    const entries = classify(group, item, options, tmpRoot, ageKeyPath)
-
-    console.log(`\n${group.title}  [${group.relDir}]`)
-    for (const entry of entries) {
-      const mark = entry.status === "unchanged" ? OK : WARN
-      const note = entry.matchedIgnoringBlankLines ? "  (matched ignoring blank lines)" : ""
-      console.log(`  ${mark} ${entry.status.padEnd(9)} ${entry.file.label}${note}`)
-    }
-
-    for (const entry of entries) {
-      if (entry.status === "unchanged") counts.unchanged += 1
-      else if (entry.status === "changed") counts.changed += 1
-      else counts.uploaded += 1
-      if (entry.matchedIgnoringBlankLines) counts.blankLineOnly += 1
-    }
-
-    if (options.dryRun) {
-      for (const entry of entries) {
-        if (options.deleteAfterPush && !entry.file.needsDecrypt && deletable(entry.file, options)) {
-          wouldDelete.push(entry.file.relPath)
-        }
-      }
-      continue
-    }
-
-    if (!item) {
-      item = createItem(group, options.vault, entries)
-    } else {
-      ensureRepoPathField(item, options.vault, group.relDir)
-      for (const entry of entries) {
-        if (entry.status === "unchanged") continue
-        item = attachFile(item.id, options.vault, entry.file.label, entry.sourcePath)
-      }
-    }
-
-    if (!options.deleteAfterPush) continue
-    for (const entry of entries) {
-      // Nothing local to delete: the plaintext only ever existed as a temp decrypt.
-      if (entry.file.needsDecrypt) continue
-      if (!deletable(entry.file, options)) {
-        console.log(`  ${WARN} kept      ${entry.file.label} (age key; needs --delete-age-key)`)
-        continue
-      }
-      // Exit code 0 is not proof the bytes landed; the read-back hash is.
-      const remoteHash = hashAttachment(
-        options.vault,
-        item.id,
-        entry.file.label,
-        join(tmpRoot, `verify-${group.name}-${entry.file.label}`),
-      )
-      if (remoteHash !== entry.localHash) {
-        console.error(`  ${BAD} KEPT      ${entry.file.label} (read-back hash mismatch; not deleting)`)
-        continue
-      }
-      unlinkSync(entry.file.absPath)
-      counts.deleted += 1
-      console.log(`  ${OK} deleted   ${entry.file.relPath}`)
-    }
+    pushGroup(group, options, tmpRoot, ageKeyPath, titles, counts, wouldDelete)
   }
 
   if (options.dryRun) {
@@ -757,6 +704,103 @@ function commandPush(options: Options, tmpRoot: string): void {
         `local plaintext is gone, so they were compared against a sops dotenv round-trip, ` +
         `which drops blank lines. 1Password keeps the original.`,
     )
+  }
+}
+
+interface PushCounts {
+  unchanged: number
+  changed: number
+  uploaded: number
+  deleted: number
+  blankLineOnly: number
+}
+
+/**
+ * Handles one group. Split out of commandPush so the decrypted temp files it creates can be
+ * unlinked in a `finally` as soon as the group is done, rather than accumulating in tmpRoot
+ * for the whole run — a process killed by a signal runs no cleanup at all, so the fewer
+ * plaintext copies sitting there at any moment, the better.
+ */
+function pushGroup(
+  group: SecretGroup,
+  options: Options,
+  tmpRoot: string,
+  ageKeyPath: string,
+  titles: Map<string, string>,
+  counts: PushCounts,
+  wouldDelete: string[],
+): void {
+  const itemId = titles.get(group.title)
+  let item = itemId ? getItem(itemId, options.vault) : undefined
+  const entries = classify(group, item, options, tmpRoot, ageKeyPath)
+  try {
+    console.log(`\n${group.title}  [${group.relDir}]`)
+    for (const entry of entries) {
+      const mark = entry.status === "unchanged" ? OK : WARN
+      const note = entry.matchedIgnoringBlankLines ? "  (matched ignoring blank lines)" : ""
+      console.log(`  ${mark} ${entry.status.padEnd(9)} ${entry.file.label}${note}`)
+    }
+
+    for (const entry of entries) {
+      if (entry.status === "unchanged") counts.unchanged += 1
+      else if (entry.status === "changed") counts.changed += 1
+      else counts.uploaded += 1
+      if (entry.matchedIgnoringBlankLines) counts.blankLineOnly += 1
+    }
+
+    if (options.dryRun) {
+      for (const entry of entries) {
+        if (options.deleteAfterPush && !entry.file.needsDecrypt && deletable(entry.file, options)) {
+          wouldDelete.push(entry.file.relPath)
+        }
+      }
+      return
+    }
+
+    if (!item) {
+      item = createItem(group, options.vault, entries)
+    } else {
+      ensureRepoPathField(item, options.vault, group.relDir)
+      for (const entry of entries) {
+        if (entry.status === "unchanged") continue
+        item = attachFile(item.id, options.vault, entry.file.label, entry.sourcePath)
+      }
+    }
+
+    if (!options.deleteAfterPush) return
+    for (const entry of entries) {
+      // Nothing local to delete: the plaintext only ever existed as a temp decrypt.
+      if (entry.file.needsDecrypt) continue
+      if (!deletable(entry.file, options)) {
+        console.log(`  ${WARN} kept      ${entry.file.label} (age key; needs --delete-age-key)`)
+        continue
+      }
+      // Exit code 0 is not proof the bytes landed; the read-back hash is. Compare the raw
+      // hash, never the normalized one — the blank-line tolerance must not decide a delete.
+      const remote = hashAttachment(
+        options.vault,
+        item.id,
+        entry.file.label,
+        join(tmpRoot, `verify-${group.name}-${entry.file.label}`),
+      )
+      if (remote.raw !== entry.localHash) {
+        console.error(`  ${BAD} KEPT      ${entry.file.label} (read-back hash mismatch; not deleting)`)
+        continue
+      }
+      // Re-hash immediately before unlinking: the local file was hashed back in classify(),
+      // and an edit made since then was never uploaded and would be destroyed silently.
+      if (sha256File(entry.file.absPath) !== entry.localHash) {
+        console.error(`  ${BAD} KEPT      ${entry.file.label} (changed on disk during this run)`)
+        continue
+      }
+      unlinkSync(entry.file.absPath)
+      counts.deleted += 1
+      console.log(`  ${OK} deleted   ${entry.file.relPath}`)
+    }
+  } finally {
+    for (const entry of entries) {
+      if (entry.file.needsDecrypt && existsSync(entry.sourcePath)) unlinkSync(entry.sourcePath)
+    }
   }
 }
 
@@ -801,19 +845,75 @@ function resolvePullTarget(vault: string, target: string): { item: OpItem; repoP
   )
 }
 
+/**
+ * Both of these come out of the 1Password item, not out of this repo, so neither is
+ * trusted. An item edited in the 1Password UI — a `repo_path` of `../../..`, an attachment
+ * renamed to contain a slash — would otherwise let `pull` write plaintext to an arbitrary
+ * path outside the destination directory.
+ */
+function assertSafeDestination(baseDir: string, repoPath: string, names: string[]): void {
+  const resolvedBase = resolve(baseDir)
+  const resolvedDir = resolve(resolvedBase, repoPath)
+  if (resolvedDir !== resolvedBase && !resolvedDir.startsWith(`${resolvedBase}/`)) {
+    fail(`${REPO_PATH_FIELD} "${repoPath}" resolves outside ${resolvedBase}; refusing to write`)
+  }
+  for (const name of names) {
+    if (name === "." || name === ".." || name.includes("/") || name.includes("\\")) {
+      fail(`attachment name "${name}" is not a plain file name; refusing to write`)
+    }
+  }
+}
+
+/**
+ * Refuses to write a plaintext secret to a path git would track. This repo is public, so a
+ * pull landing outside the gitignore patterns is one `git add .` away from publishing a
+ * secret. Today every destination is ignored, but that is convention spread across several
+ * .gitignore files rather than anything enforced.
+ */
+function assertGitIgnored(repoRoot: string, destPaths: string[]): void {
+  if (destPaths.length === 0) return
+  const result = spawnSync("git", ["check-ignore", "--stdin"], {
+    cwd: repoRoot,
+    input: `${destPaths.join("\n")}\n`,
+    maxBuffer: 4 * 1024 * 1024,
+  })
+  const ignored = new Set(result.stdout.toString().split("\n").filter(Boolean))
+  const tracked = destPaths.filter((path) => !ignored.has(path))
+  if (tracked.length > 0) {
+    fail(
+      `git does not ignore these destinations, so pulling would put plaintext secrets in a ` +
+        `committable path:\n  ${tracked.join("\n  ")}\n` +
+        `Fix .gitignore, or pull to a scratch directory with --out.`,
+    )
+  }
+}
+
 function commandPull(options: Options, target: string, tmpRoot: string): void {
   preflight(options.vault)
   const { item, repoPath } = resolvePullTarget(options.vault, target)
+  const attachments = item.files ?? []
+
+  const baseDir = options.out ? resolve(options.out) : options.repoRoot
+  assertSafeDestination(
+    baseDir,
+    repoPath,
+    attachments.map((attachment) => attachment.name),
+  )
 
   let written = 0
   let skipped = 0
-  const destDir = options.out
-    ? join(resolve(options.out), repoPath)
-    : join(options.repoRoot, repoPath)
+  const destDir = join(baseDir, repoPath)
+  // Only meaningful when writing into the repo; --out points somewhere else entirely.
+  if (!options.out) {
+    assertGitIgnored(
+      options.repoRoot,
+      attachments.map((attachment) => join(repoPath, attachment.name)),
+    )
+  }
   mkdirSync(destDir, { recursive: true })
 
   console.log(`\n${item.title} -> ${destDir}`)
-  for (const attachment of item.files ?? []) {
+  for (const attachment of attachments) {
     const destPath = join(destDir, attachment.name)
     if (existsSync(destPath) && !options.force) {
       console.log(`  skipped   ${attachment.name} (exists; use --force to overwrite)`)
@@ -831,6 +931,10 @@ function commandPull(options: Options, target: string, tmpRoot: string): void {
       if (result.status !== 0) {
         fail(`op read of "${attachment.name}" failed:\n${result.stderr.trim()}`)
       }
+      // copyFileSync creates the destination with the SOURCE file's mode, and op chose
+      // staging's mode. Tighten staging first so the destination is never briefly readable
+      // in a 0755 repo directory; chmod after the copy would leave exactly that window.
+      chmodSync(staging, 0o600)
       copyFileSync(staging, destPath)
       chmodSync(destPath, 0o600)
     } finally {
