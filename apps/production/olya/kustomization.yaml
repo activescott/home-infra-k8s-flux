@@ -37,20 +37,6 @@ secretGenerator:
   - name: olya-env
     envs:
       - .env.secret.olya.encrypted
-  # htpasswd line for the Traefik basicAuth middleware in front of the Control UI. Separate
-  # from olya-env because the middleware resolves the Secret by name and reads only `users`.
-  #
-  # disableNameSuffixHash is REQUIRED, not a style choice. The Traefik Middleware names this
-  # Secret in spec.basicAuth.secret, a CRD field kustomize's name-reference transformer knows
-  # nothing about, so a hashed name would leave the middleware pointing at a Secret that does
-  # not exist. Traefik then fails the auth check rather than skipping it, but the failure shows
-  # up as a 401 on a correct password, which is a confusing way to find out. Same reasoning as
-  # apps/production/monitoring/prometheus.
-  - name: olya-basic-auth
-    options:
-      disableNameSuffixHash: true
-    envs:
-      - .env.secret.olya-basic-auth.encrypted
   # PAT for the memory-sync CronJob. Scott's, not Olya's, scoped to activeassistant only.
   - name: olya-memory-sync
     envs:
