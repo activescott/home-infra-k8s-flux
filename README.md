@@ -198,6 +198,42 @@ See `/infrastructure/configs/create-sops-age-decryption-secret.sh`
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
+#### Backing plaintext up to 1Password
+
+The `.encrypted` files are committed, but their plaintext originals are
+gitignored and live on one laptop. `scripts/onepassword-secrets.mts` mirrors
+that plaintext into 1Password so a re-encrypt or a new machine doesn't depend on
+one disk — one Secure Note item per directory, titled
+`home-infra kubernetes secrets <group>`, with one file attachment per secret
+file and a `repo_path` field naming the directory.
+
+```bash
+# what's on disk, and whether each file is already in 1Password
+./scripts/onepassword-secrets.mts list
+
+# classify everything without writing (new / changed / unchanged)
+./scripts/onepassword-secrets.mts push --dry-run
+
+# upload; re-running is a no-op for files whose content already matches
+./scripts/onepassword-secrets.mts push
+
+# get a directory's plaintext back so you can edit and re-encrypt it
+./scripts/onepassword-secrets.mts pull apps/production/authelia
+./scripts/onepassword-secrets.mts pull authelia --out /tmp/check   # non-destructive
+```
+
+Notes:
+
+- Files whose plaintext is already gone locally (the `create-*.sh` scripts
+  delete it after encrypting) are sops-decrypted to a 0600 temp file, uploaded,
+  and the temp file removed. That needs `home-infra-private.agekey` present.
+- `--delete-after-push` removes the local plaintext, but only after downloading
+  the attachment again and confirming its sha256 matches. `home-infra-private.agekey`
+  is excluded unless you also pass `--delete-age-key`.
+- `pull` resolves the target from 1Password (by group name or `repo_path`), not
+  from what happens to be on disk, so it still works after the plaintext is gone.
+  It refuses to overwrite an existing file without `--force`.
+
 ### Image Pull Secrets
 
 Image Pull Secrets (to [Pull an Image from a Private Registry](https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/)) using `.dockerconfigjson` secrets are kinda just like json secrets. Run:
