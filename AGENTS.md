@@ -32,6 +32,17 @@ below — `update_dashboard` against a `provisioned: true` dashboard gets
 reverted on the next reconcile. The same principle applies to anything else
 this repo declares.
 
+## Changes reach main through a pull request
+
+**Never push directly to `main`** — branch, push the branch, open a PR. The
+owner's direct push succeeds anyway and only logs `Bypassed rule violations`;
+that is a failure, not a shortcut.
+
+**Do not merge without approval** — ask once the PR is ready, unless the user
+already said to merge it when checks pass. Note Flux reconciles `main`, so
+nothing deploys (and deployed-state tools like `./scripts/stalwart-apply` keep
+running old content) until it merges.
+
 ## Flux reconciliation
 
 Do NOT run `flux reconcile` manually after committing. GitHub webhooks

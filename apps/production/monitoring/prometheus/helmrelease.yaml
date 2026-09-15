@@ -1179,16 +1179,27 @@ spec:
                 # which trades loud data loss for a silent gap. This alert is what makes
                 # the gap loud instead.
                 #
-                # 26h, not 1h, because the source is a daily CronJob at 04:43 — a 1h
-                # window would sit at zero for 23 hours out of every 24 and the alert
-                # would resolve and re-fire daily. A 26h window overlaps consecutive
-                # runs, so the alert stays firing continuously until a run finally
-                # reports the account clean.
+                # A gauge, not increase() over a counter. The first version of this rule
+                # was `sum(increase(loki_process_custom_stalwart_sieve_unmanaged_total[26h]))
+                # > 0` and could not fire: a once-daily job increments its counter once,
+                # so the series sits flat and `increase` reads 0. Measured live on
+                # 2026-09-14 — after a forced bad run the series read [1, 1, 1] and the
+                # expression evaluated to 0 with the alert still inactive. It would have
+                # alerted only on a second consecutive bad day. The burst-shaped counters
+                # above (auth, delivery) do not have this problem, which is why the shape
+                # looked correct until it was tested.
                 #
-                # Like the other Loki-derived counters here, the series does not exist
-                # until the first bad run, so this evaluates to empty rather than 0 on a
-                # healthy cluster.
-                expr: 'sum(increase(loki_process_custom_stalwart_sieve_unmanaged_total[26h])) > 0'
+                # The gauge carries the level, so this fires on the first bad run, and the
+                # next clean run sets it to 0 and resolves without anyone touching it.
+                #
+                # sum() rather than max() because the gauge is one series per CronJob pod
+                # (the pod name changes every run), so a run reporting 2 bad accounts must
+                # not be read as 2 separate series of 1. The series are expired after 26h
+                # in alloy/helmrelease.yaml specifically so this sum cannot accumulate
+                # older runs — see the note there. Consequence worth knowing when
+                # verifying a fix: clearing takes up to ~2h, because the previous bad run
+                # is still counted until its series expires.
+                expr: 'sum(loki_process_custom_stalwart_sieve_unmanaged_accounts) > 0'
                 for: 0m
                 labels:
                   severity: warning
@@ -1205,6 +1216,46 @@ spec:
                     `kubectl --context nas -n email-stalwart logs job/<stalwart-sieve-reconcile-...>`.
                     Loki: {namespace="email-stalwart"} |= "sieve-reconcile: archive rule not
                     applied".
+              - alert: StalwartSieveReconcileErrors
+                # Distinct from the alert above: that one is the job correctly refusing to
+                # touch a script, this one is the job failing to do its work at all —
+                # ManageSieve authentication rejected, TLS failure, the account unreachable.
+                # Same consequence for the mailbox, different fix, so it is worth its own
+                # alert rather than being folded into a single "something is wrong".
+                expr: 'sum(loki_process_custom_stalwart_sieve_failed_accounts) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: The Sieve reconciler is erroring on an account
+                  description: >-
+                    The last stalwart-sieve-reconcile run raised an exception for at least one
+                    account, so its Sieve script was not checked and may not be archiving. Most
+                    likely the automation principal's credential or its impersonate permission,
+                    since every account goes through the same composite ManageSieve login. Read
+                    the per-account error: {namespace="email-stalwart"} |= "sieve-reconcile:
+                    archive rule not applied".
+              - alert: StalwartSieveReconcileNotRunning
+                # The gauges above report the last run's result and keep reporting it:
+                # max_idle_duration holds the series up for 168h, so a job that stops
+                # running leaves them sitting at a healthy 0 rather than going absent.
+                # Silence therefore cannot be read as health, and this rule is what makes
+                # a dead job visible. Same shape as tinkerbell's BackgroundJobUnhealthy.
+                #
+                # 48h against a daily schedule tolerates one missed run — a node reboot
+                # across 04:43, a slow image pull — without firing.
+                expr: 'time() - max(loki_process_custom_stalwart_sieve_last_run_seconds) > 172800'
+                for: 30m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: The Sieve reconciler has not run in over 48 hours
+                  description: >-
+                    stalwart-sieve-reconcile is scheduled daily at 04:43 and has not completed in
+                    more than two days, so no account's archive rule has been verified in that
+                    time and the other two Sieve alerts are blind — their gauges still report the
+                    last run's result. Check the CronJob is not suspended and that recent Jobs
+                    completed: `kubectl --context nas -n email-stalwart get cronjob,jobs`.
               # THE HEALTH AND META ALERTS
               - alert: StalwartNotReady
                 expr: 'kube_statefulset_status_replicas_ready{namespace="email-stalwart",statefulset="stalwart"} == 0'

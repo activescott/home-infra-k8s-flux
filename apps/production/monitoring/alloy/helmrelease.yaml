@@ -620,6 +620,9 @@ spec:
             // and commented as such there. A typo on either side yields no counter at
             // all, which is indistinguishable from a healthy cluster -- so verify this
             // end to end by forcing a skip, not by observing silence.
+            //
+            // This counter is for the dashboard and for "how often", NOT for alerting --
+            // see the gauges below for why a counter cannot alert on a daily job.
             stage.match {
               selector = "{namespace=\"email-stalwart\"} |= \"sieve-reconcile: archive rule not applied\""
 
@@ -629,6 +632,83 @@ spec:
                   description = "accounts left without the archive-all Sieve rule by the reconciler"
                   match_all   = true
                   action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Current state of the last reconcile run, parsed from the single summary line
+            // it always prints. Three gauges from one regex.
+            //
+            // Gauges, not counters, because the counter above cannot alert. Verified live
+            // on 2026-09-14: after one bad run the series read [1, 1, 1] and
+            // increase(...[26h]) evaluated to 0, because a once-daily job increments once
+            // and `increase` measures a delta, not a level. The alert would have stayed
+            // silent until a second consecutive bad day. The burst-shaped counters above
+            // (auth, delivery) do not have this problem, which is why the pattern looked
+            // fine until it was tested.
+            //
+            // A gauge holds the level, so `> 0` fires on the first bad run and the next
+            // clean run sets it back to 0 and resolves the alert with no human action.
+            //
+            // lastrun exists because max_idle_duration keeps Alloy exporting the last
+            // value long after the job might have died -- "no data" never arrives to
+            // signal that. A timestamp *value* goes stale visibly, so comparing it to
+            // time() detects a job that stopped running, which the level gauges cannot.
+            stage.match {
+              selector = "{namespace=\"email-stalwart\"} |= \"sieve-reconcile: run summary:\""
+
+              stage.regex {
+                expression = ".*accounts=(?P<sieve_accounts>[0-9]+) unmanaged=(?P<sieve_unmanaged>[0-9]+) failed=(?P<sieve_failed>[0-9]+) lastrun=(?P<sieve_lastrun>[0-9]+).*"
+              }
+
+              // NOTE ON max_idle_duration, which is load-bearing here and not a default.
+              //
+              // These gauges inherit the log entry's labels, and the entry comes from a
+              // CronJob pod whose name changes every run. So each run creates its OWN
+              // series rather than updating one -- "set" never overwrites anything. With
+              // the 168h used elsewhere in this file, sum() over the level gauges would
+              // add up a week of runs, and one bad day would hold the alert on for seven
+              // days after it was fixed. Observed directly: the first series carried
+              // pod="stalwart-sieve-reconcile-20260914-233545-m9fc8".
+              //
+              // 26h expires a run's series two hours after the next daily run has
+              // reported, so at most two overlap and only briefly. The cost is that a
+              // fixing run takes up to ~2h to clear the alert, because the previous bad
+              // run is still counted until it expires. That is the right trade against
+              // resolving early and hiding a live problem.
+              //
+              // Dropping pod/instance instead would be the tidier fix, but stage.label_drop
+              // would also strip them from the entry forwarded to Loki, where they are
+              // wanted. Doing it properly needs a separate loki.process with forward_to =
+              // [], which is a bigger change to shared plumbing than this earns.
+              stage.metrics {
+                metric.gauge {
+                  name        = "stalwart_sieve_unmanaged_accounts"
+                  description = "accounts the last reconcile run left without the archive-all rule"
+                  source      = "sieve_unmanaged"
+                  action      = "set"
+                  max_idle_duration = "26h"
+                }
+
+                metric.gauge {
+                  name        = "stalwart_sieve_failed_accounts"
+                  description = "accounts the last reconcile run errored on"
+                  source      = "sieve_failed"
+                  action      = "set"
+                  max_idle_duration = "26h"
+                }
+
+                // Long-lived on purpose, and aggregated with max() rather than sum(): a
+                // timestamp's newest value is the meaningful one, so extra series from
+                // older runs are harmless. It has to outlive the level gauges above --
+                // this is the series that proves the job is still running at all, so it
+                // must still be there to go stale when the job dies.
+                metric.gauge {
+                  name        = "stalwart_sieve_last_run_seconds"
+                  description = "unix time the reconcile job last completed"
+                  source      = "sieve_lastrun"
+                  action      = "set"
                   max_idle_duration = "168h"
                 }
               }

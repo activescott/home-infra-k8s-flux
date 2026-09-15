@@ -36,6 +36,7 @@ import os
 import socket
 import ssl
 import sys
+import time
 import urllib.request
 
 API_URL = os.environ.get(
@@ -320,6 +321,32 @@ def fetch_accounts():
     raise SieveError("no x:Account/get response: %s" % json.dumps(payload)[:300])
 
 
+def run_summary(accounts, unmanaged, failed):
+    """Emit the machine-readable line every run ends with, healthy or not.
+
+    ALERT INTERFACE. Alloy parses the three numbers out of this line into gauges
+    (stalwart_sieve_unmanaged_accounts, _failed_accounts, _last_run_seconds) in
+    apps/production/monitoring/alloy/helmrelease.yaml. Change the wording or the field
+    names here and the alerts stop working silently.
+
+    Gauges rather than counters, which is not a style preference. The first version of
+    this used a counter and `increase(...[26h])`, and it could not fire: a once-daily job
+    increments the counter once, so the series sits flat at 1 and `increase` reads 0. It
+    would only have alerted on the *second* consecutive bad day. The other Loki-derived
+    counters here work because auth and delivery failures arrive in bursts. A gauge holding
+    the current count fires on the first bad run and clears itself on the next clean one.
+
+    lastrun is the reason a gauge that stops updating is still detectable. max_idle_duration
+    keeps Alloy exporting the last value for days, so "no data" never arrives to tell us the
+    job died -- but a timestamp *value* goes stale visibly, which is what
+    StalwartSieveReconcileNotRunning compares against time().
+    """
+    print(
+        "sieve-reconcile: run summary: accounts=%d unmanaged=%d failed=%d lastrun=%d"
+        % (accounts, unmanaged, failed, int(time.time()))
+    )
+
+
 def main():
     items = fetch_accounts()
 
@@ -336,6 +363,9 @@ def main():
 
     if not addresses:
         print("no accounts to reconcile (after skipping %s)" % ", ".join(sorted(SKIP)))
+        # Still a completed run, so it still emits the heartbeat. Otherwise a config that
+        # skipped every account would look identical to the job having stopped running.
+        run_summary(0, 0, 0)
         return 0
 
     failures = 0
@@ -368,12 +398,11 @@ def main():
                 % (address, detail)
             )
 
-    # Deliberately not part of the alert selector -- the per-account lines above are what
-    # the counter counts, and matching this too would double-count every run.
     print(
         "\n%d account(s): %d failed, %d skipped for having no managed block"
         % (len(addresses), failures, skipped)
     )
+    run_summary(len(addresses), skipped, failures)
     if skipped:
         print(
             "Recover a skipped account by re-adding the managed block to its active\n"
