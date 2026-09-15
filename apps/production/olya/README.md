@@ -50,7 +50,7 @@ Worth knowing before editing either initContainer, because it reads as inconsist
 | `olya-pv.yaml`, `olya-pvc.yaml` | One volume: `home/`, `openclaw/`, `workspace/`, `archive/` |
 | `olya-rbac.yaml` | ServiceAccount with cluster-wide read equivalent to `view`, minus ConfigMaps |
 | `olya-networkpolicy.yaml` | What she may reach on the network; default-deny both directions |
-| `olya-ingress.yaml` | Certificate, Traefik basicAuth Middleware, Ingress |
+| `olya-ingress.yaml` | Certificate, Authelia ForwardAuth middleware ref, Ingress |
 | `scripts/` | What the initContainers and CronJob run, as reviewable files |
 
 ## Validating the config
@@ -82,10 +82,6 @@ like the assistant restarting itself.
 
 ## Things that will bite
 
-- **Secrets referenced by string.** `olya-basic-auth` sets `disableNameSuffixHash: true` because
-  the Traefik Middleware names it in `spec.basicAuth.secret`, a CRD field kustomize's
-  name-reference transformer does not know about. A hashed name there points at a Secret that
-  does not exist, and shows up as a 401 on a correct password.
 - **`env` and `openclaw.json` must agree.** The container names each substituted key
   individually instead of using `envFrom`. Add a `${...}` to the config without adding the
   matching `secretKeyRef` and the gateway fails to start.
