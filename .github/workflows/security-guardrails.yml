@@ -1,0 +1,67 @@
+name: security-guardrails
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  security-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # A flipped default policy fails open, so refuse anything but deny.
+      - name: Authelia default_policy must be deny
+        run: |
+          if ! grep -q 'default_policy: deny' apps/production/authelia/authelia-config.yaml; then
+            echo "FAIL: Authelia default_policy is not 'deny'"
+            exit 1
+          fi
+
+      # ClusterIP preserves source IP for Traefik's whitelist middlewares.
+      - name: Traefik externalTrafficPolicy must be Local
+        run: |
+          if ! grep -q 'externalTrafficPolicy: Local' infrastructure/prod/configs/traefik-config.yaml; then
+            echo "FAIL: Traefik externalTrafficPolicy is not 'Local'"
+            exit 1
+          fi
+
+      # Only Authelia's ForwardAuth middleware may trust X-Forwarded-* headers.
+      - name: trustForwardHeader only in Authelia ForwardAuth
+        run: |
+          offenders=$(grep -rl 'trustForwardHeader: true' apps/ infrastructure/ | grep -v '^apps/production/authelia/authelia-ingress.yaml$' || true)
+          if [ -n "$offenders" ]; then
+            echo "FAIL: trustForwardHeader found outside authelia-ingress.yaml:"
+            echo "$offenders"
+            exit 1
+          fi
+
+      - name: Authelia container hardening
+        run: |
+          file=apps/production/authelia/authelia-deployment.yaml
+          fail=0
+          for pattern in 'runAsNonRoot: true' 'allowPrivilegeEscalation: false' 'automountServiceAccountToken: false'; do
+            if ! grep -q "$pattern" "$file"; then
+              echo "FAIL: '$pattern' missing from $file"
+              fail=1
+            fi
+          done
+          if ! grep -A2 'drop:' "$file" | grep -q '\- ALL'; then
+            echo "FAIL: 'drop: ALL' capabilities missing from $file"
+            fail=1
+          fi
+          exit $fail
+
+      - name: Authelia NetworkPolicy denies by default
+        run: |
+          file=apps/production/authelia/authelia-networkpolicy.yaml
+          if [ ! -f "$file" ]; then
+            echo "FAIL: $file does not exist"
+            exit 1
+          fi
+          if ! grep -q 'Ingress' "$file" || ! grep -q 'Egress' "$file"; then
+            echo "FAIL: $file must list Ingress and Egress in policyTypes"
+            exit 1
+          fi
