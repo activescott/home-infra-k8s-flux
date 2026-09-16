@@ -12,7 +12,11 @@ is a read-only mount rather than the ConfigMap the issue proposed.
 `/state/workspace` and `/state/config` are mounted `readOnly: true` in the `olya` container
 only. `seed-workspace`, `install-plugins` and `instruction-sync` keep their read-write `/state`
 mount, so they still write those paths. The live config moved out of `$OPENCLAW_STATE_DIR` into
-`/state/config`, and the memory files moved to `/state/memory` with symlinks at workspace root.
+`/state/config`, and the memory files moved to `/state/memory`.
+
+They first came back to workspace root as symlinks, which was wrong and is described in
+[plan-memory-bind-mounts.md](plan-memory-bind-mounts.md); they are bind mounts now. Anything
+below that still says "symlink" is describing the superseded design.
 
 A second commit replaced the "must match" comments with a real shared module: `MEMORY_PATHS` had
 three copies and the change was about to add a fourth copy of the seed-and-relink sequence.
@@ -31,6 +35,7 @@ a plain `rollout restart` on an already-migrated volume.
 | `rm /state/workspace/USER.md` | `Read-only file system`, exit 1 |
 | `echo x >> /state/workspace/USER.md` | succeeds, lands in `/state/memory/USER.md` |
 | `echo x >> /state/workspace/DREAMS.md` (dangling link) | creates `/state/memory/DREAMS.md` |
+| **re-verified 2026-09-16 after the bind-mount change** | `bootstrap file is unreadable`: 3 → 0; all 5 paths real files with inodes matching `/state/memory`; EROFS still on `AGENTS.md`, `openclaw.json`, `skills/`; `no memory changes (5 path(s) checked)`; 0 restarts |
 | `touch /state/repos/x` | succeeds |
 | memory after migration | 22/22 files, `MEMORY.md` 2254B, `USER.md` 3000B, unchanged |
 | `olya-memory-sync` manual run | `no memory changes (4 path(s) checked)`, exit 0 |
@@ -42,28 +47,26 @@ trying to write, so the read-only mount is never even reached. The mount is stil
 
 ## Things worth knowing next time
 
-- **`DREAMS.md` has never existed in the repo**, so its workspace-root symlink is deliberately
-  dangling. Writing through it creates the target; reading it before any write fails with ENOENT,
-  exactly as it did before this change. Not a bug, and not worth "fixing" by committing an empty
-  file.
-- **The boot reset always leaves the workspace dirty, and that is expected.** The memory paths are
-  tracked in git as regular files and get replaced by symlinks, so `git status` reports a
-  typechange on the four top-level files plus a DELETION of all 22 files under `memory/` (the
-  directory became a symlink). 28 lines per boot that read like memory files being deleted right
-  before a reset, which is what the 2026-09-12 incident looked like.
-
-  Originally logged as `discarding local modifications`. Now `seed-workspace` partitions the
-  porcelain output with `isExpectedMemoryDirt` and reports the churn as a single
-  `ignoring N expected memory-symlink path(s)` line, while anything else still gets the loud
-  listing. Do not turn this into a blanket suppression or a "this is fine" note: the point is
-  that a real unreviewed edit stays visible. Do not untrack the memory paths either, the checkout
-  copies are what seed a cold start.
+- **Every memory path must be tracked in `activeassistant`, including an empty `DREAMS.md`.** The
+  checkout is what provides the bind mountpoints, and a bind mount cannot create its destination
+  under a read-only parent. This reverses an earlier note here that said a missing `DREAMS.md`
+  was fine and "not worth fixing by committing an empty file" — that was true of the symlink
+  design and is false now. memory-core also requires `stat.isFile()` before writing it.
+- **The boot reset leaves the workspace clean**, because the mounts exist only in the `olya`
+  container and the containers running git see ordinary tracked files. Any dirt `seed-workspace`
+  reports is now worth reading. The one exception was the 2026-09-16 transition boot, which ran
+  against a tree still holding the previous design's symlinks and logged ~28 lines once.
 - **`/state/memory` paths are repo-relative**, so the repo's `memory/` directory is at
   `/state/memory/memory`. That is what lets `memory-sync.mts` copy them straight into a fresh
   clone with no rewriting.
-- **`memory-sync.mts` skips symlinks** (`copyable()` uses `lstat`). Pointing it at the workspace
-  instead of `/state/memory` would copy nothing and report success. The `MEMORY_DIR` env var on
-  the CronJob is what keeps it honest.
+- **`memory-sync.mts` must keep reading `/state/memory`, not the workspace.** Its pod does not
+  carry the bind mounts, so the workspace paths there are the stale tracked copies from the
+  checkout; pointing it at them would commit the repo's contents back over her live memory. The
+  `MEMORY_DIR` env var on the CronJob is what keeps it honest.
+- **Memory files must be edited in place.** A bind mount is tied to the inode that existed at
+  container start, so anything that replaces a file under `/state/memory` (`mv`, `rm`, `sed -i`,
+  temp-file-and-rename editors, rsync without `--inplace`, a snapshot rollback of a running pod)
+  silently splits the gateway's view from what the sync commits. Restarting the pod repairs it.
 - **Both config writers must overwrite in place.** `cp` and `copyFileSync` keep the inode, which
   the gateway's inotify watch depends on. Unlink-and-recreate, or pointing the gateway at the
   workspace copy that `git checkout --force` replaces, would silently stop config reloads.
@@ -76,6 +79,24 @@ memory directory and no error anywhere. Found by a throwaway harness that loads
 `volume-layout.mts` with `STATE` rewritten to a temp directory and exercises cold start, steady
 state, write-through-symlink, and a deleted memory file. Worth rebuilding if that file changes
 again; it is about 60 lines and needs no fixtures.
+
+The bind-mount change rebuilt it for `seedMemoryFromCheckout` (cold volume, steady state,
+`DREAMS.md` absent everywhere, and a kubelet-created directory where a file belongs). Same
+pattern, same reason: these are the paths where a bug is silent.
+
+## Final state, 2026-09-16
+
+- `/state/workspace` and `/state/config` read-only in the `olya` container; enforcement
+  re-verified after every change since.
+- Memory writable via bind mounts from `/state/memory`; no symlinks anywhere in the workspace.
+- acpx session state at `/state/openclaw/acpx-state`, image staging at
+  `/state/openclaw/cli-images`, both out of the read-only tree.
+- A `postStart` hook fails the container rather than letting a missing or read-only mount eat her
+  memory silently.
+
+**Still open:** `activescott/activeassistant#42`. The acpx `stateDir` fix is deployed but
+unexercised — `/state/openclaw/acpx-state` is created lazily on the first ACP spawn, so the issue
+should not close until a real opencode session runs.
 
 ## Commands to re-verify
 
