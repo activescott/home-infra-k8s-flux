@@ -50,9 +50,10 @@ spec:
               env:
                 - name: HOME
                   value: /tmp
-                # /state/memory, NOT the workspace. The workspace-root memory paths are symlinks
-                # into this directory, and memory-sync.mts skips symlinks on purpose, so pointing
-                # this at the workspace would copy nothing and report success.
+                # /state/memory, NOT the workspace. This pod does not carry the olya container's
+                # bind mounts, so the workspace paths here are the stale tracked copies from the
+                # checkout; pointing this at them would commit the repo's contents back over her
+                # live memory.
                 - name: MEMORY_DIR
                   value: /state/memory
               resources:

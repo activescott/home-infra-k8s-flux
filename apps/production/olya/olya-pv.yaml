@@ -8,8 +8,8 @@
 #               olya container; written only by seed-workspace and instruction-sync.
 #   workspace/  The agent workspace, a live checkout of activescott/activeassistant. READ-ONLY
 #               to the olya container, for the same reason.
-#   memory/     Her memory files, symlinked back to workspace root so they stay writable while
-#               the workspace around them is not. Read by the hourly sync CronJob.
+#   memory/     Her memory files, bind-mounted back over workspace root so they stay writable
+#               while the workspace around them is not. Read by the hourly sync CronJob.
 #   repos/      Work repos she clones on demand, including her own writable clone of
 #               activeassistant. Writable.
 #   archive/    Nightly audit and transcript exports. Writable.

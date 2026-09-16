@@ -4,21 +4,15 @@
 // This container mounts /state read-write with no read-only overlay, unlike the olya container
 // beside it, which is what lets it write the paths she cannot. That asymmetry is the design.
 //
-// Memory files are not at risk from the reset: they live at MEMORY_LIVE, outside the checkout.
-// What the reset does destroy is the symlinks to them at workspace root, so those are rebuilt
-// afterwards. That sequence, and the path list behind it, are shared with seed-workspace.mts
-// through volume-layout.mts rather than duplicated here.
+// The reset does not touch memory. The memory files live at MEMORY_LIVE, outside the checkout,
+// and reach workspace root as bind mounts that exist only in the olya container's mount
+// namespace -- so `git clean -ffdx` here sees the ordinary tracked files it expects, resets
+// them, and the mounts beside it are unaffected. Nothing to preserve and nothing to rebuild.
 //
 // TypeScript run through Node's native type stripping, same as memory-sync.mts.
 // No build step and no transpiler; the image ships Node 24.
 import { execFileSync } from "node:child_process"
-import {
-  WORKSPACE,
-  installSubagentFiles,
-  linkMemoryIntoWorkspace,
-  linkWritableEscapeHatches,
-  publishConfig,
-} from "./volume-layout.mts"
+import { WORKSPACE, installSubagentFiles, publishConfig } from "./volume-layout.mts"
 
 function log(msg: string): void {
   console.log(`${new Date().toISOString()} ==> ${msg}`)
@@ -50,9 +44,7 @@ function syncOnce(): void {
   git(["checkout", "--force", "-B", "main", "origin/main"])
   git(["clean", "-ffdx"])
 
-  // The same three steps seed-workspace.mts runs after its own reset, in the same order.
-  linkMemoryIntoWorkspace()
-  linkWritableEscapeHatches()
+  // The same two steps seed-workspace.mts runs after its own reset, in the same order.
   publishConfig()
   installSubagentFiles()
 
