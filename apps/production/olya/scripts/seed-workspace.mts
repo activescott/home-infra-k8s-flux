@@ -47,8 +47,10 @@ import {
   STATE,
   WORKSPACE,
   installSubagentFiles,
+  isExpectedMemoryDirt,
   linkMemoryIntoWorkspace,
   publishConfig,
+  splitDirty,
 } from "./volume-layout.mts"
 
 const sshKey = "/etc/olya-ssh/id_ed25519"
@@ -188,7 +190,15 @@ function git(args: string[], opts: { cwd?: string; allowFail?: boolean } = {}): 
 
 // Clone if missing, otherwise force the checkout to origin's tip on the given branch. Local
 // commits and local modifications are DISCARDED, and what was discarded is logged.
-function cloneOrReset(url: string, dir: string, branch: string): void {
+//
+// isExpectedDirt, when given, marks paths this pod dirties on purpose so they are summarised in
+// one line instead of listed as if something were wrong. See isExpectedMemoryDirt.
+function cloneOrReset(
+  url: string,
+  dir: string,
+  branch: string,
+  isExpectedDirt?: (path: string) => boolean,
+): void {
   if (!existsSync(join(dir, ".git"))) {
     log(`cloning ${url} -> ${dir}`)
     execFileSync("git", ["clone", "--branch", branch, url, dir], {
@@ -210,8 +220,21 @@ function cloneOrReset(url: string, dir: string, branch: string): void {
     console.error(ahead)
   }
   if (dirty) {
-    log(`discarding local modifications in ${dir}:`)
-    console.log(dirty)
+    const { expected, unexpected } = splitDirty(dirty, isExpectedDirt ?? (() => false))
+    if (unexpected.length > 0) {
+      log(`discarding local modifications in ${dir}:`)
+      console.log(unexpected.join("\n"))
+    }
+    if (expected.length > 0) {
+      // One line, not 28. This is the memory symlinks showing up as typechanges and deletions,
+      // which happens on every single boot and means nothing went wrong. Kept as a line rather
+      // than silence so a reader can tell the check ran and see the count change if the memory
+      // path list ever does.
+      log(
+        `ignoring ${expected.length} expected memory-symlink path(s) in ${dir} ` +
+          `(tracked as regular files, replaced by symlinks into ${MEMORY_LIVE})`,
+      )
+    }
   }
 
   // -B so this also moves off a feature branch. Her instructions say to push a branch and return
@@ -249,7 +272,12 @@ if (existsSync(join(WORKSPACE, ".git"))) {
   }
 }
 
-cloneOrReset("git@github.com:activescott/activeassistant.git", WORKSPACE, "main")
+cloneOrReset(
+  "git@github.com:activescott/activeassistant.git",
+  WORKSPACE,
+  "main",
+  isExpectedMemoryDirt,
+)
 
 linkMemoryIntoWorkspace()
 publishConfig()

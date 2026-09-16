@@ -46,10 +46,18 @@ trying to write, so the read-only mount is never even reached. The mount is stil
   dangling. Writing through it creates the target; reading it before any write fails with ENOENT,
   exactly as it did before this change. Not a bug, and not worth "fixing" by committing an empty
   file.
-- **`seed-workspace` logs `discarding local modifications` on every boot from now on.** The five
-  memory paths are tracked in git as regular files and are replaced by symlinks, so `git status`
-  reports a typechange. Cosmetic. Do not try to silence it by untracking them: the checkout copies
-  are what seed a cold start.
+- **The boot reset always leaves the workspace dirty, and that is expected.** The memory paths are
+  tracked in git as regular files and get replaced by symlinks, so `git status` reports a
+  typechange on the four top-level files plus a DELETION of all 22 files under `memory/` (the
+  directory became a symlink). 28 lines per boot that read like memory files being deleted right
+  before a reset, which is what the 2026-09-12 incident looked like.
+
+  Originally logged as `discarding local modifications`. Now `seed-workspace` partitions the
+  porcelain output with `isExpectedMemoryDirt` and reports the churn as a single
+  `ignoring N expected memory-symlink path(s)` line, while anything else still gets the loud
+  listing. Do not turn this into a blanket suppression or a "this is fine" note: the point is
+  that a real unreviewed edit stays visible. Do not untrack the memory paths either, the checkout
+  copies are what seed a cold start.
 - **`/state/memory` paths are repo-relative**, so the repo's `memory/` directory is at
   `/state/memory/memory`. That is what lets `memory-sync.mts` copy them straight into a fresh
   clone with no rewriting.
