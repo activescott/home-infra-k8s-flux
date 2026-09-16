@@ -124,6 +124,30 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+        # Copies the Google Workspace credential JSON from the read-only Secret
+        # volume to a writable emptyDir so the MCP server can persist refreshed
+        # OAuth tokens. Secret volumes are always read-only in Kubernetes.
+        - name: copy-workspace-creds
+          image: olya-image
+          command: ["sh", "-c", "cp /secret/credentials.json /data/credentials.json && chmod 0600 /data/credentials.json"]
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 16Mi
+            limits:
+              cpu: "100m"
+              memory: 32Mi
+          volumeMounts:
+            - name: google-workspace-creds
+              mountPath: /secret
+              readOnly: true
+            - name: google-workspace-data
+              mountPath: /data
 
       containers:
         - name: olya
@@ -264,9 +288,8 @@ spec:
               mountPath: /etc/olya-telegram/token
               subPath: token
               readOnly: true
-            - name: google-workspace-creds
-              mountPath: /etc/olya-google-workspace/credentials.json
-              subPath: credentials.json
+            - name: google-workspace-data
+              mountPath: /etc/olya-google-workspace
             - name: tmp
               mountPath: /tmp
 
@@ -329,10 +352,9 @@ spec:
               - key: telegram_bot_token
                 path: token
             defaultMode: 0400
-        # Google Workspace MCP credentials. The credentials JSON is projected as a
-        # regular file via subPath so the MCP server can read it. subPath mounts do not
-        # update in place, but that is fine: the generator hash changes on secret edits,
-        # so the pod is replaced.
+        # Google Workspace MCP credentials (read-only source). The initContainer
+        # copies this to the writable google-workspace-data emptyDir so the MCP
+        # server can persist refreshed OAuth tokens.
         - name: google-workspace-creds
           secret:
             secretName: olya-google-workspace
@@ -340,6 +362,8 @@ spec:
               - key: google_workspace_credentials_json
                 path: credentials.json
             defaultMode: 0600
+        - name: google-workspace-data
+          emptyDir: {}
         # readOnlyRootFilesystem means node, npm, and git all need somewhere to write.
         - name: tmp
           emptyDir: {}
