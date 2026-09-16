@@ -79,8 +79,8 @@ spec:
       ports:
         - port: 18789
           protocol: TCP
-    # Prometheus, for /api/diagnostics/prometheus. Not wired up yet; the rule is here so that
-    # enabling the scrape is a one-file change rather than a debugging session.
+    # Prometheus, for /api/diagnostics/prometheus. Scrapes with a bearer token
+    # and X-Forwarded-For to satisfy gateway proxy attribution.
     - from:
         - namespaceSelector:
             matchLabels:

@@ -170,13 +170,46 @@
       "targets": [{ "expr": "sum by (container) (rate(container_cpu_usage_seconds_total{namespace=\"olya\", container!=\"\"}[5m]))", "legendFormat": "{{container}}", "refId": "A" }]
     },
     {
-      "type": "text",
-      "title": "Application metrics",
+      "type": "timeseries",
+      "title": "Live sessions by state",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
-      "options": {
-        "mode": "markdown",
-        "content": "Prometheus is now scraping OpenClaw metrics from `/api/diagnostics/prometheus` (scrape job `openclaw`, 30s interval). Application-level panels (sessions, model usage, tokens, cost, tool executions) will be added here as the metric names stabilize."
-      }
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 30, "lineWidth": 2, "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "openclaw_liveness_sessions{job=\"openclaw\"}", "legendFormat": "{{state}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Session turn rate by agent",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum by (agent) (rate(openclaw_session_turn_created_total{job=\"openclaw\"}[5m]))", "legendFormat": "{{agent}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Harness run rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [{ "expr": "sum by (model, phase) (rate(openclaw_harness_run_total{job=\"openclaw\"}[5m]))", "legendFormat": "{{model}} / {{phase}}", "refId": "A" }]
     }
   ]
 }

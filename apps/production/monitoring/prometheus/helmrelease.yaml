@@ -1721,6 +1721,12 @@ spec:
         metrics_path: "/api/diagnostics/prometheus"
         authorization:
           credentials_file: /etc/prometheus/secrets/openclaw/openclaw_gateway_token
+        # Prometheus's pod IP falls in gateway.trustedProxies (172.16.0.0/16),
+        # so the gateway demands X-Forwarded-For or rejects with 403. Any IP
+        # outside that CIDR satisfies it; 203.0.113.1 is RFC 5737 TEST-NET-3.
+        http_headers:
+          X-Forwarded-For:
+            values: ["203.0.113.1"]
         static_configs:
           - targets: ["olya.olya.svc.cluster.local:18789"]
       - job_name: "prometheus self scrape"
