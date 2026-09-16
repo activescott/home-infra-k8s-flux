@@ -289,28 +289,7 @@ spec:
             - name: tmp
               mountPath: /tmp
 
-        # Forwards metrics scrapes to localhost so the gateway skips trustedProxy
-        # attribution and runs normal token auth (cluster-pod IPs are trusted).
-        - name: metrics-proxy
-          image: alpine/socat:latest
-          command: ["socat", "TCP-LISTEN:18790,fork,reuseaddr", "TCP:127.0.0.1:18789"]
-          ports:
-            - name: metrics
-              containerPort: 18790
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: 10m
-              memory: 8Mi
-            limits:
-              cpu: 100m
-              memory: 32Mi
-
-      volumes:
+       volumes:
         - name: state
           persistentVolumeClaim:
             claimName: olya-state

@@ -1721,8 +1721,11 @@ spec:
         metrics_path: "/api/diagnostics/prometheus"
         authorization:
           credentials_file: /etc/prometheus/secrets/openclaw/openclaw_gateway_token
+        http_headers:
+          X-Forwarded-For:
+            values: ["203.0.113.1"]
         static_configs:
-          - targets: ["olya.olya.svc.cluster.local:18790"]
+          - targets: ["olya.olya.svc.cluster.local:18789"]
       - job_name: "prometheus self scrape"
         static_configs:
           - targets: ["localhost:9090"]
