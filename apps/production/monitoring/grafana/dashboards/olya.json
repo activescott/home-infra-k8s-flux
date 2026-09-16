@@ -181,7 +181,7 @@
         }
       },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
-      "targets": [{ "expr": "openclaw_liveness_sessions{job=\"openclaw\"}", "legendFormat": "{{state}}", "refId": "A" }]
+      "targets": [{ "expr": "openclaw_session_queue_depth{job=\"openclaw\"}", "legendFormat": "{{state}}", "refId": "A" }]
     },
     {
       "type": "timeseries",

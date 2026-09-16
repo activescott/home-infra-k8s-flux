@@ -51,6 +51,11 @@ secretGenerator:
   - name: olya-ssh
     files:
       - id_ed25519=olya-ssh.secret.encrypted
+  # Google Workspace MCP credentials. Client ID, secret, and the credential JSON
+  # from the OAuth consent flow. See env.secret.google-workspace.example.
+  - name: olya-google-workspace
+    envs:
+      - .env.secret.google-workspace.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
