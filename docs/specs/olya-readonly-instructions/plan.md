@@ -111,7 +111,7 @@ inotify watch would follow the old inode and silently stop noticing config chang
 
 A dedicated `/state/config` directory avoids all three. Both writers copy **in place**
 (`cp`, `copyFileSync`), so the inode is stable and the watcher survives, and a
-directory-level mount has no cold-start footgun.
+directory-level mount has neither problem.
 
 ### Why memory moves to `/state/memory` and is symlinked back
 
@@ -145,31 +145,57 @@ nothing.
      `/state`, so it can still write config and trust records.
    - Update the header comments that describe the mixed save/reset/restore policy, which
      this change replaces.
-2. `apps/production/olya/scripts/seed-workspace.sh`
+2. `apps/production/olya/scripts/volume-layout.mts` (new) — the PVC layout as constants plus
+   the operations that maintain it: `MEMORY_PATHS`, `linkMemoryIntoWorkspace()`,
+   `publishConfig()`, `installSubagentFiles()`. See "Why a shared module" below.
+3. `apps/production/olya/scripts/seed-workspace.sh` → `seed-workspace.mts`
+   - Translated to TypeScript so it can import the module above. `curl | jq` against
+     `api.github.com` becomes `fetch`; everything else is a literal translation and every
+     comment is carried over.
    - Create `/state/config` and `/state/memory`.
    - One-time migration: before the reset, copy any real (non-symlink) memory path out of
      `/state/workspace` into `/state/memory` if it is not already there. Idempotent — after
      migration those paths are symlinks and are skipped.
-   - After `clone_or_reset`: seed any missing `/state/memory` path from the fresh checkout
-     (cold start on an empty volume), then replace each memory path at workspace root with
-     a symlink into `/state/memory`.
-   - Seed the config to `/state/config/openclaw.json` instead of `/state/openclaw/`.
+   - After `cloneOrReset`, call the three shared operations.
    - Point the Claude Code auto-memory symlink at `/state/memory/memory`.
    - Drop the `$saved` tmpdir dance: memory no longer lives inside the tree being reset.
-3. `apps/production/olya/scripts/instruction-sync.mts`
+4. `apps/production/olya/scripts/instruction-sync.mts`
    - Drop the `MEMORY_PATHS` save/restore (memory is outside the checkout now).
-   - After the reset, recreate the workspace-root symlinks, seeding missing targets from
-     the checkout first.
-   - `copyFileSync` the config to `/state/config/openclaw.json`.
-4. `apps/production/olya/olya-memory-sync-cronjob.yaml` + `scripts/memory-sync.mts`
-   - `WORKSPACE_DIR` → `MEMORY_DIR`, value `/state/memory`.
+   - After the reset, call the same three shared operations, in the same order.
+5. `apps/production/olya/olya-memory-sync-cronjob.yaml` + `scripts/memory-sync.mts`
+   - `WORKSPACE_DIR` → `MEMORY_DIR`, value `/state/memory`; `MEMORY_PATHS` imported.
    - Replace the "is not a git checkout" liveness guard with "`/state/memory` does not
      exist" — same property (proves `seed-workspace` ran), correct for the new layout.
-5. `apps/production/olya/README.md` — document the read-only boundary and the new paths.
+6. `apps/production/olya/README.md` — document the read-only boundary and the new paths.
+
+### Why a shared module
+
+`MEMORY_PATHS` existed in three copies (`seed-workspace.sh`, `instruction-sync.mts`,
+`memory-sync.mts`) held in step by a "must match" comment, and this change was about to add
+a fourth copy of the seed-and-relink sequence. The failure that invites is quiet: add a
+memory file, miss one of the lists, and it is either discarded on the next boot or never
+reaches git, with nothing to see either way.
+
+All three scripts already mount the same `olya-scripts` ConfigMap at `/scripts`, so a
+module is importable from each. Converting `seed-workspace.sh` to `.mts` is the price of
+that — bash cannot import it.
+
+Two things verified rather than assumed:
+
+- **Imports resolve through the ConfigMap's symlink farm.** Kubernetes materialises a
+  ConfigMap volume as `name -> ..data/name`, and Node resolves specifiers against the
+  importing file's realpath. Reproduced that exact layout in a sandbox and imported across
+  it successfully.
+- **`linkMemoryIntoWorkspace()` behaves on cold start, steady state, and after a deletion.**
+  A throwaway harness loaded the module with `STATE` rewritten to a temp directory. It found
+  a real bug: `mkdirSync(MEMORY_LIVE/memory)` ran before the seeding loop, so the `memory`
+  entry always looked present and was never seeded from the checkout. A cold start would
+  have come up with an empty memory directory and no error. The `mkdir` now runs after the
+  loop, with a comment saying why the order matters.
 
 ### `activeassistant` (PR 2)
 
-6. `AGENTS.md` §6 — rewrite to describe the *mechanism*, not just the rule:
+7. `AGENTS.md` §6 — rewrite to describe the *mechanism*, not just the rule:
    - Everything at workspace root except the memory paths is mounted read-only. A write
      fails with a filesystem permission error; that is correct, not a bug.
    - Her writable clone is `/state/repos/activeassistant`, made by her, as with any work

@@ -27,10 +27,13 @@ configMapGenerator:
       - managed-plugins.txt
   - name: olya-scripts
     files:
-      - scripts/seed-workspace.sh
+      - scripts/seed-workspace.mts
       - scripts/instruction-sync.mts
       - scripts/memory-sync.mts
       - scripts/install-plugins.mts
+      # Imported by the three above. Not a program, but it ships in the same ConfigMap because
+      # all three resolve it as ./volume-layout.mts from /scripts.
+      - scripts/volume-layout.mts
 secretGenerator:
   # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
   # openclaw_gateway_token, anthropic_api_key, openrouter_api_key.

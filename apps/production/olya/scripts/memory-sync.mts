@@ -38,21 +38,23 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, dirname, basename } from "node:path"
+import { MEMORY_LIVE, MEMORY_PATHS } from "./volume-layout.mts"
 
-// Paths inside this directory are repo-relative, which is why the repo's memory/ directory is
-// read from /state/memory/memory. See the same note in seed-workspace.sh.
-const memoryDir = process.env.MEMORY_DIR ?? "/state/memory"
+// Overridable so this can be exercised against a throwaway directory without touching the
+// assistant's volume.
+const memoryDir = process.env.MEMORY_DIR ?? MEMORY_LIVE
 const branch = process.env.TARGET_BRANCH ?? "main"
 // No credential in the URL; see GIT_ASKPASS below. Overridable so this can be exercised
 // against a throwaway local repo without touching GitHub.
 const remote = process.env.REMOTE_URL ?? "https://github.com/activescott/activeassistant.git"
 const tokenPath = process.env.GITHUB_PAT_FILE ?? "/etc/olya-sync/token"
 
-// Only these paths. Everything else in the repo is an instruction file and reaches the default
-// branch only through a reviewed PR. Reading them from /state/memory, which holds nothing else,
-// is a second reason an instruction edit cannot ride along into this commit -- the first being
-// that the instruction files are mounted read-only in her container and cannot be edited at all.
-const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md", "memory/"]
+// MEMORY_PATHS is imported, not restated: it is the same list seed-workspace.mts relinks and
+// instruction-sync.mts preserves, and the three going out of step is the failure this job cannot
+// detect. Everything else in the repo is an instruction file and reaches the default branch only
+// through a reviewed PR. Reading only these paths, from a directory that holds nothing else, is
+// the second reason an instruction edit cannot ride along into this commit; the first is that
+// the instruction files are mounted read-only in her container and cannot be edited at all.
 
 if (!existsSync(tokenPath)) {
   console.error(`no token at ${tokenPath}; check the olya-memory-sync Secret and its volume`)

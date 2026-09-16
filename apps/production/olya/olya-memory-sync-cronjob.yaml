@@ -73,7 +73,7 @@ spec:
                 - name: state
                   mountPath: /state
                   readOnly: true
-                # memory-sync.mts and seed-workspace.sh, from the olya-scripts ConfigMap.
+                # memory-sync.mts and the volume-layout.mts it imports, from the olya-scripts ConfigMap.
                 - name: scripts
                   mountPath: /scripts
                   readOnly: true

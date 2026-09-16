@@ -49,10 +49,10 @@ spec:
         # The split is what makes the read-only mounts on the olya container below possible:
         # everything declarative ends up under /state/workspace and /state/config, everything
         # she writes ends up under /state/memory, /state/repos, /state/home and /state/openclaw.
-        # See scripts/seed-workspace.sh.
+        # See scripts/seed-workspace.mts.
         - name: seed-workspace
           image: olya-image
-          command: ["/scripts/seed-workspace.sh"]
+          command: ["/scripts/seed-workspace.mts"]
           env:
             - name: HOME
               value: /state/home
@@ -73,9 +73,9 @@ spec:
             # OAuth profile) and the agent workspace checkout (/state/workspace).
             - name: state
               mountPath: /state
-            # The olya-scripts ConfigMap: seed-workspace.sh itself, plus memory-sync.mts. The
-            # scripts live as files in this directory so they are reviewable in a diff instead
-            # of being a YAML heredoc.
+            # The olya-scripts ConfigMap: seed-workspace.mts itself, plus the volume-layout.mts
+            # it imports. The scripts live as files in this directory so they are reviewable in
+            # a diff instead of being a YAML heredoc.
             - name: scripts
               mountPath: /scripts
               readOnly: true
@@ -146,7 +146,7 @@ spec:
             # dir, and that is the whole point: /state/config can then be mounted read-only
             # below, while /state/openclaw stays writable for the SQLite databases.
             #
-            # Both writers (seed-workspace.sh, instruction-sync.mts) overwrite this file IN
+            # Both writers (seed-workspace.mts, instruction-sync.mts) overwrite this file IN
             # PLACE rather than replacing it, so the gateway's inotify watch on it survives an
             # update. Do not change either of them to unlink-and-recreate.
             - name: OPENCLAW_CONFIG_PATH
