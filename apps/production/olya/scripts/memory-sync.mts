@@ -3,14 +3,18 @@
 //
 // The memory files are treated as DATA, never as a repository. This job clones the remote into
 // its own pod-local scratch dir, copies the memory files in, and commits there. It deliberately
-// never runs git inside /state/workspace, which is mounted read-only here.
+// never runs git inside /state, which is mounted read-only here.
 //
-// That matters because /state/workspace/.git is writable by the agent's uid, and git treats a
-// repository's own .git directory as trusted code: hooks (pre-commit, and reference-transaction
-// which fires on fetch), plus core.hooksPath, credential.helper, core.sshCommand and
-// url.<host>.insteadOf in .git/config. Running git there with a push credential available means
-// the agent chooses what code executes in this pod. There is no git flag that makes .git/config
-// untrusted; GIT_CONFIG_NOSYSTEM covers system config only.
+// That matters because git treats a repository's own .git directory as trusted code: hooks
+// (pre-commit, and reference-transaction which fires on fetch), plus core.hooksPath,
+// credential.helper, core.sshCommand and url.<host>.insteadOf in .git/config. Running git in a
+// checkout the agent can influence, with a push credential available, means the agent chooses
+// what code executes in this pod. There is no git flag that makes .git/config untrusted;
+// GIT_CONFIG_NOSYSTEM covers system config only.
+//
+// It reads /state/memory rather than the workspace, and must keep doing so: the workspace-root
+// memory paths are SYMLINKS into /state/memory, and copyable() below rejects symlinks by design,
+// so pointing this at the workspace would copy nothing and report success.
 //
 // It also never pushes HEAD from a tree the agent commits into. An earlier version did
 // `rebase FETCH_HEAD` then `push HEAD:main` in her working tree, which replayed any commit she
@@ -34,18 +38,23 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, dirname, basename } from "node:path"
+import { MEMORY_LIVE, MEMORY_PATHS } from "./volume-layout.mts"
 
-const workspace = process.env.WORKSPACE_DIR ?? "/state/workspace"
+// Overridable so this can be exercised against a throwaway directory without touching the
+// assistant's volume.
+const memoryDir = process.env.MEMORY_DIR ?? MEMORY_LIVE
 const branch = process.env.TARGET_BRANCH ?? "main"
 // No credential in the URL; see GIT_ASKPASS below. Overridable so this can be exercised
 // against a throwaway local repo without touching GitHub.
 const remote = process.env.REMOTE_URL ?? "https://github.com/activescott/activeassistant.git"
 const tokenPath = process.env.GITHUB_PAT_FILE ?? "/etc/olya-sync/token"
 
-// Only these paths. Everything else in the repo is an instruction file and reaches the default
-// branch only through a reviewed PR. Copying by name rather than syncing the tree is what keeps
-// an uncommitted instruction edit in her workspace from riding along into this commit.
-const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md", "memory/"]
+// MEMORY_PATHS is imported, not restated: it is the same list seed-workspace.mts relinks and
+// instruction-sync.mts preserves, and the three going out of step is the failure this job cannot
+// detect. Everything else in the repo is an instruction file and reaches the default branch only
+// through a reviewed PR. Reading only these paths, from a directory that holds nothing else, is
+// the second reason an instruction edit cannot ride along into this commit; the first is that
+// the instruction files are mounted read-only in her container and cannot be edited at all.
 
 if (!existsSync(tokenPath)) {
   console.error(`no token at ${tokenPath}; check the olya-memory-sync Secret and its volume`)
@@ -110,17 +119,19 @@ function git(args: string[], opts: { cwd?: string; allowFail?: boolean } = {}): 
   }
 }
 
-// REFUSE TO RUN AGAINST A WORKSPACE THAT IS NOT THERE.
+// REFUSE TO RUN AGAINST A MEMORY DIRECTORY THAT IS NOT THERE.
 //
-// This job propagates deletions, which is correct when she removes a memory file and wrong in
-// every other case. On 2026-09-12 the assistant pod was crashlooping, so seed-workspace had
-// never cloned the workspace. This job ran on schedule anyway, found no memory files in a
-// directory that did not exist, and committed that as the deletion of MEMORY.md, USER.md and
-// IDENTITY.md -- 156 lines, pushed to the default branch under the bypass credential.
+// On 2026-09-12 the assistant pod was crashlooping, so seed-workspace had never run. This job
+// ran on schedule anyway, found no memory files in a directory that did not exist, and committed
+// that as the deletion of MEMORY.md, USER.md and IDENTITY.md -- 156 lines, pushed to the default
+// branch under the bypass credential. `git add --ignore-removal` below is now the real guard
+// against that, but this check is what turns the condition into a visible failure instead of a
+// silent no-op, and it is the only signal that seed-workspace never got far enough to run.
 //
-// An absent or uninitialised workspace is a failure to report, never an instruction to delete.
-if (!existsSync(join(workspace, ".git"))) {
-  console.error(`${workspace} is not a git checkout; refusing to sync. Is the assistant pod healthy?`)
+// This used to test for /state/workspace/.git. Same property: seed-workspace creates this
+// directory, so its absence means seed-workspace did not complete.
+if (!existsSync(memoryDir)) {
+  console.error(`${memoryDir} does not exist; refusing to sync. Is the assistant pod healthy?`)
   process.exit(1)
 }
 
@@ -132,7 +143,7 @@ git(["clone", "--quiet", "--depth", "1", "--branch", branch, remote, clone], { c
 // symlinks, because git would store the link text rather than the target's contents; FIFOs,
 // sockets and device nodes, because cpSync THROWS on them (ERR_FS_CP_FIFO_PIPE,
 // ERR_FS_CP_SOCKET) and an uncaught throw here kills the job. `mkfifo` needs no privilege and
-// /state/workspace is writable by the agent's uid, so one stray socket under memory/ would
+// /state/memory is writable by the agent's uid, so one stray socket under memory/ would
 // otherwise wedge the sync permanently while the CronJob went on failing quietly.
 //
 // A nested .git is excluded for the same reason it would be wrong: `git add -A` would record it
@@ -150,7 +161,7 @@ function copyable(p: string): boolean {
 
 let copied = 0
 for (const path of MEMORY_PATHS) {
-  const src = join(workspace, path)
+  const src = join(memoryDir, path)
   const dest = join(clone, path)
   rmSync(dest, { recursive: true, force: true })
   if (!copyable(src)) continue
@@ -179,8 +190,8 @@ for (const path of MEMORY_PATHS) {
 // the default branch in a commit titled "sync memory".
 //
 // Refusing to delete is also the safer behaviour when the agent is the one doing the deleting.
-// A removed memory file is not propagated, so the next pod start restores it from origin: the
-// boot reset copies aside only files that exist, resets to the branch, then puts them back. A
+// A removed memory file is not propagated, so the next pod start restores it from origin:
+// seed-workspace re-seeds any path missing from /state/memory out of the fresh checkout. A
 // deletion therefore survives until the next restart instead of becoming permanent. Were it
 // propagated, an agent could drop an inconvenient directive out of USER.md for good.
 //
