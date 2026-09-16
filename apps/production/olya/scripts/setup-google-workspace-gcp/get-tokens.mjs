@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // OAuth token exchange for Google Workspace MCP setup.
 // No dependencies — Node.js builtins only.
-// Usage: node get-tokens.mjs --client-id ID --client-secret SECRET
+// Usage: node get-tokens.mjs (prompts for client ID and secret)
 
 import http from "http";
 import https from "https";
 import { URL } from "url";
+import readline from "readline";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.modify",
@@ -14,13 +15,14 @@ const SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
 ];
 
-function parseArgs(argv) {
-  const out = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--client-id") out.clientId = argv[++i];
-    else if (argv[i] === "--client-secret") out.clientSecret = argv[++i];
-  }
-  return out;
+function prompt(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
 }
 
 function fail(msg) {
@@ -69,9 +71,10 @@ function exchangeCode({ code, clientId, clientSecret, redirectUri }) {
   });
 }
 
-const { clientId, clientSecret } = parseArgs(process.argv.slice(2));
-if (!clientId) fail("--client-id is required");
-if (!clientSecret) fail("--client-secret is required");
+const clientId = await prompt("Client ID: ");
+if (!clientId) fail("Client ID is required");
+const clientSecret = await prompt("Client secret: ");
+if (!clientSecret) fail("Client secret is required");
 
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, "http://localhost");
