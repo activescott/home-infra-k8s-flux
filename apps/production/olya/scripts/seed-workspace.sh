@@ -3,28 +3,35 @@
 #
 # Prepares the credential and workspace half of the volume.
 #
-# The workspace holds two kinds of file and they get opposite treatment:
+# The volume holds two kinds of file and they get opposite treatment, which this script is what
+# physically separates:
 #
-#   Instruction files (everything except MEMORY_PATHS below) are DECLARATIVE. They are forced
-#   back to origin's tip on every boot, discarding local commits and local edits. They only
-#   change through a reviewed PR, and this is what makes that true of the files she actually
-#   runs on rather than only of the branch in GitHub. Without it, an agent-written
-#   skills/<name>/SKILL.md loads live and forever, is never committed by the sync job, and so is
-#   invisible in both git and review.
+#   Instruction files (everything in the checkout except the memory paths below) and the gateway
+#   config are DECLARATIVE. They are forced back to origin's tip on every boot, discarding local
+#   commits and local edits, and they land under $workspace and $state/config -- the two paths
+#   the olya container mounts READ-ONLY. They change only through a reviewed PR, and the mount is
+#   what makes that true of the files she actually runs on rather than only of the branch in
+#   GitHub. Before the read-only mounts existed, an agent-written skills/<name>/SKILL.md loaded
+#   live and forever, was never committed by the sync job, and so was invisible in both git and
+#   review; and on 2026-09-15 the live openclaw.json was hand-edited and crashed the gateway.
 #
-#   Memory files are NOT declarative and survive. memory-core writes them continuously
-#   (memory-flush before every compaction, a nightly dreaming sweep, observed-preference
-#   directives appended to USER.md) and the hourly sync job is what gets them into git. They are
-#   copied aside, the reset happens, and they are put back, so they persist as uncommitted
-#   working-tree files until the next sync picks them up.
+#   Memory files are NOT declarative. memory-core writes them continuously (memory-flush before
+#   every compaction, a nightly dreaming sweep, observed-preference directives appended to
+#   USER.md) and the hourly sync job is what gets them into git. They live at $memory_live, which
+#   stays writable, and are reached from workspace root through symlinks planted below.
 set -euo pipefail
 
 state=/state
 export HOME="$state/home"
 workspace="$state/workspace"
+# Paths INSIDE this directory are repo-relative, which is why the repo's own memory/ directory
+# ends up at $memory_live/memory. Awkward to read, and deliberate: memory-sync.mts copies these
+# paths straight into a fresh clone, so any rewriting here would have to be undone there.
+memory_live="$state/memory"
+config_live="$state/config"
 ssh_key=/etc/olya-ssh/id_ed25519
 
-mkdir -p "$HOME" "$state/openclaw" "$state/archive" "$state/repos"
+mkdir -p "$HOME" "$state/openclaw" "$state/archive" "$state/repos" "$memory_live" "$config_live"
 
 if [ ! -r "$ssh_key" ]; then
   echo "FATAL: ssh key not readable at $ssh_key" >&2
@@ -118,64 +125,94 @@ clone_or_reset() {
   # -x as well as -fd: without it, gitignored files survive the reset. That would reopen the
   # hole this reset closes, since an agent-written skills/ file under any ignored path would
   # then be durable across restarts, absent from `git status`, and never pushed by the sync.
-  # Safe here because the memory paths are copied aside by the caller before this runs.
+  # Safe here because the memory files live at $memory_live, outside this tree; what this does
+  # destroy is the symlinks pointing at them, which the caller re-plants immediately afterwards.
   git -C "$dir" clean -ffdx
 }
 
 clone_or_reset git@github.com:olyapop/dotfiles.git "$HOME/dotfiles" main
 "$HOME/dotfiles/script/setup"
 
-# Memory files, preserved across the reset. Must match MEMORY_PATHS in memory-sync.mts.
+# Memory paths, relative to both the repo root and $memory_live. Must match MEMORY_PATHS in
+# memory-sync.mts.
 memory_paths=(MEMORY.md DREAMS.md USER.md IDENTITY.md memory)
 
-saved=$(mktemp -d)
+# ONE-TIME MIGRATION, idempotent. These used to live inside the checkout and survive the reset by
+# being copied aside and put back. They now live at $memory_live, so the live copies have to be
+# lifted out before the reset destroys them -- but only on the first boot after that change.
+#
+# The -L test is what makes this a no-op afterwards: once migrated, the workspace-root entry is a
+# symlink into $memory_live rather than a real file, so there is nothing left to migrate. Copy
+# rather than move, so a failure part-way leaves the originals in place for the next attempt.
 if [ -d "$workspace/.git" ]; then
   for p in "${memory_paths[@]}"; do
-    [ -e "$workspace/$p" ] && cp -a "$workspace/$p" "$saved/"
+    if [ -e "$workspace/$p" ] && [ ! -L "$workspace/$p" ] && [ ! -e "$memory_live/$p" ]; then
+      echo "==> migrating memory path $p out of the workspace into $memory_live"
+      cp -a "$workspace/$p" "$memory_live/$p"
+    fi
   done
 fi
 
-echo "==> saved ${#memory_paths[@]} memory path(s) before reset (will restore after)"
-
 clone_or_reset git@github.com:activescott/activeassistant.git "$workspace" main
 
+# Cold start on an empty volume: nothing has been migrated and memory-core has not run yet, so
+# seed from what the checkout carries. Without this the symlinks below would dangle, and while a
+# write through a dangling symlink does create the target, a READ of one fails -- so the bootstrap
+# files OpenClaw expects at workspace root would come back as missing on the very first turn.
 for p in "${memory_paths[@]}"; do
-  if [ -e "$saved/$p" ]; then
-    rm -rf "$workspace/$p"
-    cp -a "$saved/$p" "$workspace/$p"
+  if [ ! -e "$memory_live/$p" ] && [ -e "$workspace/$p" ]; then
+    echo "==> seeding memory path $p from the checkout"
+    cp -a "$workspace/$p" "$memory_live/$p"
   fi
 done
-rm -rf "$saved"
-restored=()
-for p in "${memory_paths[@]}"; do
-  [ -e "$workspace/$p" ] && restored+=("$p")
-done
-if [ ${#restored[@]} -gt 0 ]; then
-  echo "==> restored memory: ${restored[*]}"
-fi
+mkdir -p "$memory_live/memory"
 
-# Claude Code's auto-memory writes to a computed path based on the project
-# directory ($HOME/.claude/projects/-state-workspace/memory), while MEMORY.md
-# references memory/ relative to the workspace and the sync cronjob commits
-# from there. Link the two so those writes land in the workspace.
-mkdir -p "$workspace/memory"
+# Replace the git-tracked copies at workspace root with symlinks into $memory_live.
+#
+# This is what keeps memory writable while the workspace around it is not. The olya container
+# mounts $workspace read-only, so she cannot unlink or replace these links; but a write THROUGH
+# one resolves to the absolute path $memory_live/..., which is reached via the read-write /state
+# mount, and succeeds. OpenClaw reads IDENTITY.md and USER.md from workspace root, so they have to
+# be here and not merely somewhere writable.
+#
+# `git status` will report these as local modifications on every subsequent boot, since the paths
+# are tracked in the repo as regular files. That is cosmetic; clone_or_reset discards them and
+# this puts them straight back.
+for p in "${memory_paths[@]}"; do
+  rm -rf "${workspace:?}/$p"
+  ln -sfn "$memory_live/$p" "$workspace/$p"
+done
+echo "==> linked ${#memory_paths[@]} memory path(s) at workspace root -> $memory_live"
+
+# Claude Code's auto-memory writes to a computed path based on the project directory
+# ($HOME/.claude/projects/-state-workspace/memory), while MEMORY.md references memory/ relative to
+# the workspace and the sync cronjob commits from there. Point it at the real directory rather
+# than at the workspace symlink, so there is only one level of indirection to reason about.
 mkdir -p "$HOME/.claude/projects/-state-workspace"
 cc_mem="$HOME/.claude/projects/-state-workspace/memory"
 if [ -d "$cc_mem" ] && [ ! -L "$cc_mem" ]; then
-  cp -n "$cc_mem"/* "$workspace/memory/" 2>/dev/null || true
+  cp -n "$cc_mem"/* "$memory_live/memory/" 2>/dev/null || true
   rm -rf "$cc_mem"
 fi
-ln -sfn "$workspace/memory" "$cc_mem"
-echo "==> linked Claude Code memory dir -> $workspace/memory"
+ln -sfn "$memory_live/memory" "$cc_mem"
+echo "==> linked Claude Code memory dir -> $memory_live/memory"
 
-# Config seeding. Moved from the former seed-config initContainer: the source of truth
-# is now this workspace repo rather than the ConfigMap, so it can only happen after the
-# clone. install-plugins runs after this initContainer and needs the config in place.
+# Config seeding. The source of truth is the workspace repo rather than a ConfigMap, so this can
+# only happen after the clone. install-plugins runs after this initContainer and needs the config
+# in place.
+#
+# $config_live is its own directory, NOT $state/openclaw, because the olya container mounts it
+# read-only and the OpenClaw state dir has to stay writable for the SQLite databases.
+#
+# `cp` overwrites in place and keeps the inode, which the gateway's inotify watch on this file
+# depends on. Do not replace this with an unlink-and-recreate or with a symlink to the workspace
+# copy: instruction-sync's `git checkout --force` swaps that file's inode, and the watch would
+# silently follow the old one and stop noticing config changes.
 cfg_src="$workspace/openclaw.json"
-cfg_dst="$state/openclaw/openclaw.json"
+cfg_dst="$config_live/openclaw.json"
 if [ -f "$cfg_src" ]; then
   cp "$cfg_src" "$cfg_dst"
-  echo "==> seeded openclaw.json from workspace"
+  echo "==> seeded openclaw.json from workspace to $cfg_dst"
 else
   echo "FATAL: $cfg_src not found after clone" >&2
   exit 1

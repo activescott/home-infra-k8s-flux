@@ -6,48 +6,65 @@ What this is, why it is shaped the way it is, the threat model, and the runbook 
 private repo under `docs/specs/autonomous-ai-assistant/`. This file covers only what someone
 editing these manifests needs.
 
-## NOT YET ENABLED
+## Prerequisite on the NAS
 
-This directory is **not** referenced from `apps/production/kustomization.yaml`, so Flux does not
-reconcile it. Two things must happen first:
+**The data directory must exist and be owned by 1000:1000 before the PV is applied.** hostPath
+volumes are not chowned by the kubelet, and OpenClaw treats an unreadable state dir as a first
+run and bootstraps an empty one. That failure is silent.
 
-1. **Publish the image.** Tag `activescott/activeassistant` with `v0.1.0` to run the
-   `build-image` workflow, which publishes `ghcr.io/activescott/olya:v0.1.0`. The manifests pin
-   that exact tag, so without it every pod is `ImagePullBackOff`.
-2. **Create the data directory on the NAS, owned by 1000:1000.** hostPath volumes are not
-   chowned by the kubelet, and OpenClaw treats an unreadable state dir as a first run and
-   bootstraps an empty one. That failure is silent.
+```bash
+sudo mkdir -p /mnt/thedatapool/app-data/olya
+sudo chown -R 1000:1000 /mnt/thedatapool/app-data/olya
+```
 
-   ```bash
-   sudo mkdir -p /mnt/thedatapool/app-data/olya
-   sudo chown -R 1000:1000 /mnt/thedatapool/app-data/olya
-   ```
+## One volume, two opposite policies
 
-Then add `- ./olya` to `apps/production/kustomization.yaml` and push.
+The `olya` container can write some of its own volume and not the rest, and that asymmetry is the
+main thing to understand before editing the StatefulSet or the scripts.
 
-## Two directories, two opposite policies
+| Path               | `olya` container | Holds                                         |
+| ------------------ | ---------------- | --------------------------------------------- |
+| `/state/workspace` | **read-only**    | the `activeassistant` checkout: instructions, skills, subagent rules |
+| `/state/config`    | **read-only**    | the live `openclaw.json` the gateway reads    |
+| `/state/memory`    | read-write       | `MEMORY.md`, `DREAMS.md`, `USER.md`, `IDENTITY.md`, `memory/` |
+| `/state/home`      | read-write       | `$HOME`, credentials, harness config          |
+| `/state/openclaw`  | read-write       | OpenClaw state dir: SQLite, transcripts       |
+| `/state/repos`     | read-write       | work repos she clones on demand               |
+| `/state/archive`   | read-write       | nightly audit and transcript exports          |
 
-Worth knowing before editing either initContainer, because it reads as inconsistent otherwise:
+**The read-only mounts are the control.** `volumeMounts[].readOnly` is per container and per
+mount entry, so `seed-workspace`, `install-plugins` and `instruction-sync` write those two paths
+through their own read-write `/state` mount while nothing in the `olya` container can. A write
+from her tools fails with `EROFS`, which is the correct outcome. `OPENCLAW_CONFIG_READONLY=1` is
+set as a second layer for a better error message, and is explicitly *not* what enforces this.
 
-- `openclaw.json` is **declarative**. `seed-config` overwrites the copy on the volume from the
-  ConfigMap on every boot, so a Control UI edit does not survive a restart.
-- The agent workspace checkout is **mostly** declarative. `seed-workspace` copies the memory
-  files aside, forces the checkout to `origin/main` (discarding local commits and edits, logging
-  what it discarded), then restores them. So instruction files come from git and memory files
-  come from the volume.
+Before this existed the rule was enforced only by the boot-time `git checkout --force` plus prose
+in `AGENTS.md`, which stops nothing between boots: on 2026-09-15 the live `openclaw.json` was
+hand-edited from inside the container and the gateway's file-watcher crashed the pod. See
+`docs/specs/olya-readonly-instructions/` and `activescott/activeassistant#71`.
 
-  **The force-reset is a control, not a convenience.** It is what stops an agent-written
-  instruction file — a `skills/<name>/SKILL.md` in particular — from being durable and
-  unreviewed. Do not replace it with a fast-forward.
+The force-reset stays, and is still a control rather than a convenience — it is what makes the
+15-minute `instruction-sync` converge on `origin/main` rather than fast-forward around a local
+divergence. Do not replace it with a fast-forward.
+
+Two consequences that look like bugs and are not:
+
+- **Her working directory is not writable.** `/state/workspace` is her agent workspace *and* the
+  read-only checkout. Scratch files belong in `/tmp`, `/state/repos`, or `/state/memory`.
+- **The memory paths at workspace root are symlinks** into `/state/memory`. OpenClaw reads
+  `IDENTITY.md` and `USER.md` from workspace root, so they have to appear there; a write through
+  the symlink resolves to `/state/memory` via the read-write `/state` mount and succeeds, while
+  the link itself cannot be unlinked. `seed-workspace` plants them and `instruction-sync` rebuilds
+  them after every reset. `memory-sync.mts` deliberately reads `/state/memory` directly — it skips
+  symlinks, so pointing it at the workspace would copy nothing and report success.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `openclaw.json` | Gateway config. Source of truth; validated against the image (below) |
-| `olya-statefulset.yaml` | The gateway, one replica, two initContainers |
-| `olya-memory-sync-cronjob.yaml` | Hourly commit and push of the workspace's memory files |
-| `olya-pv.yaml`, `olya-pvc.yaml` | One volume: `home/`, `openclaw/`, `workspace/`, `archive/` |
+| `olya-statefulset.yaml` | The gateway, one replica, two initContainers, the read-only mounts |
+| `olya-memory-sync-cronjob.yaml` | Hourly commit and push of `/state/memory` |
+| `olya-pv.yaml`, `olya-pvc.yaml` | One volume; see the table above for the subdirectories |
 | `olya-rbac.yaml` | ServiceAccount with cluster-wide read equivalent to `view`, minus ConfigMaps |
 | `olya-networkpolicy.yaml` | What she may reach on the network; default-deny both directions |
 | `olya-ingress.yaml` | Certificate, Authelia ForwardAuth middleware ref, Ingress |
@@ -55,8 +72,10 @@ Worth knowing before editing either initContainer, because it reads as inconsist
 
 ## Validating the config
 
-OpenClaw **refuses to start** on an unknown key, a wrong type, or an invalid value, so a typo
-here is a crashloop rather than a warning. Check before committing:
+`openclaw.json` lives in `activescott/activeassistant`, not here — `seed-workspace` copies it out
+of the checkout into `/state/config/`. OpenClaw **refuses to start** on an unknown key, a wrong
+type, or an invalid value, so a typo there is a crashloop rather than a warning. Check before
+committing, from a checkout of that repo:
 
 ```bash
 docker run --rm \

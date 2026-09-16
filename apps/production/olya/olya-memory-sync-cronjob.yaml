@@ -50,8 +50,11 @@ spec:
               env:
                 - name: HOME
                   value: /tmp
-                - name: WORKSPACE_DIR
-                  value: /state/workspace
+                # /state/memory, NOT the workspace. The workspace-root memory paths are symlinks
+                # into this directory, and memory-sync.mts skips symlinks on purpose, so pointing
+                # this at the workspace would copy nothing and report success.
+                - name: MEMORY_DIR
+                  value: /state/memory
               resources:
                 requests:
                   cpu: "50m"
@@ -65,7 +68,7 @@ spec:
                 capabilities:
                   drop: ["ALL"]
               volumeMounts:
-                # The assistant's volume, for reading the memory files out of her workspace.
+                # The assistant's volume, for reading the memory files out of /state/memory.
                 # READ-ONLY: this job must not be able to write there, and must not run git there.
                 - name: state
                   mountPath: /state

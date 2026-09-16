@@ -15,8 +15,9 @@ resources:
 namespace: olya
 configMapGenerator:
   # The gateway plugin list. seed-workspace copies the gateway config from the workspace
-  # repo after cloning, so this ConfigMap no longer carries it. OpenClaw refuses to start
-  # on an invalid config, so validate before committing:
+  # repo into /state/config after cloning, so this ConfigMap no longer carries it. OpenClaw
+  # refuses to start on an invalid config, so validate before committing, from a checkout
+  # of activescott/activeassistant:
   #   docker run --rm -v $PWD/openclaw.json:/cfg/openclaw.json:ro \
   #     -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
   #     -e OPENCLAW_GATEWAY_TOKEN=dummy -e TELEGRAM_ALLOW_FROM=1 \
