@@ -49,7 +49,36 @@ export const MEMORY_LIVE = join(STATE, "memory")
 export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md", "memory"]
 
 /**
- * True for a `git status --porcelain` path that the memory symlinks are expected to dirty.
+ * Paths inside the read-only workspace that third-party code insists on writing to, redirected
+ * by symlink to somewhere writable.
+ *
+ * Most of these are configurable and should be configured instead -- acpx's session store was,
+ * via plugins.entries.acpx.config.stateDir in openclaw.json. This list is for the ones that are
+ * not: a hardcoded path in code we do not own, where the only alternatives are redirecting it or
+ * accepting that the feature is broken.
+ *
+ * A symlink and NOT an emptyDir mounted over the path. A mount point inside the checkout cannot
+ * be removed by `git clean -ffdx`, so the reset would fail with EBUSY and crashloop
+ * seed-workspace on every boot. The symlink also keeps the escape hatch declared in one
+ * reviewable list rather than buried in the StatefulSet's volume section.
+ *
+ * Adding an entry widens what she can write, so it needs a reason that names the code doing the
+ * writing. The target must be writable in the olya container and must not be inside WORKSPACE.
+ */
+export const WORKSPACE_ESCAPE_HATCHES = [
+  {
+    // openclaw's claude-cli backend: `if (backend.imagePathScope === "workspace") return
+    // path.join(workspaceDir, ".openclaw-cli-images")`. imagePathScope is hardcoded to
+    // "workspace" in the backend definition, with no config key anywhere in `openclaw config
+    // schema`, so it cannot be pointed elsewhere. claude-cli is the default runtime for
+    // anthropic/* models, which means without this every image sent to her fails to stage.
+    link: ".openclaw-cli-images",
+    target: join(STATE, "openclaw", "cli-images"),
+  },
+]
+
+/**
+ * True for a `git status --porcelain` path that this pod's own symlinks are expected to dirty.
  *
  * Every boot leaves the workspace dirty in exactly one way, because the memory paths are tracked
  * in the repo as regular files and this pod replaces them with symlinks into MEMORY_LIVE. git
@@ -68,10 +97,14 @@ export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md",
  * modifications" trains the reader to skip the one message that is supposed to be alarming, so
  * callers use this to separate the churn from a real local edit and report the two differently.
  *
+ * The escape-hatch links add one untracked entry each (`?? .openclaw-cli-images`) for the same
+ * reason and are covered here too.
+ *
  * Deliberately NOT a blanket suppression: an edit to any other path still gets logged loudly.
  */
 export function isExpectedMemoryDirt(path: string): boolean {
-  return MEMORY_PATHS.some(memoryPath => path === memoryPath || path.startsWith(`${memoryPath}/`))
+  const ours = [...MEMORY_PATHS, ...WORKSPACE_ESCAPE_HATCHES.map(hatch => hatch.link)]
+  return ours.some(ourPath => path === ourPath || path.startsWith(`${ourPath}/`))
 }
 
 /**
@@ -132,6 +165,25 @@ export function linkMemoryIntoWorkspace(): void {
   // directory and no sign anything went wrong.
   mkdirSync(join(MEMORY_LIVE, "memory"), { recursive: true })
   console.log(`==> linked ${MEMORY_PATHS.length} memory path(s) at workspace root -> ${MEMORY_LIVE}`)
+}
+
+/**
+ * Plants the WORKSPACE_ESCAPE_HATCHES symlinks. Called after every reset, alongside
+ * linkMemoryIntoWorkspace, because `git clean -ffdx` removes them as untracked entries.
+ *
+ * The target directory is created first. mkdir(recursive) through a symlink whose target does not
+ * exist does not create the target, so a dangling link here would fail the write it exists to
+ * allow -- the opposite of the memory paths, where a dangling link is tolerable because the
+ * writer creates the file.
+ */
+export function linkWritableEscapeHatches(): void {
+  for (const { link, target } of WORKSPACE_ESCAPE_HATCHES) {
+    mkdirSync(target, { recursive: true })
+    const linkPath = join(WORKSPACE, link)
+    rmSync(linkPath, { recursive: true, force: true })
+    symlinkSync(target, linkPath)
+    console.log(`==> linked ${link} at workspace root -> ${target}`)
+  }
 }
 
 /**

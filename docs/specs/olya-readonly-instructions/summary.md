@@ -90,6 +90,39 @@ kubectl --context nas -n olya logs job/olya-memory-sync-test    # want "pushed N
 kubectl --context nas -n olya delete job olya-memory-sync-test
 ```
 
+## Regressions found afterwards
+
+Making the workspace read-only broke two things that had been quietly writing into it. Both were
+invisible before because `git clean -ffdx` deleted them on every boot.
+
+The way to find them was `seed-workspace`'s own pre-reset `git status`, which had been logging
+every untracked path for weeks:
+
+```
+kubectl --context nas -n olya logs olya-0 -c seed-workspace | grep '^??'
+# or across all boots, in Loki:
+{namespace="olya", container="seed-workspace"} |~ "^\\?\\? "
+```
+
+Over 14 days that showed three non-memory writers: `state/` (acpx, every boot),
+`.openclaw-cli-images/`, and `opencode/` (once, unexplained, not reproduced since).
+
+- **`state/` — acpx session store.** `activescott/activeassistant#42`. acpx resolves
+  `config.stateDir?.trim() || path.join(workspaceDir, "state")` and mkdirs it, so every ACP spawn
+  failed and opencode sessions returned no output. Fixed by setting
+  `plugins.entries.acpx.config.stateDir` to `/state/openclaw/acpx-state` in `openclaw.json`
+  (`activescott/activeassistant#80`). Side effect: ACP session state is now durable, where
+  `git clean` used to wipe it every boot. Nothing prunes it.
+- **`.openclaw-cli-images/` — image staging.** Not configurable: openclaw's claude-cli backend
+  hardcodes `imagePathScope: "workspace"` and `openclaw config schema` has no key for it.
+  claude-cli is the default runtime for `anthropic/*`, so every image sent to her would fail to
+  stage. Fixed with a symlink to `/state/openclaw/cli-images` via `WORKSPACE_ESCAPE_HATCHES`.
+
+**If something else breaks this way, do not mount an emptyDir over the path.** A mount point
+inside the checkout cannot be removed by `git clean -ffdx`, so the reset fails with EBUSY and
+crashloops `seed-workspace` on every boot. Configure the tool if it has a knob; add a
+`WORKSPACE_ESCAPE_HATCHES` entry if it does not.
+
 ## Not done
 
 - The gateway's config file-watcher crashing the pod on an edit (the original 2026-09-15 symptom)
