@@ -13,12 +13,10 @@ Prerequisites: Node.js 18+, a browser, GCP project `pingpoet-olya-ws` with Gmail
 ### 2. Run the token exchange
 
 ```bash
-node apps/production/olya/scripts/setup-google-workspace-gcp/get-tokens.mjs \
-  --client-id YOUR_CLIENT_ID \
-  --client-secret YOUR_CLIENT_SECRET
+node apps/production/olya/scripts/setup-google-workspace-gcp/get-tokens.mjs
 ```
 
-Open the printed URL, sign in as olya@pingpoet.com, grant access. The script catches the redirect, exchanges the code, and prints the credentials JSON.
+Enter the client ID and client secret when prompted. Open the printed URL, sign in as olya@pingpoet.com, grant access. The script catches the redirect, exchanges the code, and prints the credentials JSON.
 
 ### 3. Fill in the secrets template
 
