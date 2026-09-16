@@ -553,12 +553,27 @@ TrueNAS Scale's default `fs.inotify.max_user_watches=8192` (set in
 **Fix (applied to the TrueNAS host)**:
 
 ```
-# /etc/sysctl.d/99-sysctl.conf (load order > 10-truenas.conf)
+# /etc/sysctl.conf (read last by sysctl --system; 99-sysctl.conf symlinks to it)
 fs.inotify.max_user_instances = 512
 fs.inotify.max_user_watches = 524288
 ```
 
 Then `sudo sysctl --system` to apply to the running kernel.
+
+**Raised again on 2026-09-16
+([#134](https://github.com/activescott/home-infra-k8s-flux/issues/134))**:
+512 instances held about 3 concurrent kind jobs, and the fourth failed with
+the same error. The hand-set lines were replaced with TrueNAS tunables, which
+survive TrueNAS upgrades:
+
+```
+sudo midclt call tunable.create '{"type":"SYSCTL","var":"fs.inotify.max_user_instances","value":"8192","enabled":true}'
+sudo midclt call tunable.create '{"type":"SYSCTL","var":"fs.inotify.max_user_watches","value":"524288","enabled":true}'
+```
+
+On SCALE 22.12 `midclt call` does not accept `-j`. Four concurrent kind
+e2e jobs passed at 8192. A non-TrueNAS host needs the same two values in an
+`/etc/sysctl.d/` file.
 
 After that change, ramblefeed
 [PR #35](https://github.com/activescott/ramblefeed/pull/35) `e2e` job
@@ -572,7 +587,7 @@ Kind cluster brought up in 22s.
   above.** Tinkerbell `integration-tests` and any other nested-kube
   workflow gets it for free now that the limits are raised
   cluster-wide. Verify with
-  `cat /proc/sys/fs/inotify/max_user_instances` (≥ 512) before
+  `cat /proc/sys/fs/inotify/max_user_instances` (≥ 8192) before
   reaching for cgroup/systemd hacks.
 - **Do not trust kubeadm's "required cgroups disabled" hint.** It is
   generic and was actively misleading here. The authoritative signal
