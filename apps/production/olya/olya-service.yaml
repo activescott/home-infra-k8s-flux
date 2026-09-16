@@ -13,3 +13,6 @@ spec:
     - name: http
       port: 18789
       targetPort: http
+    - name: metrics
+      port: 18790
+      targetPort: metrics
