@@ -16,6 +16,7 @@ import {
   WORKSPACE,
   installSubagentFiles,
   linkMemoryIntoWorkspace,
+  linkWritableEscapeHatches,
   publishConfig,
 } from "./volume-layout.mts"
 
@@ -51,6 +52,7 @@ function syncOnce(): void {
 
   // The same three steps seed-workspace.mts runs after its own reset, in the same order.
   linkMemoryIntoWorkspace()
+  linkWritableEscapeHatches()
   publishConfig()
   installSubagentFiles()
 

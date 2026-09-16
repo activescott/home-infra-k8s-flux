@@ -49,6 +49,7 @@ import {
   installSubagentFiles,
   isExpectedMemoryDirt,
   linkMemoryIntoWorkspace,
+  linkWritableEscapeHatches,
   publishConfig,
   splitDirty,
 } from "./volume-layout.mts"
@@ -280,6 +281,7 @@ cloneOrReset(
 )
 
 linkMemoryIntoWorkspace()
+linkWritableEscapeHatches()
 publishConfig()
 installSubagentFiles()
 
