@@ -49,6 +49,55 @@ export const MEMORY_LIVE = join(STATE, "memory")
 export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md", "memory"]
 
 /**
+ * True for a `git status --porcelain` path that the memory symlinks are expected to dirty.
+ *
+ * Every boot leaves the workspace dirty in exactly one way, because the memory paths are tracked
+ * in the repo as regular files and this pod replaces them with symlinks into MEMORY_LIVE. git
+ * reports that as a typechange on the four top-level files, and — because `memory` became a
+ * symlink rather than a directory — as a DELETION of all 22 tracked files underneath it:
+ *
+ *      T IDENTITY.md
+ *      T MEMORY.md
+ *      T USER.md
+ *      D memory/MEMORY.md
+ *      D memory/feedback-board-ownership.md
+ *      ... 20 more
+ *
+ * That is 28 lines per boot that read like memory files being deleted right before a reset,
+ * which is precisely what the 2026-09-12 incident looked like. Logging it as "discarding local
+ * modifications" trains the reader to skip the one message that is supposed to be alarming, so
+ * callers use this to separate the churn from a real local edit and report the two differently.
+ *
+ * Deliberately NOT a blanket suppression: an edit to any other path still gets logged loudly.
+ */
+export function isExpectedMemoryDirt(path: string): boolean {
+  return MEMORY_PATHS.some(memoryPath => path === memoryPath || path.startsWith(`${memoryPath}/`))
+}
+
+/**
+ * Splits `git status --porcelain` output into the paths the caller expects and everything else.
+ *
+ * Status codes are matched as one or two characters rather than at fixed columns, because the
+ * caller's git helper trims its output and that removes the leading space of the first line only.
+ * Anything the pattern does not recognise (a rename's `old -> new`, a path git chose to quote)
+ * falls through to `unexpected` and gets logged loudly, which is the safe direction to fail.
+ */
+export function splitDirty(
+  porcelain: string,
+  isExpected: (path: string) => boolean,
+): { expected: string[]; unexpected: string[] } {
+  const expected: string[] = []
+  const unexpected: string[] = []
+  for (const line of porcelain.split("\n")) {
+    if (!line.trim()) continue
+    const match = /^\s*([A-Z?!]{1,2})\s+(.+)$/.exec(line)
+    if (match && isExpected(match[2])) expected.push(line)
+    else unexpected.push(line)
+  }
+  return { expected, unexpected }
+}
+
+/**
  * Points the memory paths at workspace root back at MEMORY_LIVE, replacing whatever the checkout
  * put there. Called after every reset: at boot by seed-workspace.mts, and on every change by
  * instruction-sync.mts.
