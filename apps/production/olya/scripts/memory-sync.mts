@@ -12,9 +12,10 @@
 // what code executes in this pod. There is no git flag that makes .git/config untrusted;
 // GIT_CONFIG_NOSYSTEM covers system config only.
 //
-// It reads /state/memory rather than the workspace, and must keep doing so: the workspace-root
-// memory paths are SYMLINKS into /state/memory, and copyable() below rejects symlinks by design,
-// so pointing this at the workspace would copy nothing and report success.
+// It reads /state/memory rather than the workspace, and must keep doing so. The olya container
+// bind-mounts /state/memory over the workspace paths, but this pod does not carry those mounts,
+// so what it would find at workspace root is the stale tracked copy from the checkout. Pointing
+// this at the workspace would commit the repo's own contents back over her live memory.
 //
 // It also never pushes HEAD from a tree the agent commits into. An earlier version did
 // `rebase FETCH_HEAD` then `push HEAD:main` in her working tree, which replayed any commit she
@@ -49,9 +50,8 @@ const branch = process.env.TARGET_BRANCH ?? "main"
 const remote = process.env.REMOTE_URL ?? "https://github.com/activescott/activeassistant.git"
 const tokenPath = process.env.GITHUB_PAT_FILE ?? "/etc/olya-sync/token"
 
-// MEMORY_PATHS is imported, not restated: it is the same list seed-workspace.mts relinks and
-// instruction-sync.mts preserves, and the three going out of step is the failure this job cannot
-// detect. Everything else in the repo is an instruction file and reaches the default branch only
+// MEMORY_PATHS is imported, not restated: it is the same list seed-workspace.mts seeds and the
+// StatefulSet bind-mounts, and those going out of step is the failure this job cannot detect. Everything else in the repo is an instruction file and reaches the default branch only
 // through a reviewed PR. Reading only these paths, from a directory that holds nothing else, is
 // the second reason an instruction edit cannot ride along into this commit; the first is that
 // the instruction files are mounted read-only in her container and cannot be edited at all.

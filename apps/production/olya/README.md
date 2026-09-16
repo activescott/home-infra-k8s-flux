@@ -51,12 +51,17 @@ Two consequences that look like bugs and are not:
 
 - **Her working directory is not writable.** `/state/workspace` is her agent workspace *and* the
   read-only checkout. Scratch files belong in `/tmp`, `/state/repos`, or `/state/memory`.
-- **The memory paths at workspace root are symlinks** into `/state/memory`. OpenClaw reads
-  `IDENTITY.md` and `USER.md` from workspace root, so they have to appear there; a write through
-  the symlink resolves to `/state/memory` via the read-write `/state` mount and succeeds, while
-  the link itself cannot be unlinked. `seed-workspace` plants them and `instruction-sync` rebuilds
-  them after every reset. `memory-sync.mts` deliberately reads `/state/memory` directly — it skips
-  symlinks, so pointing it at the workspace would copy nothing and report success.
+- **The memory paths at workspace root are bind mounts** of `/state/memory`, declared on the
+  `olya` container. OpenClaw reads `IDENTITY.md` and `USER.md` from workspace root, so they have
+  to appear there, and they must be real files: OpenClaw refuses to read a symlinked bootstrap
+  file and memory-core refuses to write a symlinked `DREAMS.md`. An earlier attempt used symlinks
+  and broke both — see `docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md`.
+
+  Two things follow. The mounts exist only in the `olya` container, so `seed-workspace`,
+  `instruction-sync` and `memory-sync` all see the ordinary tracked files from the checkout;
+  that is why `memory-sync` reads `/state/memory` directly rather than the workspace. And the
+  files must only ever be edited in place — anything that replaces the inode under
+  `/state/memory` silently decouples the two views until the pod restarts.
 
 ## Files
 

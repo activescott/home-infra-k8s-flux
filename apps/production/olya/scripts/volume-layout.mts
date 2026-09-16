@@ -11,7 +11,7 @@
 //
 // TypeScript run through Node's native type stripping. No build step and no transpiler; the
 // image ships Node 24.
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from "node:fs"
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 
 export const STATE = "/state"
@@ -40,150 +40,87 @@ export const CONFIG_FILE = join(CONFIG_LIVE, "openclaw.json")
 export const MEMORY_LIVE = join(STATE, "memory")
 
 /**
+ * Image staging for OpenClaw's claude-cli backend, which builds its path as
+ * `path.join(workspaceDir, ".openclaw-cli-images")`. imagePathScope is hardcoded to "workspace"
+ * in the backend definition and has no key in `openclaw config schema`, so unlike acpx's session
+ * store this one cannot be pointed elsewhere by configuration.
+ */
+export const CLI_IMAGES_LIVE = join(STATE, "openclaw", "cli-images")
+
+/**
  * The memory paths, relative to both the repo root and MEMORY_LIVE. THE list: every script that
  * needs it imports it from here.
  *
- * Adding one is not just a matter of appending. A new memory path is a file the boot reset must
- * not discard and the hourly sync must push, so check it is covered by both.
+ * Adding one is a three-place change and the places are in two repositories. The path must be
+ * tracked in activeassistant (the checkout is what provides the mountpoint), it must be here
+ * (so it gets seeded), and it must have a matching volumeMount on the olya container in
+ * olya-statefulset.yaml (so it is writable at runtime). Miss the mount and the gateway reads the
+ * read-only checkout copy while the hourly sync pushes an untouched file, with nothing to see;
+ * check-memory-mounts.mts exists to turn that into a loud failure.
  */
 export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md", "memory"]
 
 /**
- * Paths inside the read-only workspace that third-party code insists on writing to, redirected
- * by symlink to somewhere writable.
- *
- * Most of these are configurable and should be configured instead -- acpx's session store was,
- * via plugins.entries.acpx.config.stateDir in openclaw.json. This list is for the ones that are
- * not: a hardcoded path in code we do not own, where the only alternatives are redirecting it or
- * accepting that the feature is broken.
- *
- * A symlink and NOT an emptyDir mounted over the path. A mount point inside the checkout cannot
- * be removed by `git clean -ffdx`, so the reset would fail with EBUSY and crashloop
- * seed-workspace on every boot. The symlink also keeps the escape hatch declared in one
- * reviewable list rather than buried in the StatefulSet's volume section.
- *
- * Adding an entry widens what she can write, so it needs a reason that names the code doing the
- * writing. The target must be writable in the olya container and must not be inside WORKSPACE.
+ * The entries in MEMORY_PATHS that are directories rather than regular files. Exported because
+ * check-memory-mounts.mts asserts the type at runtime, and a file where a directory belongs (or
+ * the reverse) is how a kubelet-created subPath directory shows up.
  */
-export const WORKSPACE_ESCAPE_HATCHES = [
-  {
-    // openclaw's claude-cli backend: `if (backend.imagePathScope === "workspace") return
-    // path.join(workspaceDir, ".openclaw-cli-images")`. imagePathScope is hardcoded to
-    // "workspace" in the backend definition, with no config key anywhere in `openclaw config
-    // schema`, so it cannot be pointed elsewhere. claude-cli is the default runtime for
-    // anthropic/* models, which means without this every image sent to her fails to stage.
-    link: ".openclaw-cli-images",
-    target: join(STATE, "openclaw", "cli-images"),
-  },
-]
+export const MEMORY_DIRECTORIES = new Set(["memory"])
 
 /**
- * True for a `git status --porcelain` path that this pod's own symlinks are expected to dirty.
+ * Makes every bind-mount source exist before the olya container starts, and proves it afterwards.
  *
- * Every boot leaves the workspace dirty in exactly one way, because the memory paths are tracked
- * in the repo as regular files and this pod replaces them with symlinks into MEMORY_LIVE. git
- * reports that as a typechange on the four top-level files, and — because `memory` became a
- * symlink rather than a directory — as a DELETION of all 22 tracked files underneath it:
+ * Both halves matter. kubelet creates a DIRECTORY for a subPath source that does not exist, owned
+ * by root, and fsGroup does not correct that on a hostPath volume -- so a missing file here does
+ * not fail cleanly, it produces a root-owned directory that persists on the volume and that
+ * OpenClaw later rejects with "Refusing to write non-file DREAMS.md". Creating the sources in
+ * this initContainer is what stops that, and it works because kubelet resolves a container's
+ * subPaths when that container is created, i.e. after initContainers have finished.
  *
- *      T IDENTITY.md
- *      T MEMORY.md
- *      T USER.md
- *      D memory/MEMORY.md
- *      D memory/feedback-board-ownership.md
- *      ... 20 more
- *
- * That is 28 lines per boot that read like memory files being deleted right before a reset,
- * which is precisely what the 2026-09-12 incident looked like. Logging it as "discarding local
- * modifications" trains the reader to skip the one message that is supposed to be alarming, so
- * callers use this to separate the churn from a real local edit and report the two differently.
- *
- * The escape-hatch links add one untracked entry each (`?? .openclaw-cli-images`) for the same
- * reason and are covered here too.
- *
- * Deliberately NOT a blanket suppression: an edit to any other path still gets logged loudly.
+ * Seeding prefers the checkout: on a cold volume the tracked copies are the starting content.
+ * An empty file is the fallback for a path the repo does not carry yet, which is a valid state
+ * only because the file is about to be shadowed by the mount anyway.
  */
-export function isExpectedMemoryDirt(path: string): boolean {
-  const ours = [...MEMORY_PATHS, ...WORKSPACE_ESCAPE_HATCHES.map(hatch => hatch.link)]
-  return ours.some(ourPath => path === ourPath || path.startsWith(`${ourPath}/`))
-}
+export function seedMemoryFromCheckout(): void {
+  mkdirSync(MEMORY_LIVE, { recursive: true })
+  mkdirSync(CLI_IMAGES_LIVE, { recursive: true })
 
-/**
- * Splits `git status --porcelain` output into the paths the caller expects and everything else.
- *
- * Status codes are matched as one or two characters rather than at fixed columns, because the
- * caller's git helper trims its output and that removes the leading space of the first line only.
- * Anything the pattern does not recognise (a rename's `old -> new`, a path git chose to quote)
- * falls through to `unexpected` and gets logged loudly, which is the safe direction to fail.
- */
-export function splitDirty(
-  porcelain: string,
-  isExpected: (path: string) => boolean,
-): { expected: string[]; unexpected: string[] } {
-  const expected: string[] = []
-  const unexpected: string[] = []
-  for (const line of porcelain.split("\n")) {
-    if (!line.trim()) continue
-    const match = /^\s*([A-Z?!]{1,2})\s+(.+)$/.exec(line)
-    if (match && isExpected(match[2])) expected.push(line)
-    else unexpected.push(line)
-  }
-  return { expected, unexpected }
-}
-
-/**
- * Points the memory paths at workspace root back at MEMORY_LIVE, replacing whatever the checkout
- * put there. Called after every reset: at boot by seed-workspace.mts, and on every change by
- * instruction-sync.mts.
- *
- * This is what keeps memory writable while the workspace around it is not. The olya container
- * mounts WORKSPACE read-only, so she cannot unlink or replace these links; but a write THROUGH
- * one resolves to the absolute path under MEMORY_LIVE, which is reached via the read-write
- * /state mount, and succeeds. OpenClaw reads IDENTITY.md and USER.md from workspace root, so
- * they have to be here and not merely somewhere writable.
- *
- * A path missing from MEMORY_LIVE is seeded from the checkout first. That is the cold start on
- * an empty volume: a write through a dangling symlink would create the target, but a READ of one
- * fails, so the bootstrap files OpenClaw expects would come back missing on the very first turn.
- *
- * `git status` reports these as local modifications on every subsequent boot, since the paths are
- * tracked in the repo as regular files. That is cosmetic; the reset discards them and this puts
- * them straight back.
- */
-export function linkMemoryIntoWorkspace(): void {
   for (const path of MEMORY_PATHS) {
     const live = join(MEMORY_LIVE, path)
-    const link = join(WORKSPACE, path)
-    if (!existsSync(live) && existsSync(link)) {
-      console.log(`==> seeding memory path ${path} from the checkout`)
-      cpSync(link, live, { recursive: true })
-    }
-    rmSync(link, { recursive: true, force: true })
-    symlinkSync(live, link)
-  }
-  // AFTER the loop, never before: creating it first would make the "memory" entry look present
-  // and skip seeding it from the checkout, so a cold start would come up with an empty memory
-  // directory and no sign anything went wrong.
-  mkdirSync(join(MEMORY_LIVE, "memory"), { recursive: true })
-  console.log(`==> linked ${MEMORY_PATHS.length} memory path(s) at workspace root -> ${MEMORY_LIVE}`)
-}
+    if (existsSync(live)) continue
 
-/**
- * Plants the WORKSPACE_ESCAPE_HATCHES symlinks. Called after every reset, alongside
- * linkMemoryIntoWorkspace, because `git clean -ffdx` removes them as untracked entries.
- *
- * The target directory is created first. mkdir(recursive) through a symlink whose target does not
- * exist does not create the target, so a dangling link here would fail the write it exists to
- * allow -- the opposite of the memory paths, where a dangling link is tolerable because the
- * writer creates the file.
- */
-export function linkWritableEscapeHatches(): void {
-  for (const { link, target } of WORKSPACE_ESCAPE_HATCHES) {
-    mkdirSync(target, { recursive: true })
-    const linkPath = join(WORKSPACE, link)
-    rmSync(linkPath, { recursive: true, force: true })
-    symlinkSync(target, linkPath)
-    console.log(`==> linked ${link} at workspace root -> ${target}`)
+    const fromCheckout = join(WORKSPACE, path)
+    if (existsSync(fromCheckout)) {
+      console.log(`==> seeding memory path ${path} from the checkout`)
+      cpSync(fromCheckout, live, { recursive: true })
+    } else if (MEMORY_DIRECTORIES.has(path)) {
+      console.log(`==> creating empty memory directory ${path}`)
+      mkdirSync(live, { recursive: true })
+    } else {
+      console.log(`==> creating empty memory file ${path}`)
+      mkdirSync(dirname(live), { recursive: true })
+      writeFileSync(live, "")
+    }
   }
+
+  // Assert the TYPE, not just existence. This is the half that catches a root-owned directory
+  // kubelet created on a previous boot, which would otherwise sit there breaking memory writes
+  // with no other symptom.
+  for (const path of MEMORY_PATHS) {
+    const live = join(MEMORY_LIVE, path)
+    const wantDirectory = MEMORY_DIRECTORIES.has(path)
+    const stats = lstatSync(live)
+    const isRight = wantDirectory ? stats.isDirectory() : stats.isFile()
+    if (!isRight) {
+      throw new Error(
+        `${live} is not a ${wantDirectory ? "directory" : "regular file"}. ` +
+          `kubelet creates a directory for a subPath source that does not exist; remove it by ` +
+          `hand and restart so this can recreate it correctly.`,
+      )
+    }
+  }
+
+  console.log(`==> memory sources ready under ${MEMORY_LIVE} (${MEMORY_PATHS.length} path(s))`)
 }
 
 /**
@@ -209,7 +146,9 @@ export function publishConfig(): void {
  *
  * The harnesses read their own instruction files from their own config paths, so these have to
  * be copied into place rather than referenced. Copies, not symlinks: OpenClaw's skill loader
- * enforces symlink containment and the harnesses are inconsistent about following them.
+ * enforces symlink containment and the harnesses are inconsistent about following them. The same
+ * policy is why the memory paths are bind mounts rather than symlinks; see
+ * docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md.
  *
  * The source is the working tree, which is safe only because the caller has just reset it to
  * origin's tip. It was not safe when the sync fast-forwarded and warned on divergence: a locally

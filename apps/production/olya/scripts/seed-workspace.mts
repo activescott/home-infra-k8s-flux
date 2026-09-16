@@ -18,9 +18,10 @@
 //   Memory files are NOT declarative. memory-core writes them continuously (memory-flush before
 //   every compaction, a nightly dreaming sweep, observed-preference directives appended to
 //   USER.md) and the hourly sync job is what gets them into git. They live at MEMORY_LIVE, which
-//   stays writable, and are reached from workspace root through symlinks planted below.
+//   stays writable, and reach workspace root as bind mounts declared on the olya container. This
+//   script's job is to make sure every mount SOURCE exists before that container starts.
 //
-// TypeScript rather than bash so the path list and the reset-and-relink sequence are imported
+// TypeScript rather than bash so the path list and the post-reset sequence are imported
 // from volume-layout.mts and shared with instruction-sync.mts, which performs the same sequence
 // every 15 minutes. They used to be two copies kept in step by a comment.
 import { execFileSync } from "node:child_process"
@@ -47,11 +48,8 @@ import {
   STATE,
   WORKSPACE,
   installSubagentFiles,
-  isExpectedMemoryDirt,
-  linkMemoryIntoWorkspace,
-  linkWritableEscapeHatches,
   publishConfig,
-  splitDirty,
+  seedMemoryFromCheckout,
 } from "./volume-layout.mts"
 
 const sshKey = "/etc/olya-ssh/id_ed25519"
@@ -191,15 +189,7 @@ function git(args: string[], opts: { cwd?: string; allowFail?: boolean } = {}): 
 
 // Clone if missing, otherwise force the checkout to origin's tip on the given branch. Local
 // commits and local modifications are DISCARDED, and what was discarded is logged.
-//
-// isExpectedDirt, when given, marks paths this pod dirties on purpose so they are summarised in
-// one line instead of listed as if something were wrong. See isExpectedMemoryDirt.
-function cloneOrReset(
-  url: string,
-  dir: string,
-  branch: string,
-  isExpectedDirt?: (path: string) => boolean,
-): void {
+function cloneOrReset(url: string, dir: string, branch: string): void {
   if (!existsSync(join(dir, ".git"))) {
     log(`cloning ${url} -> ${dir}`)
     execFileSync("git", ["clone", "--branch", branch, url, dir], {
@@ -220,22 +210,16 @@ function cloneOrReset(
     console.error(`WARNING: discarding local commits in ${dir} not present on origin/${branch}:`)
     console.error(ahead)
   }
+  // Every line here is worth reading. This pod no longer writes anything into the checkout --
+  // the memory paths reach the olya container as bind mounts that do not exist in this mount
+  // namespace -- so a dirty tree means something genuinely edited it.
+  //
+  // One exception, once: the first boot after the bind-mount change runs against a tree that
+  // still holds the previous boot's symlinks, and logs ~28 typechange and deletion lines. It
+  // looks like the 2026-09-12 incident and is not. Every boot after that is clean.
   if (dirty) {
-    const { expected, unexpected } = splitDirty(dirty, isExpectedDirt ?? (() => false))
-    if (unexpected.length > 0) {
-      log(`discarding local modifications in ${dir}:`)
-      console.log(unexpected.join("\n"))
-    }
-    if (expected.length > 0) {
-      // One line, not 28. This is the memory symlinks showing up as typechanges and deletions,
-      // which happens on every single boot and means nothing went wrong. Kept as a line rather
-      // than silence so a reader can tell the check ran and see the count change if the memory
-      // path list ever does.
-      log(
-        `ignoring ${expected.length} expected memory-symlink path(s) in ${dir} ` +
-          `(tracked as regular files, replaced by symlinks into ${MEMORY_LIVE})`,
-      )
-    }
+    log(`discarding local modifications in ${dir}:`)
+    console.log(dirty)
   }
 
   // -B so this also moves off a feature branch. Her instructions say to push a branch and return
@@ -244,8 +228,9 @@ function cloneOrReset(
   // -x as well as -fd: without it, gitignored files survive the reset. That would reopen the
   // hole this reset closes, since an agent-written skills/ file under any ignored path would
   // then be durable across restarts, absent from `git status`, and never pushed by the sync.
-  // Safe here because the memory files live at MEMORY_LIVE, outside this tree; what this does
-  // destroy is the symlinks pointing at them, which linkMemoryIntoWorkspace re-plants below.
+  // Safe for the memory paths because they live at MEMORY_LIVE, outside this tree. What sits at
+  // workspace root here is the tracked checkout copy, which is also the mountpoint the olya
+  // container binds over -- so this restores it rather than destroying anything live.
   git(["clean", "-ffdx"], { cwd: dir })
 }
 
@@ -255,14 +240,15 @@ execFileSync(join(HOME_DIR, "dotfiles", "script", "setup"), [], {
   stdio: "inherit",
 })
 
-// ONE-TIME MIGRATION, idempotent. The memory files used to live inside the checkout and survive
-// the reset by being copied aside and put back. They now live at MEMORY_LIVE, so the live copies
-// have to be lifted out before the reset destroys them -- but only on the first boot after that
-// change.
+// LEGACY VOLUME SAFETY NET, idempotent, and it has already done its job on the live volume.
 //
-// The MEMORY_LIVE check is what makes this a no-op afterwards: once a path is there, there is
-// nothing left to migrate, and the workspace-root entry is a symlink pointing at it anyway. Copy
-// rather than move, so a failure part-way leaves the originals in place for the next attempt.
+// Memory used to live inside the checkout, where the reset below would destroy it. Restoring a
+// snapshot from before 2026-09-16 would reproduce that state, so this lifts anything found at
+// workspace root out to MEMORY_LIVE before the reset runs. seedMemoryFromCheckout does the same
+// thing afterwards for a cold volume; this one runs first because only it sees local edits that
+// were never committed.
+//
+// The MEMORY_LIVE check is what makes it a no-op on every normal boot.
 if (existsSync(join(WORKSPACE, ".git"))) {
   for (const path of MEMORY_PATHS) {
     const source = join(WORKSPACE, path)
@@ -273,22 +259,22 @@ if (existsSync(join(WORKSPACE, ".git"))) {
   }
 }
 
-cloneOrReset(
-  "git@github.com:activescott/activeassistant.git",
-  WORKSPACE,
-  "main",
-  isExpectedMemoryDirt,
-)
+cloneOrReset("git@github.com:activescott/activeassistant.git", WORKSPACE, "main")
 
-linkMemoryIntoWorkspace()
-linkWritableEscapeHatches()
+// Must happen here, in an initContainer, and not later: kubelet resolves the olya container's
+// subPath mounts when that container is created, and creates a root-owned DIRECTORY for any
+// source that does not exist yet.
+seedMemoryFromCheckout()
 publishConfig()
 installSubagentFiles()
 
 // Claude Code's auto-memory writes to a computed path based on the project directory
 // ($HOME/.claude/projects/-state-workspace/memory), while MEMORY.md references memory/ relative
-// to the workspace and the sync cronjob commits from there. Point it at the real directory rather
-// than at the workspace symlink, so there is only one level of indirection to reason about.
+// to the workspace and the sync cronjob commits from there. Point it at MEMORY_LIVE directly
+// rather than at the workspace path, so this does not depend on the bind mounts existing.
+//
+// A symlink is fine HERE, unlike at workspace root: $HOME is writable and nothing in OpenClaw
+// path-checks this location. Claude Code resolves it and writes through to the real directory.
 const claudeProject = join(HOME_DIR, ".claude", "projects", "-state-workspace")
 const claudeMemory = join(claudeProject, "memory")
 mkdirSync(claudeProject, { recursive: true })

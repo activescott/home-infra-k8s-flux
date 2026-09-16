@@ -44,7 +44,7 @@ spec:
       initContainers:
         # Credentials and workspace. Clones activeassistant to /state/workspace, forces it to
         # origin/main, seeds the gateway config to /state/config, and relocates the memory files
-        # to /state/memory with symlinks left behind at workspace root.
+        # to /state/memory, which the olya container bind-mounts back over workspace root.
         #
         # The split is what makes the read-only mounts on the olya container below possible:
         # everything declarative ends up under /state/workspace and /state/config, everything
@@ -245,6 +245,19 @@ spec:
                   key: google_workspace_client_secret
             - name: WORKSPACE_CREDENTIALS_PATH
               value: /etc/olya-google-workspace/credentials.json
+          # Proves the memory bind mounts above are actually in place, and kills the container if
+          # they are not. This is the ONLY place that check can run: the mounts exist in this
+          # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
+          # seed-workspace creates the very files it would be asserting on.
+          #
+          # Exiting non-zero here crashloops the pod. That is the intended trade: a memory path
+          # that is silently not writable loses her memory with no symptom, and this deployment
+          # already prefers refusing to start (OpenClaw on an invalid config, memory-sync on a
+          # missing directory, seed-workspace on an unreadable ssh key).
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/scripts/check-memory-mounts.mts"]
           ports:
             - name: http
               containerPort: 18789
@@ -318,6 +331,60 @@ spec:
               mountPath: /state/config
               subPath: config
               readOnly: true
+            # The memory files, mounted back over the read-only workspace so they stay writable.
+            #
+            # BIND MOUNTS, NOT SYMLINKS, and that is the whole point. OpenClaw resolves workspace
+            # bootstrap files with rejectSymlinks, and memory-core additionally requires
+            # stat.isFile() before writing DREAMS.md. The symlinks these replace made IDENTITY.md,
+            # USER.md and MEMORY.md unreadable to the gateway and broke the dreaming sweep, with
+            # no symptom beyond a warning nobody was grepping for.
+            #
+            # Three things have to line up for each entry, across two repos:
+            #   1. the path is tracked in activescott/activeassistant, because the checkout is
+            #      what provides the mountpoint and a bind mount cannot create its destination
+            #      underneath a read-only parent;
+            #   2. it is in MEMORY_PATHS in scripts/volume-layout.mts, so seed-workspace creates
+            #      the SOURCE before this container starts -- kubelet makes a root-owned
+            #      directory for a subPath source that does not exist, which fsGroup will not fix
+            #      on a hostPath volume;
+            #   3. it is listed here.
+            # Miss 3 and nothing fails: the gateway reads the read-only checkout copy while the
+            # hourly sync pushes an untouched file. The postStart hook below exists to catch that.
+            #
+            # THESE FILES MUST ONLY EVER BE EDITED IN PLACE. A bind mount is tied to the inode
+            # that existed when the container started, so anything that REPLACES a file under
+            # /state/memory rather than writing to it -- `mv`, `rm` and recreate, `sed -i`,
+            # rsync without --inplace, an editor that saves via a temp file and renames, a
+            # snapshot rollback of a running pod -- splits the two paths in half: the gateway
+            # keeps using the orphaned inode while the hourly sync commits the new file, with no
+            # error on either side. The agent has shell tools and can do this by accident, which
+            # is why AGENTS.md section 6 states the same rule in her own instructions. The
+            # `memory` directory mount is immune; renames inside a bind-mounted directory are
+            # visible. Restarting the pod re-establishes a correct view.
+            #
+            # See docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md.
+            - name: state
+              mountPath: /state/workspace/MEMORY.md
+              subPath: memory/MEMORY.md
+            - name: state
+              mountPath: /state/workspace/DREAMS.md
+              subPath: memory/DREAMS.md
+            - name: state
+              mountPath: /state/workspace/USER.md
+              subPath: memory/USER.md
+            - name: state
+              mountPath: /state/workspace/IDENTITY.md
+              subPath: memory/IDENTITY.md
+            - name: state
+              mountPath: /state/workspace/memory
+              subPath: memory/memory
+            # Image staging for the claude-cli backend, which builds its path as
+            # <workspace>/.openclaw-cli-images with imagePathScope hardcoded to "workspace" and no
+            # config key anywhere in `openclaw config schema`. The mountpoint is a tracked
+            # .gitkeep in activeassistant for the reason in point 1 above.
+            - name: state
+              mountPath: /state/workspace/.openclaw-cli-images
+              subPath: openclaw/cli-images
             - name: ssh-key
               mountPath: /etc/olya-ssh
               readOnly: true
@@ -334,13 +401,19 @@ spec:
               readOnly: true
             - name: google-workspace-data
               mountPath: /etc/olya-google-workspace
+            # For the postStart hook only. She has no reason to run these, but the ConfigMap is
+            # read-only here and holds nothing sensitive.
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
             - name: tmp
               mountPath: /tmp
 
         # Pulls instruction files from origin/main every 15 minutes so merged PRs take effect
         # without a pod restart. Memory files are untouched: they live outside the checkout, at
-        # /state/memory, and are reached from workspace root through symlinks this rebuilds
-        # after each reset.
+        # /state/memory, and reach workspace root as bind mounts that exist only in the olya
+        # container. This container sees the ordinary tracked files instead, so its reset does
+        # not disturb them and there is nothing for it to rebuild afterwards.
         #
         # Mounts /state read-write with no read-only overlay, which is what lets it write the
         # paths the olya container cannot. That asymmetry is the design, not an oversight.
