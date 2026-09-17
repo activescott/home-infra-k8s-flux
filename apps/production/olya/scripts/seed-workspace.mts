@@ -47,6 +47,7 @@ import {
   MEMORY_PATHS,
   STATE,
   WORKSPACE,
+  installGitHooks,
   installSubagentFiles,
   markMemorySkipWorktree,
   publishConfig,
@@ -251,6 +252,11 @@ execFileSync(join(HOME_DIR, "dotfiles", "script", "setup"), [], {
   env: process.env,
   stdio: "inherit",
 })
+
+// Right after the dotfiles setup that installs the git identity and signing config, because this
+// is the rest of that same configuration. It writes a different file on purpose; see
+// GIT_GLOBAL_CONFIG.
+installGitHooks()
 
 // LEGACY VOLUME SAFETY NET, idempotent, and it has already done its job on the live volume.
 //
