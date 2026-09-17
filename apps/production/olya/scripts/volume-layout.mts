@@ -398,9 +398,12 @@ export function linkSharedSkills(skillsDir: string, homeDir: string): void {
  *
  * Two details in it are not decoration, and removing either breaks something.
  *
- * It reads only the text git will actually STORE. `git commit -v` appends the full diff below
- * the scissors line, so a hook that scanned the raw file would reject any commit whose diff
- * mentions one of these patterns -- including, circularly, this file.
+ * It keeps reading below the scissors line instead of stopping there. Whether git strips that
+ * section is a function of cleanup mode, and the default does not strip it: `git commit -F` on a
+ * message with a trailer under the scissors line stores the trailer verbatim. So the hook skips
+ * only the diff and comment text down there and scans anything else. That keeps `git commit -v`
+ * working -- its appended diff can mention these patterns, circularly including this file --
+ * without leaving a hole that a trailer can sit in.
  *
  * It chains to the repository's own .git/hooks/commit-msg. core.hooksPath REPLACES that lookup
  * rather than adding to it, so switching this on would otherwise silently stop running a hook
@@ -429,11 +432,20 @@ msg_file=$1
 cc=$(git config --get core.commentChar 2>/dev/null)
 [ -n "$cc" ] && [ "$cc" != auto ] || cc='#'
 
-# The subject and body only. Comment lines are blanked rather than dropped so the line numbers
-# below still refer to the real file, and everything from the scissors line down is the -v diff.
+# The subject and body, plus anything below the scissors line that is not diff or comment text.
+# Lines are blanked rather than dropped so the numbers reported below still refer to the real file.
+#
+# Below the scissors, git commit -v appends a diff whose own text may contain these patterns, so
+# file headers, hunk headers, +/- lines and in-hunk context lines are skipped; ---/+++ headers fall
+# out of the +/- rule. Context lines are only skipped once a hunk has started, so a bare trailer
+# sitting under the scissors line is still message text, and still gets scanned.
 clean=$(awk -v cc="$cc" '
-  substr($0, 1, length(cc)) == cc && index($0, ">8") { exit }
-  substr($0, 1, length(cc)) == cc { print ""; next }
+  substr($0, 1, length(cc)) == cc { if (index($0, ">8")) diff = 1; print ""; next }
+  !diff { print; next }
+  /^diff --git / || /^index / { print ""; next }
+  /^@@/ { hunk = 1; print ""; next }
+  /^[+-]/ { print ""; next }
+  hunk && /^ / { print ""; next }
   { print }
 ' "$msg_file")
 
