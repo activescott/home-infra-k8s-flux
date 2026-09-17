@@ -341,3 +341,10 @@ mount of the
    hostPath backing is irrelevant, and a missing subPath source yields a root-owned directory
    that `fsGroup` will not fix. Also confirmed that phasing was unnecessary for the source-side
    hazard, which is why this ships as one change with an ordered merge.
+
+## Follow-up: USER.md left the mount set
+
+`activescott/activeassistant#84` made `USER.md` a reviewed instruction file, so it is no
+longer in `MEMORY_PATHS` and has no bind mount: the gateway reads the read-only checkout
+copy and changes arrive by PR. The stale `/state/memory/USER.md` left on existing volumes
+is inert; nothing reads it and the sync no longer copies it.
