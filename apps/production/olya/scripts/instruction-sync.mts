@@ -4,15 +4,18 @@
 // This container mounts /state read-write with no read-only overlay, unlike the olya container
 // beside it, which is what lets it write the paths she cannot. That asymmetry is the design.
 //
-// The reset does not touch memory. The memory files live at MEMORY_LIVE, outside the checkout,
-// and reach workspace root as bind mounts that exist only in the olya container's mount
-// namespace -- so `git clean -ffdx` here sees the ordinary tracked files it expects, resets
-// them, and the mounts beside it are unaffected. Nothing to preserve and nothing to rebuild.
+// The reset does not touch the memory files' inodes. The live files are at MEMORY_LIVE,
+// outside the checkout, and reach workspace root as bind mounts that exist only in the olya
+// container's mount namespace -- but replacing the checkout copies underneath them still
+// detaches those mounts, because Linux drops a mount whose mountpoint dentry is unlinked in
+// any namespace (activescott/activeassistant#109). So the update excludes the memory files
+// via pathspec and moves the branch ref without touching the worktree; see
+// syncCheckoutToOrigin. Nothing to preserve and nothing to rebuild afterwards.
 //
 // TypeScript run through Node's native type stripping, same as memory-sync.mts.
 // No build step and no transpiler; the image ships Node 24.
 import { execFileSync } from "node:child_process"
-import { WORKSPACE, installSubagentFiles, publishConfig } from "./volume-layout.mts"
+import { WORKSPACE, installSubagentFiles, publishConfig, syncCheckoutToOrigin } from "./volume-layout.mts"
 
 function log(msg: string): void {
   console.log(`${new Date().toISOString()} ==> ${msg}`)
@@ -41,8 +44,7 @@ function syncOnce(): void {
     if (line) console.log(`    ${line}`)
   }
 
-  git(["checkout", "--force", "-B", "main", "origin/main"])
-  git(["clean", "-ffdx"])
+  syncCheckoutToOrigin(WORKSPACE, "main")
 
   // The same two steps seed-workspace.mts runs after its own reset, in the same order.
   publishConfig()
