@@ -125,3 +125,6 @@ spec:
     - kind: ImageRepository
       name: repo-fernfiles-inference-service
       namespace: fernfiles-prod
+    - kind: ImageRepository
+      name: repo-olya
+      namespace: flux-system
