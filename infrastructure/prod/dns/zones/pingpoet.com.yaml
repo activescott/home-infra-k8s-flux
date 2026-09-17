@@ -108,6 +108,11 @@ spec:
       ttl: 1
       proxied: true
       content: activescott.github.io
+    - key: dmarc-txt
+      name: _dmarc.pingpoet.com
+      type: TXT
+      comment: monitor only; move to p=quarantine once aggregate reports are clean
+      content: v=DMARC1; p=none; rua=mailto:olya@pingpoet.com
     - key: github-pages-challenge-pingpoet-txt
       name: _github-pages-challenge-pingpoet.pingpoet.com
       type: TXT
