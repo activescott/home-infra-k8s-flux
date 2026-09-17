@@ -94,9 +94,12 @@ pattern, same reason: these are the paths where a bug is silent.
 - A `postStart` hook fails the container rather than letting a missing or read-only mount eat her
   memory silently.
 
-**Still open:** `activescott/activeassistant#42`. The acpx `stateDir` fix is deployed but
-unexercised — `/state/openclaw/acpx-state` is created lazily on the first ACP spawn, so the issue
-should not close until a real opencode session runs.
+**Closed 2026-09-16:** `activescott/activeassistant#42`. Olya ran an end-to-end test — opencode
+ACP spawns, writes files and reports back. Confirmed independently on the volume:
+`/state/openclaw/acpx-state/sessions` holds real sessions, and `/state/workspace/state` no longer
+exists, so acpx has stopped reaching into the read-only workspace.
+
+Nothing from this spec series is outstanding.
 
 ## Commands to re-verify
 

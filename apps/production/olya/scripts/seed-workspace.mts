@@ -48,8 +48,10 @@ import {
   STATE,
   WORKSPACE,
   installSubagentFiles,
+  markMemorySkipWorktree,
   publishConfig,
   seedMemoryFromCheckout,
+  syncCheckoutToOrigin,
 } from "./volume-layout.mts"
 
 const sshKey = "/etc/olya-ssh/id_ed25519"
@@ -189,13 +191,19 @@ function git(args: string[], opts: { cwd?: string; allowFail?: boolean } = {}): 
 
 // Clone if missing, otherwise force the checkout to origin's tip on the given branch. Local
 // commits and local modifications are DISCARDED, and what was discarded is logged.
-function cloneOrReset(url: string, dir: string, branch: string): void {
+//
+// When preserveMemory is set (the workspace checkout), the update never replaces the memory
+// files: a plain checkout/reset unlinks changed tracked files, which detaches the olya
+// container's bind mounts on those paths in its own mount namespace
+// (activescott/activeassistant#109). See syncCheckoutToOrigin.
+function cloneOrReset(url: string, dir: string, branch: string, preserveMemory = false): void {
   if (!existsSync(join(dir, ".git"))) {
     log(`cloning ${url} -> ${dir}`)
     execFileSync("git", ["clone", "--branch", branch, url, dir], {
       env: process.env,
       stdio: "inherit",
     })
+    if (preserveMemory) markMemorySkipWorktree(dir)
     return
   }
 
@@ -224,13 +232,17 @@ function cloneOrReset(url: string, dir: string, branch: string): void {
 
   // -B so this also moves off a feature branch. Her instructions say to push a branch and return
   // to the default one; anything unpushed is gone here, which is the intended trade.
+  if (preserveMemory) {
+    // Safe for the memory paths because they live at MEMORY_LIVE, outside this tree. What sits
+    // at workspace root here is the tracked checkout copy, which is also the mountpoint the
+    // olya container binds over -- so leaving its inode alone preserves the mount.
+    syncCheckoutToOrigin(dir, branch)
+    return
+  }
   git(["checkout", "--force", "-B", branch, "FETCH_HEAD"], { cwd: dir })
   // -x as well as -fd: without it, gitignored files survive the reset. That would reopen the
   // hole this reset closes, since an agent-written skills/ file under any ignored path would
   // then be durable across restarts, absent from `git status`, and never pushed by the sync.
-  // Safe for the memory paths because they live at MEMORY_LIVE, outside this tree. What sits at
-  // workspace root here is the tracked checkout copy, which is also the mountpoint the olya
-  // container binds over -- so this restores it rather than destroying anything live.
   git(["clean", "-ffdx"], { cwd: dir })
 }
 
@@ -259,7 +271,7 @@ if (existsSync(join(WORKSPACE, ".git"))) {
   }
 }
 
-cloneOrReset("git@github.com:activescott/activeassistant.git", WORKSPACE, "main")
+cloneOrReset("git@github.com:activescott/activeassistant.git", WORKSPACE, "main", true)
 
 // Must happen here, in an initContainer, and not later: kubelet resolves the olya container's
 // subPath mounts when that container is created, and creates a root-owned DIRECTORY for any
