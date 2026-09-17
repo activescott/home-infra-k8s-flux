@@ -410,10 +410,12 @@ spec:
               mountPath: /tmp
 
         # Pulls instruction files from origin/main every 15 minutes so merged PRs take effect
-        # without a pod restart. Memory files are untouched: they live outside the checkout, at
-        # /state/memory, and reach workspace root as bind mounts that exist only in the olya
-        # container. This container sees the ordinary tracked files instead, so its reset does
-        # not disturb them and there is nothing for it to rebuild afterwards.
+        # without a pod restart. The update must never replace the memory files' inodes:
+        # unlinking the checkout copy detaches the bind mounts on those paths in the olya
+        # container's mount namespace (activescott/activeassistant#109). So it updates
+        # everything except the memory files and moves the branch ref without touching them;
+        # see syncCheckoutToOrigin in scripts/volume-layout.mts. There is nothing for it to
+        # rebuild afterwards.
         #
         # Mounts /state read-write with no read-only overlay, which is what lets it write the
         # paths the olya container cannot. That asymmetry is the design, not an oversight.

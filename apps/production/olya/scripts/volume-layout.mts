@@ -12,6 +12,7 @@
 // TypeScript run through Node's native type stripping. No build step and no transpiler; the
 // image ships Node 24.
 import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { dirname, join } from "node:path"
 
 export const STATE = "/state"
@@ -66,6 +67,108 @@ export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md",
  * the reverse) is how a kubelet-created subPath directory shows up.
  */
 export const MEMORY_DIRECTORIES = new Set(["memory"])
+
+/**
+ * The memory paths that are files rather than directories. Updating the checkout must never
+ * replace these inodes: each one is a bind-mount destination in the olya container, and when
+ * git replaces a tracked file (unlink + new file) Linux detaches mounts on that path in every
+ * other mount namespace. The sidecar pulling a memory-sync commit that way silently removed
+ * Olya's MEMORY.md mount (activescott/activeassistant#109). The `memory` directory itself is
+ * not listed: renames inside a bind-mounted directory stay visible, so its contents update
+ * normally.
+ */
+export const MEMORY_FILES = MEMORY_PATHS.filter((path) => !MEMORY_DIRECTORIES.has(path))
+
+function gitCheckout(args: string[], dir: string): string {
+  return execFileSync("git", args, { cwd: dir, env: process.env, encoding: "utf8" }).trim()
+}
+
+/** The MEMORY_FILES entries actually tracked in the checkout at dir. */
+function trackedMemoryFiles(dir: string): string[] {
+  const tracked = new Set(gitCheckout(["ls-files"], dir).split("\n").map((line) => line.trim()))
+  return MEMORY_FILES.filter((path) => tracked.has(path))
+}
+
+/**
+ * Moves the checkout to origin's tip without replacing the memory files.
+ *
+ * A plain `git checkout --force` / `git reset --hard` rewrites every changed tracked file by
+ * unlinking it, which detaches the olya container's bind mounts on the memory paths (see
+ * MEMORY_FILES). `git update-index --skip-worktree` alone does not prevent that: the flag
+ * hides the worktree divergence from status but checkout still replaces the file.
+ *
+ * So this updates everything EXCEPT the memory files (pathspec exclusion), deletes paths the
+ * upstream removed, moves the branch ref without touching the worktree, and then points the
+ * index entries for the memory files at the new blobs (also without touching the worktree)
+ * so `git status` stays clean. The skip-worktree flag hides the resulting worktree divergence.
+ */
+export function syncCheckoutToOrigin(dir: string, branch: string): void {
+  gitCheckout(["fetch", "--quiet", "origin", branch], dir)
+
+  const head = gitCheckout(["rev-parse", "HEAD"], dir)
+  const origin = gitCheckout(["rev-parse", `origin/${branch}`], dir)
+
+  // -B semantics: also moves off a feature branch. Done via ref moves rather than checkout so
+  // the memory files are never rewritten, including on this path.
+  gitCheckout(["symbolic-ref", "HEAD", `refs/heads/${branch}`], dir)
+  gitCheckout(["update-ref", `refs/heads/${branch}`, `origin/${branch}`], dir)
+  if (head === origin) return
+
+  const exclude = trackedMemoryFiles(dir).map((path) => `:!${path}`)
+  const diffFiltered = (filter: string): string[] =>
+    gitCheckout(
+      ["diff", "--name-only", `--diff-filter=${filter}`, head, `origin/${branch}`, "--", ".", ...exclude],
+      dir,
+    )
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+  // Updated or added paths, by explicit name: an exclude-only pathspec errors when the target
+  // tree holds nothing it matches (e.g. upstream only deleted a file and changed memory).
+  const changed = diffFiltered("ACMRTUXB")
+  if (changed.length > 0) {
+    gitCheckout(["checkout", "--quiet", `origin/${branch}`, "--", ...changed], dir)
+  }
+  // Paths upstream deleted. The checkout above may already have staged a removal; delete only
+  // what still resolves, matching the discard-local-edits contract of the reset this replaces.
+  for (const path of diffFiltered("D")) {
+    if (gitCheckout(["ls-files", "--", path], dir) !== "") {
+      gitCheckout(["rm", "--quiet", "--force", "--", path], dir)
+    }
+  }
+  gitCheckout(["clean", "-ffdx"], dir)
+
+  for (const path of trackedMemoryFiles(dir)) {
+    const entry = gitCheckout(["ls-tree", `origin/${branch}`, "--", path], dir)
+    if (!entry) {
+      // Upstream deleted a mountpoint. The worktree copy stays, so the mount still resolves;
+      // the startup check and the next fetch will keep shouting until it is restored upstream.
+      console.log(`==> WARNING: memory path ${path} is no longer tracked on origin/${branch}`)
+      continue
+    }
+    // ls-tree line: "<mode> blob <sha>\t<path>".
+    const parts = entry.split(/\s+/)
+    gitCheckout(["update-index", "--cacheinfo", `${parts[0]},${parts[2]},${path}`], dir)
+  }
+  const existing = trackedMemoryFiles(dir)
+  if (existing.length > 0) {
+    gitCheckout(["update-index", "--skip-worktree", "--", ...existing], dir)
+  }
+}
+
+/**
+ * Marks the memory files skip-worktree in a checkout. Idempotent; run after every clone, and
+ * syncCheckoutToOrigin re-applies it after each update. This only hides the worktree
+ * divergence the sync above deliberately keeps -- the exclusion in syncCheckoutToOrigin is
+ * what actually protects the inodes.
+ */
+export function markMemorySkipWorktree(dir: string): void {
+  const existing = trackedMemoryFiles(dir)
+  if (existing.length > 0) {
+    gitCheckout(["update-index", "--skip-worktree", "--", ...existing], dir)
+  }
+}
 
 /**
  * Makes every bind-mount source exist before the olya container starts, and proves it afterwards.

@@ -132,6 +132,30 @@ than memory paths, so the enumeration would be touched more and get stale faster
    cannot read a TypeScript constant, so the coupling cannot be collapsed. Guarded by the
    startup check below.
 
+6. **Replacing a checkout copy detaches the mount in the `olya` container.** Hazard 3 covers
+   a rename onto a mountpoint failing EBUSY inside a container that has the mount. The
+   inverse direction is quieter: when the sidecar (`instruction-sync`) or the initContainer
+   (`seed-workspace`) pulls a commit that changes a memory file, git replaces that tracked
+   file by unlinking it, and Linux detaches mounts on the unlinked dentry in *every other*
+   mount namespace. The path in the `olya` container then silently resolves to the read-only
+   checkout copy: writes fail with EROFS while every other memory file keeps working.
+
+   Observed on 2026-09-17 as activescott/activeassistant#109: the hourly memory-sync
+   committed `MEMORY.md` at 07:17 UTC, the sidecar pulled it within its 15-minute window,
+   and the next workspace write failed with "Read-only file system" while `DREAMS.md`,
+   `USER.md` and `IDENTITY.md` — unchanged on main since before the pod started — stayed
+   mounted. Until the pod restarts, memory-core's pre-compaction flush and the nightly
+   dreaming sweep fail the same way, and bootstrap injection reads a checkout copy that
+   lags `/state/memory`.
+
+   Handled by never rewriting those inodes during an update: `syncCheckoutToOrigin` in
+   `scripts/volume-layout.mts` (shared by both scripts, driven by `MEMORY_PATHS`) updates
+   everything except the memory files via pathspec, deletes upstream-removed paths by
+   name, and moves the branch ref without touching the worktree. `skip-worktree` alone
+   was evaluated and does not do this: the flag hides the divergence from status but
+   `checkout --force` still replaces the file. The `memory/` directory mount is immune;
+   only the four file mounts need the exclusion.
+
 ## The startup check
 
 `seed-workspace` cannot verify the mounts: it runs in a different container, in a different
