@@ -22,7 +22,8 @@ byte of the script is preserved.
 Matching on the script *name* is not enough, and assuming otherwise destroyed a day of
 hand-written rules on 2026-09-13: Bulwark edits the script named `archive-all`, so user rules
 arrive inside the very script this job owns and are indistinguishable from body drift. An
-active script with no managed block is now reported and skipped, never overwritten.
+active script with no managed block is never overwritten: it is ok if it still carries the
+include (Bulwark keeps it but strips the markers on save), and reported and skipped if not.
 
 The only writes are:
   - install and activate the managed block where no script is active at all
@@ -228,6 +229,18 @@ def stray_includes(body, span):
     return outside.count(INCLUDE_STATEMENT)
 
 
+def has_live_include(body):
+    """True if the admin include appears on a line that is not commented out.
+
+    Bulwark regenerates the whole script on every filter save: it keeps the include as a
+    locked External rule but drops our marker comments.
+    """
+    for line in body.replace("\r\n", "\n").split("\n"):
+        if INCLUDE_STATEMENT in line.split("#", 1)[0]:
+            return True
+    return False
+
+
 def install(sieve, name, previous=None):
     """Write the managed block as `name` and activate it, logging what it replaced."""
     if previous and previous.strip():
@@ -279,6 +292,11 @@ def reconcile(address):
                 return "would-migrate", "legacy unmarked body"
             install(sieve, SCRIPT_NAME)
             return "migrated", "legacy body wrapped in managed markers"
+
+        # An editor dropped the markers but kept the include: mail is still archived, so
+        # there is nothing to fix, and writing here would be the 2026-09-13 bug again.
+        if has_live_include(current):
+            return "ok", "%r has no managed block but includes the archive rule" % active
 
         return "skipped", "%r has no managed block -- not overwriting" % active
     finally:
