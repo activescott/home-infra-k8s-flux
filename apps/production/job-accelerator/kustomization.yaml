@@ -52,7 +52,8 @@ secretGenerator:
   # for the same reason ALLOWED_EMAILS is. `public-key-encrypted` because it
   # was piped straight into sops against the age recipient and never written
   # to disk in the clear; onepassword-secrets.mts skips it rather than
-  # reporting a missing backup. See README.md#plain-env to change it.
+  # reporting a missing backup. See README.md#client_data_owner_email to
+  # change the address.
   - name: client-owner
     envs:
       - .env.secret.client-owner.public-key-encrypted.encrypted
