@@ -190,6 +190,15 @@ secretGenerator:
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
+#### Generated secrets
+
+Some secrets are machine-to-machine tokens that no person needs to know. Those are generated
+and encrypted straight to the public age recipient, which every encrypted file records as
+`sops_age__list_0__map_recipient`, so creating or rotating one needs no private key and leaves
+no plaintext anywhere. Only the cluster can read them. Each has its own regeneration
+instructions next to the app. The first is the Alertmanager hook token in
+[apps/production/olya/README.md](apps/production/olya/README.md#alertmanager-hook-token).
+
 #### Decrypting
 
 The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we just have to have a `sops-age` secret in the `flux-system` namespace in the cluster.

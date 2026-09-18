@@ -104,6 +104,89 @@ webhook.
 **`kubectl scale` is not the mechanism.** Flux reverts it within 10 minutes, which would look
 like the assistant restarting itself.
 
+## Alertmanager hook token
+
+Alertmanager's `olya-hook` receiver posts every notification to the gateway's
+`/hooks/alertmanager` with a bearer token, and the gateway rejects any other token. Two
+encrypted files hold it, one per namespace, since a pod can only read a Secret in its own:
+
+| File | Read by |
+| --- | --- |
+| `.env.secret.olya-hooks.encrypted` | the gateway, as `OPENCLAW_HOOKS_TOKEN`, which `hooks.token` in `openclaw.json` references |
+| `../monitoring/prometheus/.env.secret.alertmanager-olya-hook.encrypted` | Alertmanager, as the file `/etc/alertmanager/olya-hook/openclaw_hooks_token` |
+
+Both must hold the same value. If they differ, every alert sent to Olya gets a 401, while
+Scott's Telegram route carries on as if nothing were wrong.
+
+### Created without the private key
+
+Nobody knows this token, and nobody needed the age private key to make it. sops encrypts each
+file under a random data key and then encrypts that data key to the age recipient, which is a
+public key. Encrypting needs only the recipient, and every encrypted file in this repo records
+it as `sops_age__list_0__map_recipient`. Decrypting needs the private key, which exists only in
+`home-infra-private.agekey` and in the cluster's `sops-age` Secret. So anyone with the repo can
+write a secret that only the cluster can read.
+
+Two limits follow. Changing one value inside an existing file needs its data key, and so the
+private key, which is why the script below rewrites both files whole. And the encryption does
+nothing to stop someone with push access from replacing a secret with one they know; review of
+the PR that changes it is the only check.
+
+There is no plaintext copy, so there is nothing for `scripts/onepassword-secrets.mts` to back
+up. If the token is lost or leaks, rotate it.
+
+### Rotating
+
+Needs `sops`, `age` and `openssl` (`brew install sops age`). From the repo root, on a branch:
+
+```bash
+./scripts/create-olya-hook-token.sh
+git add apps/production/monitoring/prometheus/.env.secret.alertmanager-olya-hook.encrypted \
+  apps/production/olya/.env.secret.olya-hooks.encrypted
+git commit -m "Rotate olya hook token"
+git push -u origin HEAD
+```
+
+Then open a PR. The script generates one token and writes it into both files, replacing them
+only after both encryptions succeed, so the pair cannot drift. The token reaches sops on stdin
+and is never written to disk or printed. Keep both files in one commit: merging only one breaks
+delivery until the other lands.
+
+Merging restarts `olya-0`, like any change under this directory.
+
+### The window after a rotation
+
+The two sides pick up the new token on different schedules once Flux applies the merge, and
+alerts to Olya fail until both have.
+
+- `olya-hooks` gets a hash suffix, so a new value renames the Secret, changes the pod template,
+  and rolls `olya-0`. The gateway reads the env var at start: the old pod keeps the old token
+  through its 30 second grace period, then nothing listens until the new pod is ready. Over the
+  week to 2026-09-18, start to ready took 15 to 65 seconds, once 195.
+- `alertmanager-olya-hook` has `disableNameSuffixHash`, so the Secret is updated in place and
+  Alertmanager does not restart. The kubelet refreshes the mounted file within about a minute,
+  and Alertmanager reads `credentials_file` on every request, so it switches as soon as the
+  file changes.
+
+Expect one to two minutes of failures, up to about four if the pod is slow to start. Whichever
+side switches first, a notification in that window gets a 401 or a refused connection.
+Alertmanager does not record a failed notification as sent, so it should retry that group at
+its next `group_interval`, 5 minutes later: a late triage run rather than a lost one. With no
+alerts firing, nothing is sent and nothing fails.
+
+It is over once the rollout below has finished and at least a minute has passed since Flux
+applied the commit, for the kubelet refresh:
+
+```bash
+kubectl --context nas -n olya rollout status statefulset/olya
+```
+
+To confirm from Alertmanager's side, this Loki query shows no failures after that point:
+
+```logql
+{namespace="monitoring", pod="prometheus-alertmanager-0"} |= "olya-hook"
+```
+
 ## Things that will bite
 
 - **`env` and `openclaw.json` must agree.** The container names each substituted key
