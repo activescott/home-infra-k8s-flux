@@ -81,31 +81,31 @@ spec:
     # tayle means re-adding both here and there.
     - kind: ImageRepository
       name: repo-scott-willeke-com
-      namespace: scott-willeke-com-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-gpupoet-app
-      namespace: gpupoet-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-ramblefeed-app
-      namespace: ramblefeed-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-tinkerbell-app
-      namespace: tinkerbell-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-tinkerbell-mcp-gateway
-      namespace: tinkerbell-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-amazon-searcher
-      namespace: gpupoet-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-indexnow-notifier
-      namespace: gpupoet-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-gpu-poet-collector
-      namespace: gpupoet-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-fernfiles-app
-      namespace: fernfiles-prod
+      namespace: flux-system
     # The worker needs its own entry: build.yaml tags both fernfiles images
     # v<version> from one release, but a Receiver only reconciles the
     # ImageRepositories it lists, so without this the worker deploys on the 5h
@@ -115,7 +115,7 @@ spec:
     # had rolled. Same shape as repo-tayle-worker above.
     - kind: ImageRepository
       name: repo-fernfiles-worker
-      namespace: fernfiles-prod
+      namespace: flux-system
     # Same reason as the worker: build.yaml tags app, worker, and
     # inference-service v<version> from one release, so this needs its own
     # Receiver entry to roll with the others. Missed when the inference
@@ -124,7 +124,7 @@ spec:
     # comment in apps/production/fernfiles/image-scanning/inference-service-image-scanning.yaml.
     - kind: ImageRepository
       name: repo-fernfiles-inference-service
-      namespace: fernfiles-prod
+      namespace: flux-system
     - kind: ImageRepository
       name: repo-olya
       namespace: flux-system
