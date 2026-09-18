@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // OAuth token exchange for Google Workspace MCP setup.
-// No dependencies — Node.js builtins only.
+// No npm dependencies. Writing the result into the encrypted secret needs sops and op.
 // Usage: node get-tokens.mjs (prompts for client ID and secret)
 
 import http from "http";
 import https from "https";
 import { URL } from "url";
 import readline from "readline";
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
@@ -37,10 +37,10 @@ const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
 
-// This script - not the agent - is the only thing allowed to touch this path. See
-// the "DO NOT TYPE A REAL VALUE" header in the plaintext file itself for why.
 const repoDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
-const plaintextPath = join(repoDir, "apps/production/olya/.env.secret.google-workspace");
+const relPath = "apps/production/olya/.env.secret.google-workspace";
+const plaintextPath = join(repoDir, relPath);
+const encryptedPath = `${plaintextPath}.encrypted`;
 const CREDENTIALS_KEY = "google_workspace_credentials_json";
 
 function prompt(question) {
@@ -63,57 +63,80 @@ async function confirm(question) {
   return answer.trim().toLowerCase() === "y";
 }
 
-function writeCredentialsLine(output) {
-  if (!existsSync(plaintextPath)) {
-    fail(
-      `${plaintextPath} does not exist yet. Copy the template first:\n` +
-        `  cp apps/production/olya/env.secret.google-workspace.example ${plaintextPath}`
-    );
-  }
-  const lines = readFileSync(plaintextPath, "utf8").split("\n");
+// The committed ciphertext is the only copy of this secret. It is updated in memory: the
+// current values come out of `onepassword-secrets.mts show`, one line is replaced, and the
+// result is encrypted from stdin, so no plaintext file is ever written.
+function updateEncryptedCredentials(output) {
+  const shown = execFileSync(join(repoDir, "scripts/onepassword-secrets.mts"), ["show", relPath], {
+    cwd: repoDir,
+    stdio: ["inherit", "pipe", "inherit"],
+  });
+  const lines = shown.toString("utf8").split("\n");
   const idx = lines.findIndex((line) => line.trim().startsWith(`${CREDENTIALS_KEY}=`));
   if (idx === -1) {
-    fail(`No "${CREDENTIALS_KEY}=" line found in ${plaintextPath} - template drift, fix by hand.`);
+    fail(`No "${CREDENTIALS_KEY}=" line in ${relPath}.encrypted; add it with \`edit\` first.`);
   }
   lines[idx] = `${CREDENTIALS_KEY}=${JSON.stringify(output)}`;
-  writeFileSync(plaintextPath, lines.join("\n"), { mode: 0o600 });
-}
 
-function encryptPlaintextFile() {
-  execFileSync(join(repoDir, "scripts/encrypt-env-files.sh"), [plaintextPath], {
-    cwd: repoDir,
-    stdio: "inherit",
-  });
-}
-
-function deletePlaintextFile() {
-  unlinkSync(plaintextPath);
+  const include = readFileSync(join(repoDir, "scripts/_sops_config.include.sh"), "utf8");
+  const recipient = include.match(/^age_key_public="([^"]+)"/m)?.[1];
+  if (!recipient) fail("no age_key_public in scripts/_sops_config.include.sh");
+  // Through `cat` so sops reads /dev/stdin from a real pipe: Node's child stdin is a
+  // socket on Linux, which /dev/stdin cannot open.
+  const encrypted = execFileSync(
+    "sh",
+    [
+      "-c",
+      'cat | exec sops "$@"',
+      "sh",
+      "encrypt",
+      "--age",
+      recipient,
+      "--input-type",
+      "dotenv",
+      "--output-type",
+      "dotenv",
+      "--filename-override",
+      relPath,
+      "/dev/stdin",
+    ],
+    { cwd: repoDir, input: lines.join("\n"), stdio: ["pipe", "pipe", "inherit"] }
+  );
+  // Write next to the target and rename, so a failure cannot truncate the only copy.
+  const staging = `${encryptedPath}.tmp.${process.pid}`;
+  writeFileSync(staging, encrypted, { mode: 0o644 });
+  renameSync(staging, encryptedPath);
 }
 
 async function runFollowUpSteps(output) {
   console.log();
-  if (await confirm(`Write the new credentials into ${plaintextPath}?`)) {
-    writeCredentialsLine(output);
-    console.log(`Wrote ${plaintextPath}`);
-  } else {
-    console.log("Skipped - update the file yourself before encrypting.");
-    return;
+  const editHint =
+    `Paste the JSON above as ${CREDENTIALS_KEY} with:\n` +
+    `  ./scripts/onepassword-secrets.mts edit ${relPath}`;
+  if (existsSync(plaintextPath)) {
+    fail(
+      `${plaintextPath} exists. The .encrypted file is the only copy of record, so this ` +
+        `script will not encrypt a local file over it. Move it out of the repo, then:\n${editHint}`
+    );
+  }
+  if (!existsSync(encryptedPath)) {
+    fail(
+      `${relPath}.encrypted does not exist. Create it first:\n` +
+        `  ./scripts/onepassword-secrets.mts new ${relPath} \\\n` +
+        `    --from apps/production/olya/env.secret.google-workspace.example`
+    );
   }
 
-  if (await confirm("Re-encrypt it now (scripts/encrypt-env-files.sh)?")) {
-    encryptPlaintextFile();
+  if (await confirm(`Write the new credentials into ${relPath}.encrypted?`)) {
+    try {
+      updateEncryptedCredentials(output);
+    } catch (e) {
+      fail(`${e.message.split("\n")[0]}\n${relPath}.encrypted is unchanged. ${editHint}`);
+    }
+    console.log(`Updated ${relPath}.encrypted`);
   } else {
-    console.log("Skipped - remember to encrypt before committing.");
+    console.log(`Skipped. ${editHint}`);
     return;
-  }
-
-  // The .encrypted file is now the only copy that should exist. Nothing mirrors this
-  // plaintext anywhere, so leaving it on disk is the whole risk and none of the benefit.
-  if (await confirm(`Delete the plaintext ${plaintextPath} now?`)) {
-    deletePlaintextFile();
-    console.log(`Deleted ${plaintextPath}`);
-  } else {
-    console.log("Skipped - delete it yourself; the .encrypted file is the only copy.");
   }
 
   console.log(

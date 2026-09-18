@@ -16,15 +16,18 @@ an unregistered scope fails at the consent screen, not at token exchange.
 4. No redirect URI config needed for the Desktop app type — the script uses `http://localhost:PORT` dynamically.
 5. Save the client ID and client secret shown after creation.
 
-### 2. First time only: create the secrets template
+### 2. First time only: create the secret
+
+Skip this if `apps/production/olya/.env.secret.google-workspace.encrypted` already exists;
+it is the only copy, and `new` refuses to overwrite it.
 
 ```bash
-cp apps/production/olya/env.secret.google-workspace.example \
-   apps/production/olya/.env.secret.google-workspace
+./scripts/onepassword-secrets.mts new apps/production/olya/.env.secret.google-workspace \
+  --from apps/production/olya/env.secret.google-workspace.example
 ```
 
-Edit the copy in by hand once, filling in the client ID and client secret (leave
-`google_workspace_credentials_json` as the placeholder — the next step fills it in).
+Fill in the client ID and client secret in the editor, and leave
+`google_workspace_credentials_json` as the placeholder for the next step.
 
 ### 3. Run the token exchange
 
@@ -34,23 +37,15 @@ node apps/production/olya/scripts/setup-google-workspace-gcp/get-tokens.mjs
 
 Enter the client ID and client secret when prompted. Open the printed URL, sign in as
 olya@pingpoet.com, grant access. The script catches the redirect, exchanges the code,
-and prints the credentials JSON — then, each gated by its own `[y/N]` prompt so nothing
-happens without your say-so, offers to:
+and prints the credentials JSON. After a `[y/N]` prompt it replaces the
+`google_workspace_credentials_json=` line in
+`.env.secret.google-workspace.encrypted`: it decrypts with `onepassword-secrets.mts show`,
+changes that one line in memory, and re-encrypts, so no plaintext file is written and the
+other values are kept. Answer `n` and it prints the `edit` command to paste the JSON by hand.
 
-1. write that JSON into `google_workspace_credentials_json=` in
-   `.env.secret.google-workspace`, and
-2. re-encrypt it (`scripts/encrypt-env-files.sh`).
+Run this yourself, not via the agent: the JSON it prints is a live refresh token.
 
-Delete the plaintext afterwards; the committed ciphertext is the only copy. To change the
-value later, use
-`./scripts/onepassword-secrets.mts edit apps/production/olya/.env.secret.google-workspace`.
-
-Run this yourself, not via the agent — the plaintext file is exactly what the "DO
-NOT TYPE A REAL VALUE" header at the top of it warns about; the script does the
-reading and writing so the agent never has to.
-
-After a `y` at step 1, still commit `apps/production/olya/.env.secret.google-workspace.encrypted`
-yourself once step 2 finishes.
+Commit `apps/production/olya/.env.secret.google-workspace.encrypted` yourself afterwards.
 
 ### 4. What happens next
 
