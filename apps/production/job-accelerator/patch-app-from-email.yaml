@@ -1,0 +1,19 @@
+# FROM_EMAIL is the `From:` address on outgoing mail. Not a credential and not a
+# private person's address, so it is plain env here instead of app-creds. The
+# base deployment still reads it from the Secret; this overrides that. Strategic
+# merge matches the env entry by name, and `valueFrom: null` removes the
+# secretKeyRef: an env var carrying both `value` and `valueFrom` is rejected by
+# the API server, so dropping the null would break the Deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            - name: FROM_EMAIL
+              value: job-accelerator-noreply@pingpoet.com
+              valueFrom: null

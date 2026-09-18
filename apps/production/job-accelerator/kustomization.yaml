@@ -16,6 +16,10 @@ patches:
     target:
       kind: Deployment
       name: app
+  - path: patch-app-from-email.yaml
+    target:
+      kind: Deployment
+      name: app
   - path: patch-app-ingress.yaml
     target:
       kind: Ingress
