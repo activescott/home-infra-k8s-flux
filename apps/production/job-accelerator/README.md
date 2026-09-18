@@ -79,11 +79,23 @@ repo root:
 
 ## Rotation
 
+Every rotation follows the same steps:
+
+1. Pull the plaintext: `./scripts/onepassword-secrets.mts pull job-accelerator`, plus
+   `./scripts/onepassword-secrets.mts pull email-relay` for the relay password.
+2. Edit the value(s).
+3. Re-encrypt the changed directory or directories: `./scripts/encrypt-env-files.sh <dir>`.
+4. Push the plaintext back: `./scripts/onepassword-secrets.mts push --only <group>...`.
+5. Commit the `.encrypted` files via a PR.
+
+`app-creds`, `db-creds`, and `relay-creds` all come from `secretGenerator` with no
+`disableNameSuffixHash`, so a changed value renames the generated Secret, which rolls the
+Deployment or StatefulSet the moment Flux applies it. No manual restart needed.
+
 ### Relay password (`SMTP_PASS` / `SMTPD_SASL_USERS`)
 
-Generate a new value with `openssl rand -hex 32` and set it in both places at once:
-`SMTP_PASS` here and this app's entry in email-relay's `SMTPD_SASL_USERS`. They must
-always match, or the app loses its ability to send mail.
+Generate a new value with `openssl rand -hex 32` and set it in both files: `SMTP_PASS`
+here and this app's entry in email-relay's `SMTPD_SASL_USERS`. They must always match.
 
 ### `JWT_SECRET`
 
@@ -100,8 +112,7 @@ kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
   psql -U jobaccelerator -c "ALTER USER jobaccelerator WITH PASSWORD '<new password>';"
 ```
 
-Then update `POSTGRES_PASSWORD` and the password embedded in `DATABASE_URL` to match,
-and re-encrypt.
+Then update `POSTGRES_PASSWORD` and the password embedded in `DATABASE_URL` to match.
 
 ## Sending mail
 
