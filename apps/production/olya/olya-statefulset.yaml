@@ -351,6 +351,10 @@ spec:
             # Miss 3 and nothing fails: the gateway reads the read-only checkout copy while the
             # hourly sync pushes an untouched file. The postStart hook below exists to catch that.
             #
+            # USER.md is deliberately NOT here. It is a reviewed instruction file now
+            # (activescott/activeassistant#84), so the gateway reads the read-only checkout
+            # copy and changes to it arrive by PR like any other instruction file.
+            #
             # THESE FILES MUST ONLY EVER BE EDITED IN PLACE. A bind mount is tied to the inode
             # that existed when the container started, so anything that REPLACES a file under
             # /state/memory rather than writing to it -- `mv`, `rm` and recreate, `sed -i`,
@@ -369,9 +373,6 @@ spec:
             - name: state
               mountPath: /state/workspace/DREAMS.md
               subPath: memory/DREAMS.md
-            - name: state
-              mountPath: /state/workspace/USER.md
-              subPath: memory/USER.md
             - name: state
               mountPath: /state/workspace/IDENTITY.md
               subPath: memory/IDENTITY.md
