@@ -12,6 +12,7 @@
 // TypeScript run through Node's native type stripping. No build step and no transpiler; the
 // image ships Node 24.
 import {
+  chmodSync,
   copyFileSync,
   cpSync,
   existsSync,
@@ -79,6 +80,27 @@ export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "IDENTITY.md", "memory"]
  * Her own skills stay at <workspace>/skills, where only OpenClaw's skill loader reads them.
  */
 export const SHARED_SKILLS = join(WORKSPACE, ".agents", "skills")
+
+/**
+ * The global git hooks directory, pointed at by core.hooksPath. On the volume rather than in the
+ * image because it has to exist in the olya container, whose root filesystem is read-only.
+ */
+export const GIT_HOOKS_DIR = join(HOME_DIR, ".githooks")
+
+/**
+ * Git's OTHER global config file, and the one this writes.
+ *
+ * `git config --global` would be the obvious call and is wrong here: it writes ~/.gitconfig,
+ * which olyapop/dotfiles' script/setup symlinks into the dotfiles checkout, and git FOLLOWS that
+ * symlink when it writes. The setting would land in the checkout, seed-workspace would discard
+ * it on the next boot ("discarding local modifications"), and this would re-add it -- forever.
+ *
+ * Git reads both this file and ~/.gitconfig at global scope, so writing here sets the value
+ * globally and leaves the dotfiles checkout alone. It is the lower-precedence of the two, which
+ * costs nothing while nothing sets core.hooksPath in the dotfiles .gitconfig. XDG_CONFIG_HOME
+ * would move it; the StatefulSet sets only HOME, in every container.
+ */
+const GIT_GLOBAL_CONFIG = join(HOME_DIR, ".config", "git", "config")
 
 /**
  * The entries in MEMORY_PATHS that are directories rather than regular files. Exported because
@@ -368,4 +390,121 @@ export function linkSharedSkills(skillsDir: string, homeDir: string): void {
       rmSync(link)
     }
   }
+}
+
+/**
+ * The commit-msg hook. POSIX sh rather than Node: it runs in whatever repository someone is
+ * committing in, and `sh`, `awk` and `grep` are the things that are certainly there.
+ *
+ * Two details in it are not decoration, and removing either breaks something.
+ *
+ * It keeps reading below the scissors line instead of stopping there. Whether git strips that
+ * section is a function of cleanup mode, and the default does not strip it: `git commit -F` on a
+ * message with a trailer under the scissors line stores the trailer verbatim. So the hook skips
+ * only the diff and comment text down there and scans anything else. That keeps `git commit -v`
+ * working -- its appended diff can mention these patterns, circularly including this file --
+ * without leaving a hole that a trailer can sit in.
+ *
+ * It chains to the repository's own .git/hooks/commit-msg. core.hooksPath REPLACES that lookup
+ * rather than adding to it, so switching this on would otherwise silently stop running a hook
+ * some repository ships. Nothing on this volume has one today; the chain keeps that from
+ * becoming a trap later.
+ */
+const COMMIT_MSG_HOOK = `#!/bin/sh
+# Rejects AI attribution trailers. Installed by apps/production/olya/scripts/volume-layout.mts
+# in activescott/home-infra-k8s-flux; edit it there, not here -- this copy is rewritten on every
+# pod start.
+#
+# This exists because the instruction did not hold. subagents/claude/CLAUDE.md prohibits the
+# Co-Authored-By trailer by name, explains that the harness template pulls toward adding it, and
+# says to check the finished text before sending; an agent read that file and pushed the trailer
+# anyway (activescott/activeassistant#124, and #44 before it for the "Generated with" footer).
+# The read-only workspace mount is the pattern that worked: make the failure mechanical.
+#
+# It applies to everyone committing on this volume, deliberately. The same template pressure
+# applies to hand-written messages, and an exception for one author is an exception.
+set -u
+
+[ "$#" -ge 1 ] || exit 0
+msg_file=$1
+[ -f "$msg_file" ] || exit 0
+
+cc=$(git config --get core.commentChar 2>/dev/null)
+[ -n "$cc" ] && [ "$cc" != auto ] || cc='#'
+
+# The subject and body, plus anything below the scissors line that is not diff or comment text.
+# Lines are blanked rather than dropped so the numbers reported below still refer to the real file.
+#
+# Below the scissors, git commit -v appends a diff whose own text may contain these patterns, so
+# file headers, hunk headers, +/- lines and in-hunk context lines are skipped; ---/+++ headers fall
+# out of the +/- rule. Context lines are only skipped once a hunk has started, so a bare trailer
+# sitting under the scissors line is still message text, and still gets scanned.
+clean=$(awk -v cc="$cc" '
+  substr($0, 1, length(cc)) == cc { if (index($0, ">8")) diff = 1; print ""; next }
+  !diff { print; next }
+  /^diff --git / || /^index / { print ""; next }
+  /^@@/ { hunk = 1; print ""; next }
+  /^[+-]/ { print ""; next }
+  hunk && /^ / { print ""; next }
+  { print }
+' "$msg_file")
+
+matched=0
+for pattern in \\
+  'Co-Authored-By:.*(Claude|Anthropic|noreply@anthropic)' \\
+  'Generated with' \\
+  'Claude-Session:' \\
+  'claude\\.ai/code'
+do
+  hits=$(printf '%s\\n' "$clean" | grep -n -i -E -- "$pattern") || continue
+  if [ "$matched" -eq 0 ]; then
+    echo "commit-msg: rejected. This message carries AI attribution." >&2
+    matched=1
+  fi
+  echo >&2
+  echo "  pattern: $pattern" >&2
+  printf '%s\\n' "$hits" | sed 's/^\\([0-9][0-9]*\\):/  line \\1: /' >&2
+done
+
+if [ "$matched" -ne 0 ]; then
+  echo >&2
+  echo "  Delete the line(s) above and commit again." >&2
+  exit 1
+fi
+
+# Whatever the repository itself wanted to run, which core.hooksPath just displaced.
+common=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
+[ -x "$common/hooks/commit-msg" ] || exit 0
+exec "$common/hooks/commit-msg" "$@"
+`
+
+/**
+ * Installs the commit-msg hook and points git at it globally. Idempotent: the write overwrites
+ * with identical content and the config set is the same value every time.
+ *
+ * Global rather than per-repo because agents create clones and worktrees constantly and anything
+ * needing a setup step would be missed by exactly the clone that needed it.
+ *
+ * Global config does NOT reach a repository that sets core.hooksPath locally, which husky does
+ * (`core.hooksPath = .husky/_`, written by its `prepare` script on npm install). Repos on this
+ * volume using husky -- fernfiles, tinkerbell, gpu-agent -- are not covered by this and need the
+ * check in their own .husky/commit-msg.
+ *
+ * The roots are parameters, like linkSharedSkills above, so this can be exercised against a
+ * throwaway directory without writing the assistant's live git config.
+ */
+export function installGitHooks(hooksDir = GIT_HOOKS_DIR, configFile = GIT_GLOBAL_CONFIG): void {
+  mkdirSync(hooksDir, { recursive: true })
+  const hook = join(hooksDir, "commit-msg")
+  writeFileSync(hook, COMMIT_MSG_HOOK)
+  // Written then chmod'ed: the mode argument applies only when the file is created, and this
+  // file already exists on every boot after the first.
+  chmodSync(hook, 0o755)
+
+  mkdirSync(dirname(configFile), { recursive: true })
+  execFileSync("git", ["config", "--file", configFile, "core.hooksPath", hooksDir], {
+    env: process.env,
+    encoding: "utf8",
+  })
+  console.log(`==> commit-msg hook at ${hook}; core.hooksPath -> ${hooksDir}`)
 }
