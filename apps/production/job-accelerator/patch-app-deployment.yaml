@@ -7,12 +7,3 @@
   value:
     name: APP_URL
     value: https://job-accelerator.pingpoet.com
-# The one address that may read client records. ALLOWED_EMAILS admits Scott
-# and Olya too; they sign in and get a 403 on anything client-owned (Scott,
-# 2026-09-17, activescott/activeassistant#132). Unset admits nobody, so
-# dropping this line hides client data rather than exposing it.
-- op: add
-  path: /spec/template/spec/containers/0/env/-
-  value:
-    name: CLIENT_DATA_OWNER_EMAIL
-    value: oksana@willeke.com

@@ -41,6 +41,18 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: ALLOWED_EMAILS
+            # The one address that may read client records. ALLOWED_EMAILS
+            # admits Scott and Olya too; they sign in and get a 403 on
+            # anything client-owned (Scott, 2026-09-17,
+            # activescott/activeassistant#132). Unset admits nobody, so
+            # dropping this hides client data rather than exposing it. Its
+            # own Secret because the address belongs to a private person and
+            # this repo is public.
+            - name: CLIENT_DATA_OWNER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: client-owner
+                  key: CLIENT_DATA_OWNER_EMAIL
             - name: FROM_EMAIL
               valueFrom:
                 secretKeyRef:

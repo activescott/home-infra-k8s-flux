@@ -22,6 +22,13 @@
 - `MASTER_KEY_1`: the key that wraps every client's data key in the keystore. Read
   [Master key](#master-key) before touching it.
 
+`.env.secret.client-owner.public-key-encrypted.encrypted` (Secret `client-owner`):
+
+- `CLIENT_DATA_OWNER_EMAIL`: the one address that may read client records. Not a
+  credential, but a private person's address, so it is encrypted for the same reason
+  `ALLOWED_EMAILS` is. To change it, see
+  [`CLIENT_DATA_OWNER_EMAIL`](#client_data_owner_email).
+
 `SMTP_PASS` must also match this app's entry in email-relay's `SMTPD_SASL_USERS`
 (`apps/production/email-relay/.env.secret.relay`).
 
@@ -32,15 +39,14 @@ Values that are not secret are set as plain `value:` in the manifests rather tha
 | Variable | Value | Where |
 | --- | --- | --- |
 | `APP_URL` | `https://job-accelerator.pingpoet.com` | `patch-app-deployment.yaml` |
-| `CLIENT_DATA_OWNER_EMAIL` | `oksana@willeke.com` | `patch-app-deployment.yaml` |
 | `KEYSTORE_DIR` | `/keys` | `apps/base/job-accelerator/app-deployment.yaml` |
 | `MASTER_KEY_ACTIVE` | `1` | same |
 | `RETENTION_PROMPT_DAYS` | `90` | same |
 | `RETENTION_DELETE_DAYS` | `14` | same |
 
-`ALLOWED_EMAILS` is the exception: it stays in the encrypted secret because this repo is
-public. `CLIENT_DATA_OWNER_EMAIL` is in the clear because the app's own source names Oksana
-as the account holder, so hiding the address here buys nothing.
+Every address is an exception. `ALLOWED_EMAILS` and `CLIENT_DATA_OWNER_EMAIL` stay in
+encrypted secrets because this repo is public and both name private people. A value being
+guessable is not a reason to publish it.
 
 `OPENROUTER_API_KEY` and `OPENROUTER_MODEL_*` are **not set**. There is no OpenRouter account
 yet. Nothing in the app reads them until the matching and generation features land; add them
@@ -51,9 +57,10 @@ The two `RETENTION_*` values are Scott's answers to open question 1 in the app's
 after an unanswered prompt. They are set ahead of the `retention_sweep` task that reads them.
 
 `app-creds` and `db-creds` are ordinary plaintext-backed secrets managed through
-`./scripts/onepassword-secrets.mts`, group `job-accelerator`. `master-key` is not: the
-`public-key-encrypted` in its name says it has no plaintext copy anywhere, so the script lists
-it and skips it rather than reporting a missing backup. Pull the plaintext with:
+`./scripts/onepassword-secrets.mts`, group `job-accelerator`. `master-key` and `client-owner`
+are not: the `public-key-encrypted` in their names says they have no plaintext copy anywhere,
+so the script lists them and skips them rather than reporting a missing backup. Pull the
+plaintext with:
 
 ```bash
 ./scripts/onepassword-secrets.mts pull job-accelerator
@@ -112,6 +119,8 @@ repo root:
 ## Rotation
 
 `MASTER_KEY_1` does not follow any of this. See [Master key](#master-key).
+`CLIENT_DATA_OWNER_EMAIL` has no 1Password copy either; it has its own steps
+[below](#client_data_owner_email).
 
 Every other rotation follows the same steps:
 
@@ -147,6 +156,26 @@ kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
 ```
 
 Then update `POSTGRES_PASSWORD` and the password embedded in `DATABASE_URL` to match.
+
+### `CLIENT_DATA_OWNER_EMAIL`
+
+There is no plaintext file to edit and nothing in 1Password. Re-encrypt straight to the
+recipient the file already records, so the address never lands on disk in the clear:
+
+```bash
+cd apps/production/job-accelerator
+file=.env.secret.client-owner.public-key-encrypted.encrypted
+recipient=$(sed -n 's/^sops_age__list_[0-9]*__map_recipient=//p' "$file")
+read -rp "new address: " owner
+printf 'CLIENT_DATA_OWNER_EMAIL=%s\n' "$owner" | sops encrypt \
+  --age "$recipient" --input-type dotenv --output-type dotenv \
+  --filename-override "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+```
+
+`read` keeps the value out of shell history and out of any process's argv, and the redirect
+goes to a temp file so a failed encrypt leaves the previous ciphertext intact. Commit the
+`.encrypted` file via a PR; the generated Secret's name hash changes, which rolls the
+Deployment.
 
 ## Master key
 

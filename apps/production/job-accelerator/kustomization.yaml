@@ -47,6 +47,15 @@ secretGenerator:
   - name: master-key
     envs:
       - .env.secret.master-key.public-key-encrypted.encrypted
+  # The address of the person who owns the client records. Not a credential,
+  # but a private person's email, and this repo is public, so it is encrypted
+  # for the same reason ALLOWED_EMAILS is. `public-key-encrypted` because it
+  # was piped straight into sops against the age recipient and never written
+  # to disk in the clear; onepassword-secrets.mts skips it rather than
+  # reporting a missing backup. See README.md#plain-env to change it.
+  - name: client-owner
+    envs:
+      - .env.secret.client-owner.public-key-encrypted.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 images:
   - name: job-accelerator-image-app
