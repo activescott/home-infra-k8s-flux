@@ -1,0 +1,35 @@
+# The keystore volume, on its own ZFS dataset rather than under
+# /mnt/thedatapool/app-data/ like every other PV here.
+#
+# app-data is one of the six datasets syncoid replicates to
+# backupspool/replication, and `/app-data/**` is on the weekly B2 include
+# list. Neither retention is bounded at 7 days, and a wrapped client key that
+# survives longer than that breaks the deletion bound that crypto-shredding
+# rests on: deleting the key file is what makes a client's rows unreadable in
+# every database backup. So the keys get a dataset that replication and B2
+# never touch, snapshotted daily and kept 6 days (Scott, 2026-09-18,
+# activescott/activeassistant#132).
+#
+# type: Directory, not DirectoryOrCreate. If the dataset does not exist yet,
+# DirectoryOrCreate would mkdir the path on the parent dataset -- which is
+# replicated and backed up -- and the pod would come up looking healthy while
+# writing keys exactly where they must not go. Directory fails the mount
+# instead. See README.md#keystore-dataset for the commands that create it.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: job-accelerator-prod-keys-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/job-accelerator-keys
+    type: Directory
+  # Pinned to the one claim, so nothing else can bind it.
+  claimRef:
+    name: keys
+    namespace: job-accelerator-prod
