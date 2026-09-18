@@ -245,6 +245,13 @@ spec:
                   key: google_workspace_client_secret
             - name: WORKSPACE_CREDENTIALS_PATH
               value: /etc/olya-google-workspace/credentials.json
+            # hooks.token in openclaw.json. Has to be deployed before the config references it:
+            # an unresolved ${OPENCLAW_HOOKS_TOKEN} stays a literal string.
+            - name: OPENCLAW_HOOKS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-hooks
+                  key: openclaw_hooks_token
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and

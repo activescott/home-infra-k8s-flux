@@ -73,6 +73,11 @@ spec:
           mountPath: /etc/alertmanager/secrets
           secretName: alertmanager-secrets
           readOnly: true
+        # Its own subdirectory, for the same shadowing reason as the Prometheus mounts above.
+        - name: alertmanager-olya-hook
+          mountPath: /etc/alertmanager/olya-hook
+          secretName: alertmanager-olya-hook
+          readOnly: true
 
       resources:
         limits:
@@ -108,6 +113,20 @@ spec:
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 4h
+          # Every alert also goes to Olya, who files and triages it. `continue` lets the alert
+          # carry on to the route below it. The second route is not redundant: once any child
+          # route matches, Alertmanager stops falling back to the root receiver, so without it
+          # Scott would receive nothing.
+          #
+          # group_by '...' gives each alert its own notification, so one alert joining a group
+          # does not resend the others and start a triage run for each. repeat_interval is
+          # longer than Scott's because a repeat is only a still-firing check for her.
+          routes:
+            - receiver: olya-hook
+              group_by: ["..."]
+              repeat_interval: 24h
+              continue: true
+            - receiver: on_call_operator_default
         inhibit_rules:
           - source_match:
               severity: critical
@@ -123,6 +142,20 @@ spec:
               - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
                 send_resolved: true
                 chat_id: 510755639
+          # The OpenClaw gateway's hook endpoint. The mapping for /hooks/alertmanager lives in
+          # openclaw.json in activescott/activeassistant and starts an isolated triage run per
+          # alert. Alertmanager's pod IP falls in gateway.trustedProxies, so it needs the same
+          # X-Forwarded-For as the openclaw scrape job below or the gateway answers 403.
+          - name: olya-hook
+            webhook_configs:
+              - url: http://olya.olya.svc.cluster.local:18789/hooks/alertmanager
+                send_resolved: true
+                http_config:
+                  authorization:
+                    credentials_file: /etc/alertmanager/olya-hook/openclaw_hooks_token
+                  http_headers:
+                    X-Forwarded-For:
+                      values: ["203.0.113.1"]
 
     # --- Alert Rules ---
     # All alerting rules go into the standard alerting_rules.yml key so they're

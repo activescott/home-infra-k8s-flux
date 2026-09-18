@@ -34,3 +34,11 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.openclaw-metrics.encrypted
+  # Bearer token for Alertmanager's olya-hook webhook receiver. Same value as
+  # openclaw_hooks_token in apps/production/olya/.env.secret.olya-hooks.encrypted, which the
+  # gateway reads as OPENCLAW_HOOKS_TOKEN.
+  - name: alertmanager-olya-hook
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.alertmanager-olya-hook.encrypted
