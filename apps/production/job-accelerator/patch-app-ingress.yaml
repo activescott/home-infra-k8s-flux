@@ -1,0 +1,10 @@
+# Traefik (k3s default) handles the ingress in production, as for fernfiles.
+- op: replace
+  path: /spec/rules/0/host
+  value: job-accelerator.pingpoet.com
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - job-accelerator.pingpoet.com
+      secretName: job-accelerator-pingpoet-com-tls

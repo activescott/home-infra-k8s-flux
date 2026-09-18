@@ -1,0 +1,13 @@
+# Certificate for job-accelerator.pingpoet.com
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: job-accelerator-pingpoet-com-tls
+  namespace: job-accelerator-prod
+spec:
+  secretName: job-accelerator-pingpoet-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - job-accelerator.pingpoet.com

@@ -15,18 +15,22 @@ RESET='\033[0m'
 
 kubectl_context=nas
 
-# Extract all ImageRepository resources from kustomized apps
+# Extract all ImageRepository resources from kustomized apps and configs.
+# The trailing `|| true` matters: grep -v exits nonzero when it matches nothing,
+# which under pipefail silently ended the script before it could report.
 get_image_repositories_from_apps() {
-  kubectl --context "$kubectl_context" kustomize "$REPO_ROOT/apps/production" 2>/dev/null | \
-    yq -r 'select(.kind == "ImageRepository") | .metadata.namespace + "/" + .metadata.name' | \
-    grep -v '^---$' | sort | uniq
+  {
+    kubectl --context "$kubectl_context" kustomize "$REPO_ROOT/apps/production" 2>/dev/null
+    kubectl --context "$kubectl_context" kustomize "$REPO_ROOT/infrastructure/prod/configs" 2>/dev/null
+  } | yq -r 'select(.kind == "ImageRepository") | .metadata.namespace + "/" + .metadata.name' | \
+    grep -v '^---$' | sort | uniq || true
 }
 
 # Extract ImageRepository references from the webhook Receiver
 get_image_repositories_from_receiver() {
   kubectl --context "$kubectl_context" kustomize "$REPO_ROOT/infrastructure/prod/configs" 2>/dev/null | \
     yq -r 'select(.kind == "Receiver") | .spec.resources[] | select(.kind == "ImageRepository") | .namespace + "/" + .name' | \
-    grep -v '^---$' | sort | uniq
+    grep -v '^---$' | sort | uniq || true
 }
 
 echo "Validating webhook receiver configuration..."
