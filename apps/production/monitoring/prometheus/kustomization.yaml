@@ -35,10 +35,13 @@ secretGenerator:
     envs:
       - .env.secret.openclaw-metrics.encrypted
   # Bearer token for Alertmanager's olya-hook webhook receiver. Same value as
-  # openclaw_hooks_token in apps/production/olya/.env.secret.olya-hooks.encrypted, which the
-  # gateway reads as OPENCLAW_HOOKS_TOKEN.
+  # openclaw_hooks_token in
+  # apps/production/olya/.env.secret.olya-hooks.public-key-encrypted.encrypted, which the
+  # gateway reads as OPENCLAW_HOOKS_TOKEN. The `public-key-encrypted` part of the name marks a
+  # secret that was encrypted straight to the age recipient and has no plaintext anywhere; see
+  # apps/production/olya/README.md#alertmanager-hook-token.
   - name: alertmanager-olya-hook
     options:
       disableNameSuffixHash: true
     envs:
-      - .env.secret.alertmanager-olya-hook.encrypted
+      - .env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted

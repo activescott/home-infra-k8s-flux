@@ -112,8 +112,8 @@ encrypted files hold it, one per namespace, since a pod can only read a Secret i
 
 | File | Read by |
 | --- | --- |
-| `.env.secret.olya-hooks.encrypted` | the gateway, as `OPENCLAW_HOOKS_TOKEN`, which `hooks.token` in `openclaw.json` references |
-| `../monitoring/prometheus/.env.secret.alertmanager-olya-hook.encrypted` | Alertmanager, as the file `/etc/alertmanager/olya-hook/openclaw_hooks_token` |
+| `.env.secret.olya-hooks.public-key-encrypted.encrypted` | the gateway, as `OPENCLAW_HOOKS_TOKEN`, which `hooks.token` in `openclaw.json` references |
+| `../monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted` | Alertmanager, as the file `/etc/alertmanager/olya-hook/openclaw_hooks_token` |
 
 Both must hold the same value. If they differ, every alert sent to Olya gets a 401, while
 Scott's Telegram route carries on as if nothing were wrong.
@@ -133,7 +133,9 @@ nothing to stop someone with push access from replacing a secret with one they k
 the PR that changes it is the only check.
 
 There is no plaintext copy, so there is nothing for `scripts/onepassword-secrets.mts` to back
-up. If the token is lost or leaks, rotate it.
+up. The `.public-key-encrypted` in both file names is what tells it so: it lists such a file as
+"public-key encrypted, no plaintext" and skips it on push instead of reporting it as a missing
+backup. If the token is lost or leaks, rotate it.
 
 ### Rotating
 
@@ -141,8 +143,9 @@ Needs `sops`, `age` and `openssl` (`brew install sops age`). From the repo root,
 
 ```bash
 ./scripts/create-olya-hook-token.sh
-git add apps/production/monitoring/prometheus/.env.secret.alertmanager-olya-hook.encrypted \
-  apps/production/olya/.env.secret.olya-hooks.encrypted
+git add \
+  apps/production/monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted \
+  apps/production/olya/.env.secret.olya-hooks.public-key-encrypted.encrypted
 git commit -m "Rotate olya hook token"
 git push -u origin HEAD
 ```

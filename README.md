@@ -195,8 +195,13 @@ Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 Some secrets are machine-to-machine tokens that no person needs to know. Those are generated
 and encrypted straight to the public age recipient, which every encrypted file records as
 `sops_age__list_0__map_recipient`, so creating or rotating one needs no private key and leaves
-no plaintext anywhere. Only the cluster can read them. Each has its own regeneration
-instructions next to the app. The first is the Alertmanager hook token in
+no plaintext anywhere. Only the cluster can read them.
+
+They are named `.env.secret.<name>.public-key-encrypted.encrypted`, which is how
+`scripts/onepassword-secrets.mts` tells them from the secrets that do have a gitignored
+plaintext original: it lists them as "public-key encrypted, no plaintext" and never reports one
+as a missing backup. Rotation instructions live in the README next to the app, starting with
+the Alertmanager hook token in
 [apps/production/olya/README.md](apps/production/olya/README.md#alertmanager-hook-token).
 
 #### Decrypting

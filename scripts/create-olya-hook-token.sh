@@ -20,8 +20,10 @@ usage() {
   echo "See apps/production/olya/README.md#alertmanager-hook-token"
 }
 
-alertmanager_file="apps/production/monitoring/prometheus/.env.secret.alertmanager-olya-hook.encrypted"
-olya_file="apps/production/olya/.env.secret.olya-hooks.encrypted"
+# The `.public-key-encrypted` before the `.encrypted` marks a secret with no plaintext copy
+# anywhere: scripts/onepassword-secrets.mts reads it and stops looking for one to back up.
+alertmanager_file="apps/production/monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted"
+olya_file="apps/production/olya/.env.secret.olya-hooks.public-key-encrypted.encrypted"
 
 if [ $# -gt 1 ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   usage
