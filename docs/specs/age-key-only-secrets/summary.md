@@ -9,12 +9,15 @@ on a real `migrate --verify` run, which needs the vault and the private key.
 `scripts/onepassword-secrets.mts` reads the age private key from 1Password with `op read`
 into `SOPS_AGE_KEY` in the environment of each sops child, once per run, cached in a
 module-level variable. It is never written to disk, never logged, never passed as an
-argument. `SOPS_AGE_KEY_FILE` and `SOPS_AGE_KEY_CMD` are deleted from that environment,
-because sops prefers the file over the key and a stale export would win silently.
+argument. sops merges identities from every source, so `SOPS_AGE_KEY_FILE` and
+`SOPS_AGE_KEY_CMD` are deleted from that environment and `XDG_CONFIG_HOME` points at an
+empty directory, which hides sops' default `keys.txt`. `edit` runs the editor through
+`env -u SOPS_AGE_KEY`.
 
 Every `*.agekey` attachment on `home-infra kubernetes secrets sops-age-key` is read and
-newline-joined. sops parses `SOPS_AGE_KEY` as key-file contents, so all the identities in
-it get tried. That is what makes the two-key window during a rotation work, and it matches
+newline-joined, except retired ones (`-retired-` in the name). sops parses `SOPS_AGE_KEY`
+as key-file contents, so all the identities in it get tried. That is what makes the two-key
+window during a rotation work, and it matches
 what the cluster's `sops-age` secret holds at the same moment. `$OP_AGE_KEY_REF` overrides
 the lookup with a single `op://` reference, for testing against a scratch item.
 
@@ -32,12 +35,14 @@ instead of a key file at the repo root, with one data entry per `*.agekey` attac
 
 ## What `list` checks
 
-Three red conditions, any of which exits 1:
+Four red conditions, any of which exits 1:
 
-- the recipient recorded inside a ciphertext file is not the one in
-  `scripts/_sops_config.include.sh` (a rotation that did not finish)
+- a ciphertext file is not encrypted to exactly one recipient, the one in
+  `scripts/_sops_config.include.sh` (a rotation that did not finish, or an extra
+  recipient that can still read it)
 - a plaintext sibling is sitting next to a ciphertext file
 - a plaintext file has no ciphertext at all (an orphan)
+- an age private key file is on disk (see step 7 below)
 
 Run it after every rotation. A half-finished rotation is otherwise quiet: files rotated
 but the recipient of record not updated, or the reverse, and the next `encrypt-env-files.sh`
@@ -99,9 +104,23 @@ agent's to run. In order.
    zero references anywhere in this repo. Revoking matters more than deleting.
 
 6. **Make the offline copy of the age key** if there is not one already, and verify it
-   decrypts a committed file. See the README's "The age key is the only thing in 1Password".
+   derives `age_key_public`. See the README's "The age key is the only thing in 1Password".
 
-7. Tell the agent, and it opens PR 2.
+7. **Delete the local key file.** Until now `home-infra-private.agekey` at the repo root has
+   been the working copy, and `list` flags it. Confirm the 1Password copy derives the
+   recipient of record, and only then delete it:
+
+   ```bash
+   [ "$(op read "op://Private/home-infra kubernetes secrets sops-age-key/home-infra-private.agekey" \
+        | age-keygen -y)" = \
+     "$(sed -n 's/^age_key_public="\(.*\)"/\1/p' scripts/_sops_config.include.sh)" ] \
+     && echo "1Password copy matches" && rm home-infra-private.agekey
+   ```
+
+   A `show` that succeeds is not this check: it proves some key on the machine works, and
+   until the file is gone that includes the file.
+
+8. Tell the agent, and it opens PR 2.
 
 ## Left for PR 2
 

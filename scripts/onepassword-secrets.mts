@@ -19,7 +19,7 @@
 // Global flags: --vault <name> (default Private, or $OP_VAULT), --repo-root <path>
 
 import { spawnSync } from "node:child_process"
-import { createHash, randomBytes } from "node:crypto"
+import { createHash } from "node:crypto"
 import {
   chmodSync,
   copyFileSync,
@@ -57,6 +57,13 @@ const DEFAULT_VAULT = process.env.OP_VAULT ?? "Private"
 const AGE_KEY_GROUP = "sops-age-key"
 const AGE_KEY_ITEM_TITLE = ITEM_TITLE_PREFIX + AGE_KEY_GROUP
 const AGE_KEY_SUFFIX = ".agekey"
+// Rotation step 8 renames the old key to home-infra-private-retired-<YYYYMMDD>.agekey. It
+// stays in 1Password for git history but is never loaded again, here or in the cluster.
+const RETIRED_KEY_MARKER = "-retired-"
+
+function isActiveAgeKey(name: string): boolean {
+  return name.endsWith(AGE_KEY_SUFFIX) && !name.includes(RETIRED_KEY_MARKER)
+}
 
 // The one declaration of the recipient every *.encrypted file is encrypted to.
 const SOPS_CONFIG_INCLUDE = "scripts/_sops_config.include.sh"
@@ -80,7 +87,8 @@ const PUBLIC_KEY_ENCRYPTED_SUFFIX = ".public-key-encrypted"
 
 // A plaintext file with no ciphertext sibling. Before this change those were pushed to
 // 1Password; now they are the orphan list, and `list` reports each as something to encrypt
-// into git or delete.
+// into git or delete. A local *.agekey is reported separately: it is deleted, never
+// encrypted, once the 1Password copy is confirmed.
 const ORPHAN_PATTERNS = [
   /^\.env\.secret/,
   /\.secret$/,
@@ -261,19 +269,19 @@ function requireSops(): void {
 // The age private key
 // ---------------------------------------------------------------------------
 
-let cachedAgeKey: string | undefined
+let cachedAgeKeys: string[] | undefined
 
 /**
- * Every `*.agekey` attachment on the sops-age-key item, newline-joined. sops parses
- * SOPS_AGE_KEY as the contents of a key file, so several identities in it all get tried;
- * that is what makes the two-key window in the middle of a rotation work, both here and in
- * the cluster's sops-age secret.
+ * Every non-retired `*.agekey` attachment on the sops-age-key item, one entry per
+ * attachment. Newline-joined they become SOPS_AGE_KEY; sops parses that as the contents of
+ * a key file, so several identities in it all get tried. That is what makes the two-key
+ * window in the middle of a rotation work, both here and in the cluster's sops-age secret.
  *
  * Read once per run and kept in a module-level variable, so 1Password prompts once no
  * matter how many files a command touches. It is never written anywhere.
  */
-function ageKey(vault: string): string {
-  if (cachedAgeKey !== undefined) return cachedAgeKey
+function ageKeys(vault: string): string[] {
+  if (cachedAgeKeys !== undefined) return cachedAgeKeys
 
   const refs: string[] = []
   const override = process.env.OP_AGE_KEY_REF
@@ -293,10 +301,13 @@ function ageKey(vault: string): string {
     }
     const item = getItem(itemId, vault)
     for (const file of item.files ?? []) {
-      if (file.name.endsWith(AGE_KEY_SUFFIX)) refs.push(`op://${vault}/${itemId}/${file.name}`)
+      if (isActiveAgeKey(file.name)) refs.push(`op://${vault}/${itemId}/${file.name}`)
     }
     if (refs.length === 0) {
-      fail(`item "${AGE_KEY_ITEM_TITLE}" has no *${AGE_KEY_SUFFIX} file attachment`)
+      fail(
+        `item "${AGE_KEY_ITEM_TITLE}" has no *${AGE_KEY_SUFFIX} file attachment ` +
+          `(names containing "${RETIRED_KEY_MARKER}" are ignored)`,
+      )
     }
   }
 
@@ -316,22 +327,49 @@ function ageKey(vault: string): string {
   if (refs.length > 1) {
     note(`read ${refs.length} age identities from "${AGE_KEY_ITEM_TITLE}" (rotation in progress)`)
   }
-  cachedAgeKey = keys.join("\n")
-  return cachedAgeKey
+  cachedAgeKeys = keys
+  return cachedAgeKeys
 }
 
 /**
- * The environment for a sops child that needs to decrypt.
+ * The public key of every identity in 1Password, derived with `age-keygen -y`. The private
+ * key goes in on stdin, never as an argument or a file.
+ */
+function storedRecipients(vault: string): string[] {
+  const recipients: string[] = []
+  for (const key of ageKeys(vault)) {
+    const result = run("age-keygen", ["-y"], undefined, `${key}\n`)
+    if (result.status !== 0) {
+      fail(`age-keygen -y rejected a key from 1Password:\n${result.stderr.trim()}`)
+    }
+    recipients.push(...result.stdout.toString("utf8").split("\n").filter(Boolean))
+  }
+  return recipients
+}
+
+// Set by main() to an empty directory inside its private temp dir.
+let emptyConfigHome: string | undefined
+
+/**
+ * The environment for a sops child that needs to decrypt, holding only the 1Password keys.
  *
- * SOPS_AGE_KEY_FILE and SOPS_AGE_KEY_CMD are deleted rather than left alone: sops resolves
- * age identities in the order file, key, command (https://getsops.io/docs/usage/identities/age/),
- * so a stale SOPS_AGE_KEY_FILE exported in a shell would win and quietly hide the fact that
- * the 1Password path is broken.
+ * sops merges identities from every source it finds: SOPS_AGE_KEY_FILE, SOPS_AGE_KEY,
+ * SOPS_AGE_KEY_CMD, and the default keys.txt under the user config dir
+ * (https://getsops.io/docs/usage/identities/age/). Any of them left in place would let a
+ * decrypt succeed while the 1Password copy is wrong or missing. The variables are deleted,
+ * and XDG_CONFIG_HOME points at an empty directory so no keys.txt is found; sops honours
+ * XDG_CONFIG_HOME on macOS too.
  */
 function sopsEnv(vault: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, SOPS_AGE_KEY: ageKey(vault) }
+  if (!emptyConfigHome) fail("internal: sopsEnv called before main() set up its temp dir")
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    SOPS_AGE_KEY: ageKeys(vault).join("\n"),
+    XDG_CONFIG_HOME: emptyConfigHome,
+  }
   delete env.SOPS_AGE_KEY_FILE
   delete env.SOPS_AGE_KEY_CMD
+  delete env.SOPS_AGE_SSH_PRIVATE_KEY_FILE
   return env
 }
 
@@ -600,29 +638,19 @@ function attachmentFor(item: OpItem, label: string): OpFile | undefined {
 }
 
 /**
- * Downloads an attachment to `outPath`, returns its bytes, and always removes outPath.
- * A second plaintext copy on disk must not outlive the comparison it exists for.
+ * Reads an attachment's bytes from `op read` stdout, so no plaintext copy is written to
+ * disk for a comparison. --no-newline keeps op from appending a newline the file lacks.
  */
-function readAttachment(vault: string, itemId: string, label: string, outPath: string): Buffer {
-  try {
-    const result = op(["read", "--out-file", outPath, `op://${vault}/${itemId}/${label}`])
-    if (result.status !== 0) {
-      fail(`op read of "${label}" from item ${itemId} failed:\n${result.stderr.trim()}`)
-    }
-    chmodSync(outPath, 0o600)
-    return readFileSync(outPath)
-  } finally {
-    if (existsSync(outPath)) unlinkSync(outPath)
+function readAttachment(vault: string, itemId: string, label: string): Buffer {
+  const result = op(["read", "--no-newline", `op://${vault}/${itemId}/${label}`])
+  if (result.status !== 0) {
+    fail(`op read of "${label}" from item ${itemId} failed:\n${result.stderr.trim()}`)
   }
+  return result.stdout
 }
 
-function hashAttachment(
-  vault: string,
-  itemId: string,
-  label: string,
-  outPath: string,
-): ContentHashes {
-  return hashesOf(readAttachment(vault, itemId, label, outPath))
+function hashAttachment(vault: string, itemId: string, label: string): ContentHashes {
+  return hashesOf(readAttachment(vault, itemId, label))
 }
 
 function editItem(itemId: string, vault: string, assignments: string[]): void {
@@ -813,6 +841,7 @@ function commandList(options: Options): void {
   let staleRecipient = 0
   let strayPlaintext = 0
   let orphans = 0
+  let localAgeKeys = 0
 
   console.log(`recipient of record: ${expected}  (${SOPS_CONFIG_INCLUDE})`)
   for (const group of groups) {
@@ -823,7 +852,16 @@ function commandList(options: Options): void {
       let mark = OK
       let detail: string
 
-      if (!file.hasCiphertext) {
+      if (!file.hasCiphertext && file.label.endsWith(AGE_KEY_SUFFIX)) {
+        // Not an orphan: the age key never gets ciphertext. It belongs in 1Password only.
+        localAgeKeys += 1
+        mark = BAD
+        detail = "AGE PRIVATE KEY on disk"
+        notes.push(
+          "delete it once `age-keygen -y` on the 1Password copy prints age_key_public " +
+            "(docs/specs/age-key-only-secrets/summary.md, step 7)",
+        )
+      } else if (!file.hasCiphertext) {
         orphans += 1
         mark = BAD
         detail = "ORPHAN: plaintext only, no ciphertext in git"
@@ -831,10 +869,16 @@ function commandList(options: Options): void {
         const format = sopsFormat(`${file.absPath}.encrypted`, file.label)
         const recipients = recipientsOf(`${file.absPath}.encrypted`, format)
         detail = `${format.padEnd(6)}  ${recipients.map(shortRecipient).join(", ") || "no age recipient"}`
-        if (!recipients.includes(expected)) {
+        // Exactly one, not "includes": after rotating away from a compromised key, a file
+        // that still names the old key alongside the new one is still readable by it.
+        if (recipients.length !== 1 || recipients[0] !== expected) {
           staleRecipient += 1
           mark = BAD
-          notes.push("recipient is not the one of record; rotation did not finish")
+          notes.push(
+            recipients.includes(expected)
+              ? `${recipients.length} recipients; only the one of record belongs`
+              : "recipient is not the one of record; rotation did not finish",
+          )
         }
         if (file.hasPlaintext) {
           strayPlaintext += 1
@@ -848,13 +892,16 @@ function commandList(options: Options): void {
   }
 
   console.log(`\n${fileCount} secret file(s) in ${groups.length} group(s)`)
-  if (staleRecipient === 0 && strayPlaintext === 0 && orphans === 0) {
+  if (staleRecipient === 0 && strayPlaintext === 0 && orphans === 0 && localAgeKeys === 0) {
     console.log(`${OK} every file is encrypted to the recipient of record, and only to git`)
     return
   }
-  if (staleRecipient > 0) console.log(`${BAD} ${staleRecipient} file(s) on a retired recipient`)
+  if (staleRecipient > 0) {
+    console.log(`${BAD} ${staleRecipient} file(s) not encrypted to the recipient of record alone`)
+  }
   if (strayPlaintext > 0) console.log(`${BAD} ${strayPlaintext} file(s) with plaintext on disk`)
   if (orphans > 0) console.log(`${BAD} ${orphans} plaintext file(s) with no ciphertext in git`)
+  if (localAgeKeys > 0) console.log(`${BAD} ${localAgeKeys} age private key file(s) on disk`)
   process.exitCode = 1
 }
 
@@ -876,18 +923,41 @@ function commandEdit(options: Options, target: string): void {
   const secret = resolveSecret(options.repoRoot, target, true)
   const format = sopsFormat(secret.encryptedPath, secret.label)
 
-  // sops decrypts to its own 0600 temp file, hands it to $EDITOR, re-encrypts on save and
-  // removes it. The plaintext never exists at a repo path. Re-encryption keeps the file's
-  // existing recipients, so editing during a half-finished rotation does not quietly move
-  // the file back to the retired key.
+  // sops decrypts to a temp file inside a 0700 temp directory of its own, hands it to the
+  // editor, re-encrypts on save and removes it. The plaintext never exists at a repo path.
+  // Re-encryption keeps the file's existing recipients, so editing during a half-finished
+  // rotation does not quietly move the file back to the retired key.
   const result = spawnSync(
     "sops",
     ["edit", "--input-type", format, "--output-type", format, secret.encryptedPath],
-    { env: sopsEnv(options.vault), stdio: "inherit" },
+    { env: editorSafeSopsEnv(options.vault), stdio: "inherit" },
   )
   if (result.error) fail(`sops edit failed to start: ${result.error.message}`)
   if ((result.status ?? 1) !== 0) fail(`sops edit exited ${result.status}`)
   note(`${OK} ${secret.relPath}.encrypted`)
+}
+
+/** Single-quotes a word for the shlex split sops applies to SOPS_EDITOR. */
+function shellQuote(word: string): string {
+  return `'${word.replace(/'/g, `'"'"'`)}'`
+}
+
+/**
+ * sopsEnv for `sops edit`, which starts the editor with its own environment. Without this
+ * the editor, and every shell, plugin or terminal it spawns, would hold SOPS_AGE_KEY. So
+ * SOPS_EDITOR runs the editor through `env -u SOPS_AGE_KEY`, and gives it back the
+ * caller's XDG_CONFIG_HOME so its own config still loads.
+ */
+function editorSafeSopsEnv(vault: string): NodeJS.ProcessEnv {
+  const env = sopsEnv(vault)
+  // The order sops itself uses, with vi standing in for its vim/nano/vi search.
+  const editor = process.env.SOPS_EDITOR || process.env.EDITOR || "vi"
+  const configHome =
+    process.env.XDG_CONFIG_HOME === undefined
+      ? ["-u", "XDG_CONFIG_HOME"]
+      : [shellQuote(`XDG_CONFIG_HOME=${process.env.XDG_CONFIG_HOME}`)]
+  env.SOPS_EDITOR = ["env", "-u", "SOPS_AGE_KEY", ...configHome, editor].join(" ")
+  return env
 }
 
 function runEditor(path: string): void {
@@ -971,50 +1041,22 @@ function git(repoRoot: string, args: string[]): { status: number; stdout: string
 }
 
 /**
- * Proves 1Password already holds the private key for `recipient` by round-tripping a
- * scratch value through it. This is the gate that keeps ciphertext from ever being moved
- * to a key that exists in only one place.
+ * Proves 1Password already holds the private key for `recipient`: one of its identities
+ * must derive exactly that public key. This is the gate that keeps ciphertext from ever
+ * being moved to a key that exists in only one place. It deliberately does not go through
+ * sops, which would also accept a key from any other identity source on this machine.
  */
-function assertKeyIsStored(recipient: string, vault: string, tmpRoot: string): void {
-  const probe = randomBytes(16).toString("hex")
-  const plainPath = join(tmpRoot, "rotate-probe")
-  const cipherPath = join(tmpRoot, "rotate-probe.encrypted")
-  try {
-    writeFileSync(plainPath, `PROBE=${probe}\n`, { mode: 0o600 })
-    const encrypted = run("sops", [
-      "encrypt",
-      "--age",
-      recipient,
-      "--input-type",
-      "dotenv",
-      "--output-type",
-      "dotenv",
-      plainPath,
-    ])
-    if (encrypted.status !== 0) {
-      fail(`could not encrypt to --new-recipient:\n${encrypted.stderr.trim()}`)
-    }
-    writeFileSync(cipherPath, encrypted.stdout, { mode: 0o600 })
-    const decrypted = run(
-      "sops",
-      ["decrypt", "--input-type", "dotenv", "--output-type", "dotenv", cipherPath],
-      sopsEnv(vault),
+function assertKeyIsStored(recipient: string, vault: string): void {
+  if (!storedRecipients(vault).includes(recipient)) {
+    fail(
+      `no age key in 1Password has the public key ${shortRecipient(recipient)}.\n` +
+        `Upload the new private key as a second *${AGE_KEY_SUFFIX} attachment on ` +
+        `"${AGE_KEY_ITEM_TITLE}" first (rotation step 2), then re-run. Nothing was changed.`,
     )
-    if (decrypted.status !== 0 || !decrypted.stdout.toString("utf8").includes(probe)) {
-      fail(
-        `the age key(s) in 1Password cannot read a file encrypted to ${shortRecipient(recipient)}.\n` +
-          `Upload the new private key as a second *${AGE_KEY_SUFFIX} attachment on ` +
-          `"${AGE_KEY_ITEM_TITLE}" first (rotation step 2), then re-run. Nothing was changed.`,
-      )
-    }
-  } finally {
-    for (const path of [plainPath, cipherPath]) {
-      if (existsSync(path)) unlinkSync(path)
-    }
   }
 }
 
-function commandRotateAgeKey(options: Options, tmpRoot: string): void {
+function commandRotateAgeKey(options: Options): void {
   const newRecipient = options.newRecipient
   if (!newRecipient) fail("rotate-age-key needs --new-recipient <age1...>")
   // Rotating a subset would leave the rest on the retired key while age_key_public already
@@ -1047,7 +1089,7 @@ function commandRotateAgeKey(options: Options, tmpRoot: string): void {
   }
 
   preflight(options.vault)
-  assertKeyIsStored(newRecipient, options.vault, tmpRoot)
+  assertKeyIsStored(newRecipient, options.vault)
   note(`${OK} 1Password holds a key that reads ${shortRecipient(newRecipient)}`)
 
   const targets = discover(options.repoRoot).flatMap((group) =>
@@ -1154,16 +1196,32 @@ interface VerifyRow {
   detail: string
 }
 
-function dotenvValueHashes(bytes: Buffer): Map<string, string> {
-  const map = new Map<string, string>()
+// What a dotenv key looks like. Anything before an "=" that does not match (a base64
+// continuation line, a pasted blob) may be part of a value, so it is never printed.
+const DOTENV_KEY = /^[A-Za-z_][\w.-]*$/
+
+interface DotenvHashes {
+  values: Map<string, string>
+  /** sorted hashes of lines with no printable key name */
+  unnamed: string[]
+}
+
+function dotenvValueHashes(bytes: Buffer): DotenvHashes {
+  const values = new Map<string, string>()
+  const unnamed: string[] = []
   for (const line of bytes.toString("utf8").split("\n")) {
     const trimmed = line.trim()
     if (trimmed === "" || trimmed.startsWith("#")) continue
     const eq = trimmed.indexOf("=")
-    if (eq <= 0) continue
-    map.set(trimmed.slice(0, eq), sha256(Buffer.from(trimmed.slice(eq + 1), "utf8")))
+    const key = eq > 0 ? trimmed.slice(0, eq) : ""
+    if (DOTENV_KEY.test(key)) {
+      values.set(key, sha256(Buffer.from(trimmed.slice(eq + 1), "utf8")))
+    } else {
+      unnamed.push(sha256(Buffer.from(trimmed, "utf8")))
+    }
   }
-  return map
+  unnamed.sort()
+  return { values, unnamed }
 }
 
 /** Names only. A value, or a diff of values, must never reach the terminal or the report. */
@@ -1171,17 +1229,20 @@ function describeMismatch(onePassword: Buffer, fromGit: Buffer, format: SopsForm
   if (format !== "dotenv") return "bytes differ"
   const left = dotenvValueHashes(onePassword)
   const right = dotenvValueHashes(fromGit)
-  const onlyOnePassword = [...left.keys()].filter((key) => !right.has(key))
-  const onlyGit = [...right.keys()].filter((key) => !left.has(key))
-  const changed = [...left.keys()].filter((key) => right.has(key) && right.get(key) !== left.get(key))
+  const onlyOnePassword = [...left.values.keys()].filter((key) => !right.values.has(key))
+  const onlyGit = [...right.values.keys()].filter((key) => !left.values.has(key))
+  const changed = [...left.values.keys()].filter(
+    (key) => right.values.has(key) && right.values.get(key) !== left.values.get(key),
+  )
   const parts: string[] = []
   if (onlyOnePassword.length > 0) parts.push(`1Password only: ${onlyOnePassword.join(", ")}`)
   if (onlyGit.length > 0) parts.push(`git only: ${onlyGit.join(", ")}`)
   if (changed.length > 0) parts.push(`different value: ${changed.join(", ")}`)
+  if (left.unnamed.join() !== right.unnamed.join()) parts.push("lines with no key name differ")
   return parts.length > 0 ? parts.join("; ") : "same keys and values, different bytes"
 }
 
-function commandMigrate(options: Options, tmpRoot: string): void {
+function commandMigrate(options: Options): void {
   if (!options.verify) {
     fail("migrate only supports --verify. It is read-only and never deletes from 1Password.")
   }
@@ -1226,14 +1287,7 @@ function commandMigrate(options: Options, tmpRoot: string): void {
       }
       const relPath = join(repoPath, attachment.name)
       const encryptedPath = join(options.repoRoot, `${relPath}.encrypted`)
-      // The attachment name comes out of 1Password, so it is not trusted as a path
-      // component: one containing a slash would otherwise write outside tmpRoot.
-      const fromOnePassword = readAttachment(
-        options.vault,
-        itemId,
-        attachment.name,
-        join(tmpRoot, `verify-${itemId}-${attachment.name.replace(/[^\w.-]/g, "_")}`),
-      )
+      const fromOnePassword = readAttachment(options.vault, itemId, attachment.name)
       const opHashes = hashesOf(fromOnePassword)
       if (!existsSync(encryptedPath)) {
         rows.push({
@@ -1391,12 +1445,7 @@ function classify(
       entries.push({ file, sourcePath, localHash: local.raw, status: "new" })
       continue
     }
-    const remote = hashAttachment(
-      options.vault,
-      item.id,
-      file.label,
-      join(tmpRoot, `readback-${group.name}-${file.label}`),
-    )
+    const remote = hashAttachment(options.vault, item.id, file.label)
     // The blank-line tolerance is only sound when the local side came out of sops as
     // dotenv. For a real local plaintext, or a binary/json decrypt, a byte difference is
     // a real difference and must still count as changed.
@@ -1547,12 +1596,7 @@ function pushGroup(
       }
       // Exit code 0 is not proof the bytes landed; the read-back hash is. Compare the raw
       // hash, never the normalized one — the blank-line tolerance must not decide a delete.
-      const remote = hashAttachment(
-        options.vault,
-        item.id,
-        entry.file.label,
-        join(tmpRoot, `verify-${group.name}-${entry.file.label}`),
-      )
+      const remote = hashAttachment(options.vault, item.id, entry.file.label)
       if (remote.raw !== entry.localHash) {
         console.error(`  ${BAD} KEPT      ${entry.file.label} (read-back hash mismatch; not deleting)`)
         continue
@@ -1739,12 +1783,14 @@ function usage(): void {
       "Commands:",
       "  list    Every ciphertext file, its sops format, and the recipient recorded inside",
       "          it. Reads git only, so it needs neither 1Password nor the key. Exits 1 if",
-      "          any file is on a retired recipient, has a plaintext sibling on disk, or is",
-      "          plaintext with no ciphertext at all. Run it after every rotation.",
+      "          any file has a recipient other than the one of record, or more than one,",
+      "          has a plaintext sibling on disk, or is plaintext with no ciphertext at all,",
+      "          or if an age private key file is on disk. Run it after every rotation.",
       "",
       "  show    Decrypt to stdout. Writes nothing.",
       "",
-      "  edit    sops edit. sops decrypts to its own 0600 temp file, hands it to $EDITOR,",
+      "  edit    sops edit. sops decrypts to a temp file in its own 0700 temp directory,",
+      "          hands it to $EDITOR (without SOPS_AGE_KEY in its environment),",
       "          re-encrypts on save and removes it, keeping the file's current recipients.",
       "",
       "  new     Create a secret that does not exist yet: an empty (or --from seeded) 0600",
@@ -1753,8 +1799,8 @@ function usage(): void {
       "",
       "  rotate-age-key",
       "          The repo-side half of an age key rotation. Refuses to run unless the tree",
-      "          is clean, the branch is not main, and 1Password already holds a key that",
-      "          can read files encrypted to --new-recipient. Then `sops rotate` over every",
+      "          is clean, the branch is not main, and a key in 1Password derives",
+      "          --new-recipient under `age-keygen -y`. Then `sops rotate` over every",
       `          ciphertext file and rewrites age_key_public in ${SOPS_CONFIG_INCLUDE}.`,
       "          It does not touch 1Password or the cluster; both are Scott's steps. See",
       "          docs/specs/age-key-only-secrets/plan.md for the full order.",
@@ -1858,6 +1904,8 @@ function main(): void {
 
   const tmpRoot = mkdtempSync(join(tmpdir(), "op-secrets-"))
   chmodSync(tmpRoot, 0o700)
+  emptyConfigHome = join(tmpRoot, "empty-config-home")
+  mkdirSync(emptyConfigHome, { mode: 0o700 })
   try {
     const [command, ...rest] = positionals
     const one = (name: string): string => {
@@ -1868,8 +1916,8 @@ function main(): void {
     else if (command === "show") commandShow(options, one("show"))
     else if (command === "edit") commandEdit(options, one("edit"))
     else if (command === "new") commandNew(options, one("new"), tmpRoot)
-    else if (command === "rotate-age-key") commandRotateAgeKey(options, tmpRoot)
-    else if (command === "migrate") commandMigrate(options, tmpRoot)
+    else if (command === "rotate-age-key") commandRotateAgeKey(options)
+    else if (command === "migrate") commandMigrate(options)
     else if (command === "push") commandPush(options, tmpRoot)
     else if (command === "pull") commandPull(options, one("pull"), tmpRoot)
     else fail(`unknown command "${command}"`)
@@ -1882,4 +1930,22 @@ function main(): void {
   }
 }
 
+// Without a handler Node dies on these at once and no `finally` runs, which leaves `new`'s
+// scratch file and push's decrypted copies in tmpRoot. With one, the sync child that got
+// the same signal returns, the command fails or finishes, and cleanup runs before exit.
+// A signal sent to this process alone cannot interrupt a sync child, so the command
+// finishes first; the exit code still reports the signal.
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGHUP", 129],
+  ["SIGTERM", 143],
+] as const) {
+  process.on(signal, () => {
+    process.exitCode = code
+  })
+}
+
 main()
+// Signal handles do not keep the event loop alive, so a signal that arrived during main()
+// would never be dispatched. One more turn of the loop lets the handler set the exit code.
+setImmediate(() => {})

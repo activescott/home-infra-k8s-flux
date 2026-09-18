@@ -186,7 +186,8 @@ into `SOPS_AGE_KEY` for the sops child process; it is never written to disk.
 # decrypt to stdout, write nothing
 ./scripts/onepassword-secrets.mts show apps/production/tayle/.env.secret.db
 
-# $EDITOR on sops' own 0600 temp file, re-encrypted on save, temp file removed
+# $EDITOR on a temp file in sops' own 0700 directory, re-encrypted on save, temp file
+# removed. The editor does not get SOPS_AGE_KEY
 ./scripts/onepassword-secrets.mts edit apps/production/tayle/.env.secret.db
 
 # a secret that does not exist yet, optionally seeded from the app's example file
@@ -194,8 +195,8 @@ into `SOPS_AGE_KEY` for the sops child process; it is never written to disk.
   --from apps/production/foo/env.secret.foo.example
 
 # every ciphertext file, its format, and the recipient recorded inside it.
-# Reads git only: no 1Password, no key. Exits 1 on a retired recipient, a plaintext
-# sibling on disk, or plaintext with no ciphertext at all
+# Reads git only: no 1Password, no key. Exits 1 unless each file has exactly one
+# recipient, the one of record, and on plaintext or an age key file on disk
 ./scripts/onepassword-secrets.mts list
 ```
 
@@ -232,34 +233,41 @@ in the README next to the app, starting with the Alertmanager hook token in
 The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we just have to have a `sops-age` secret in the `flux-system` namespace in the cluster.
 
 `./scripts/create-sops-age-decryption-secret.sh` builds it from the age key(s) in 1Password.
-Pass no arguments to include every `*.agekey` attachment on the item, which is what you want
-mid-rotation; name one explicitly to narrow it afterwards.
+Pass no arguments to include every `*.agekey` attachment on the item except retired ones
+(`-retired-` in the name), which is what you want mid-rotation; name one explicitly to narrow
+it afterwards. It refuses to apply unless one of the keys matches `age_key_public`.
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
 #### The age key is the only thing in 1Password
 
 One item, `home-infra kubernetes secrets sops-age-key`, with one `*.agekey` file attachment
-(two while a rotation is in flight). Everything else is reproducible from the ciphertext in
-git, so nothing else belongs there: two copies of a secret drift, and on 2026-09-17 they did.
+(two while a rotation is in flight). Retired keys stay on the item as
+`home-infra-private-retired-<YYYYMMDD>.agekey` and are never loaded. Everything else is
+reproducible from the ciphertext in git, so nothing else belongs there: two copies of a
+secret drift, and on 2026-09-17 they did.
 The per-directory items from the old backup scheme are still being cleared out; see
 [docs/specs/age-key-only-secrets/summary.md](docs/specs/age-key-only-secrets/summary.md).
 
 `op read` puts the key in `SOPS_AGE_KEY` in the environment of each sops child and nowhere
-else. `SOPS_AGE_KEY_FILE` and `SOPS_AGE_KEY_CMD` are deleted from that environment, because
-sops prefers the file over the key and a stale export would silently win.
+else. sops merges identities from every source it finds, so `SOPS_AGE_KEY_FILE` and
+`SOPS_AGE_KEY_CMD` are deleted from that environment and `XDG_CONFIG_HOME` points at an empty
+directory to hide sops' default `keys.txt`. Otherwise a key on the laptop could make a
+command succeed while the 1Password copy is wrong.
 
 Keep a second copy of the key somewhere that is not the laptop and not 1Password. Losing it
 loses every secret in this repo, and 1Password is one account with one recovery path. Write
 it to an encrypted volume or print it, include the `# public key:` comment line, label it with
-the date, and verify it before trusting it:
+the date, and verify it before trusting it. The public key it derives must be `age_key_public`
+(or, mid-rotation, the `--new-recipient` you are about to rotate to):
 
 ```bash
-SOPS_AGE_KEY_FILE=/Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey \
-  sops decrypt --input-type dotenv --output-type dotenv \
-  apps/production/transmission/.env.secret.transmission.encrypted >/dev/null \
-  && echo "offline copy decrypts"
+[ "$(age-keygen -y /Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey)" = \
+  "$(sed -n 's/^age_key_public="\(.*\)"/\1/p' scripts/_sops_config.include.sh)" ] \
+  && echo "offline copy matches"
 ```
+
+A `sops decrypt` test is not enough: sops also uses any other key it finds on the machine.
 
 Keep retired keys on the same medium. Every `*.encrypted` blob in this repo's git history is
 encrypted to whichever key was current at the time, so a `git revert` or a dig through an old
@@ -268,8 +276,8 @@ commit needs them. Never delete one from 1Password either.
 #### Rotating the age key
 
 `rotate-age-key` does the repo-side half and nothing else: it refuses to run unless the tree
-is clean, the branch is not `main`, and 1Password already holds a key that can read files
-encrypted to `--new-recipient`. That last gate is the one that matters, since it keeps
+is clean, the branch is not `main`, and a key in 1Password derives `--new-recipient` under
+`age-keygen -y`. That last gate is the one that matters, since it keeps
 ciphertext from ever moving to a key that exists in only one place.
 
 ```bash

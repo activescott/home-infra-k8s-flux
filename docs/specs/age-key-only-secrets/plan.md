@@ -83,12 +83,13 @@ delete env.SOPS_AGE_KEY_FILE               // higher precedence than SOPS_AGE_KE
 delete env.SOPS_AGE_KEY_CMD
 ```
 
-`SOPS_AGE_KEY_FILE` beating `SOPS_AGE_KEY` is the trap here. sops resolves
-identities in the order file, then key, then command
+Other identity sources are the trap here. sops merges identities from
+`SOPS_AGE_KEY_FILE`, `SOPS_AGE_KEY`, `SOPS_AGE_KEY_CMD` and its default `keys.txt`
 (https://getsops.io/docs/usage/identities/age/). A stale `SOPS_AGE_KEY_FILE`
-exported in Scott's shell, or a leftover `home-infra-private.agekey` picked up by
-a script that still sources the old include, would silently win and hide the fact
-that the 1Password path is broken. Both are deleted from the child env.
+exported in Scott's shell, a leftover `home-infra-private.agekey`, or a key in
+`~/.config/sops/age/keys.txt` would make decrypts succeed and hide the fact that the
+1Password path is broken. The variables are deleted from the child env and
+`XDG_CONFIG_HOME` points at an empty directory.
 
 The value is read once per run and cached in a module-level variable, so 1Password
 prompts once no matter how many files a command touches. It is never logged, never
@@ -146,8 +147,9 @@ is written. This replaces every `pull` in the READMEs and every hand-written
 ### `edit <file>`
 
 `sops edit --input-type <fmt> --output-type <fmt> <file>.encrypted` with
-`stdio: "inherit"` so `$EDITOR` gets the terminal. sops decrypts to its own
-0600 temp file, re-encrypts on save, and removes it. The plaintext never exists at
+`stdio: "inherit"` so `$EDITOR` gets the terminal. sops decrypts to a temp file in
+its own 0700 directory, re-encrypts on save, and removes it. `SOPS_EDITOR` wraps the
+editor in `env -u SOPS_AGE_KEY` so the editor never holds the key. The plaintext never exists at
 a repo path and never exists after the editor exits. Re-encryption keeps the
 file's existing recipients, so an edit during a half-finished rotation does not
 silently move a file back to the old key.
@@ -220,7 +222,7 @@ in the cluster before any ciphertext changes:
 |---|---|---|---|
 | 1 | `age-keygen -o <path on an encrypted volume>` | Scott | delete the file, nothing else exists yet |
 | 2 | Upload it to 1Password as a **second** attachment on `home-infra kubernetes secrets sops-age-key`, named `home-infra-private-<YYYYMMDD>.agekey`. Leave the current `home-infra-private.agekey` attachment alone | Scott | delete the attachment |
-| 3 | Make the offline copy (see below) and verify it decrypts a committed file | Scott | redo |
+| 3 | Make the offline copy (see below) and verify `age-keygen -y` on it prints the new public key | Scott | redo |
 | 4 | Add the new key to the in-cluster secret **alongside** the old one, two `.agekey` data entries | Scott | re-apply the secret with the old key only |
 | 5 | `rotate-age-key --new-recipient <new>` on a branch, review `git diff --stat`, commit, PR, merge | agent or Scott | `git checkout -- .` before commit; `git revert` after merge, which restores ciphertext the still-present old key decrypts |
 | 6 | Confirm Flux is green: `flux --context nas get kustomization apps`, `kubectl --context nas get kustomizations -A` | either | step 5's revert |
@@ -266,9 +268,8 @@ It enumerates the **vault**, not the disk: every item titled
 `home-infra kubernetes secrets` item, which has no group suffix and which
 `ITEM_TITLE_PREFIX`'s trailing space already excludes). For each file attachment:
 
-1. `op read --out-file` into a 0600 file inside the 0700 temp dir, hash it raw and
-   with blank lines stripped, unlink it immediately. Same `hashAttachment()` the
-   push path uses today.
+1. `op read --no-newline` to stdout, hash it raw and with blank lines stripped.
+   Nothing is written to disk. Same `hashAttachment()` the push path uses.
 2. Find the ciphertext at `<repo_path>/<attachment name>.encrypted`.
 3. If it exists, decrypt it with the key from 1Password and hash the result the same
    two ways.
@@ -401,13 +402,12 @@ At initial adoption and at every rotation, after step 2 above:
    encrypted USB volume, or printed and stored physically. Include the `# public key:`
    comment line so the pairing is recoverable from the copy alone.
 2. Label it with the date and the public key.
-3. Verify the copy before trusting it, against a file already committed to git:
+3. Verify the copy before trusting it: the public key it derives must be the one you
+   are rotating to (`age_key_public` once the rotation is merged). A `sops decrypt`
+   test is not enough, since sops also uses any other key on the machine.
 
    ```bash
-   SOPS_AGE_KEY_FILE=/Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey \
-     sops decrypt --input-type dotenv --output-type dotenv \
-     apps/production/transmission/.env.secret.transmission.encrypted >/dev/null \
-     && echo "offline copy decrypts"
+   age-keygen -y /Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey
    ```
 
 4. Keep retired keys on the same medium. Git history needs them.
