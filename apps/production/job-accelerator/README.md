@@ -43,14 +43,18 @@ Values that are not secret are set as plain `value:` in the manifests rather tha
 | `MASTER_KEY_ACTIVE` | `1` | same |
 | `RETENTION_PROMPT_DAYS` | `90` | same |
 | `RETENTION_DELETE_DAYS` | `14` | same |
+| `OPENROUTER_MODEL_PARSE_PROFILE` | `anthropic/claude-sonnet-5` | same |
 
 Every address is an exception. `ALLOWED_EMAILS` and `CLIENT_DATA_OWNER_EMAIL` stay in
 encrypted secrets because this repo is public and both name private people. A value being
 guessable is not a reason to publish it.
 
-`OPENROUTER_API_KEY` and `OPENROUTER_MODEL_*` are **not set**. There is no OpenRouter account
-yet. Nothing in the app reads them until the matching and generation features land; add them
-to `.env.secret.app` when the account exists.
+The model is plain env, in the table above. `OPENROUTER_API_KEY` is not set yet; it goes in
+`.env.secret.app` through the usual 1Password round trip: pull the group, add
+`OPENROUTER_API_KEY=...`, run `./scripts/encrypt-env-files.sh apps/production/job-accelerator`,
+push. The deployment marks it `optional: true`, so the pod starts without it. The key belongs
+to the OpenRouter workspace "Job Accelerator", which enforces zero data retention and
+disallows training on its traffic.
 
 The two `RETENTION_*` values are Scott's answers to open question 1 in the app's
 `docs/design/flows.md`: prompt Oksana once a client has gone 90 days unviewed, delete 14 days
