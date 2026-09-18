@@ -26,7 +26,7 @@ main thing to understand before editing the StatefulSet or the scripts.
 | ------------------ | ---------------- | --------------------------------------------- |
 | `/state/workspace` | **read-only**    | the `activeassistant` checkout: instructions, skills, subagent rules |
 | `/state/config`    | **read-only**    | the live `openclaw.json` the gateway reads    |
-| `/state/memory`    | read-write       | `MEMORY.md`, `DREAMS.md`, `USER.md`, `IDENTITY.md`, `memory/` |
+| `/state/memory`    | read-write       | `MEMORY.md`, `DREAMS.md`, `IDENTITY.md`, `memory/` |
 | `/state/home`      | read-write       | `$HOME`, credentials, harness config          |
 | `/state/openclaw`  | read-write       | OpenClaw state dir: SQLite, transcripts       |
 | `/state/repos`     | read-write       | work repos she clones on demand               |
@@ -52,10 +52,12 @@ Two consequences that look like bugs and are not:
 - **Her working directory is not writable.** `/state/workspace` is her agent workspace *and* the
   read-only checkout. Scratch files belong in `/tmp`, `/state/repos`, or `/state/memory`.
 - **The memory paths at workspace root are bind mounts** of `/state/memory`, declared on the
-  `olya` container. OpenClaw reads `IDENTITY.md` and `USER.md` from workspace root, so they have
-  to appear there, and they must be real files: OpenClaw refuses to read a symlinked bootstrap
+  `olya` container. OpenClaw reads `IDENTITY.md` from workspace root, so it has
+  to appear there, and it must be a real file: OpenClaw refuses to read a symlinked bootstrap
   file and memory-core refuses to write a symlinked `DREAMS.md`. An earlier attempt used symlinks
   and broke both — see `docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md`.
+  `USER.md` is not mounted: it is a reviewed instruction file
+  (`activescott/activeassistant#84`), so the gateway reads the read-only checkout copy.
 
   Two things follow. The mounts exist only in the `olya` container, so `seed-workspace`,
   `instruction-sync` and `memory-sync` all see the ordinary tracked files from the checkout;

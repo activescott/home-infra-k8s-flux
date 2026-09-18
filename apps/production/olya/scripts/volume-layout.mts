@@ -71,7 +71,7 @@ export const CLI_IMAGES_LIVE = join(STATE, "openclaw", "cli-images")
  * read-only checkout copy while the hourly sync pushes an untouched file, with nothing to see;
  * check-memory-mounts.mts exists to turn that into a loud failure.
  */
-export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "USER.md", "IDENTITY.md", "memory"]
+export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "IDENTITY.md", "memory"]
 
 /**
  * The skills the coding harnesses need, canonical copy in the checkout. One directory per skill,
