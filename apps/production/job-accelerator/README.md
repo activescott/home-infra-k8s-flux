@@ -20,6 +20,9 @@
 `SMTP_PASS` must also match this app's entry in email-relay's `SMTPD_SASL_USERS`
 (`apps/production/email-relay/.env.secret.relay`).
 
+`APP_URL` (`https://job-accelerator.pingpoet.com`) is not secret, so it's set as a plain
+`value:` in `patch-app-deployment.yaml` instead of here.
+
 These are ordinary plaintext-backed secrets managed through
 `./scripts/onepassword-secrets.mts`, group `job-accelerator`. Pull the plaintext with:
 
