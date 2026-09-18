@@ -49,7 +49,7 @@ spec:
             # Email Sending; Cloudflare would reject anything else, this just fails it here
             # with a legible error instead. productpoet.com is the throwaway test domain.
             - name: ALLOWED_SENDER_DOMAINS
-              value: fernfiles.com ramblefeed.com tinkerbellbot.com productpoet.com
+              value: fernfiles.com ramblefeed.com tinkerbellbot.com pingpoet.com productpoet.com
 
             # Pod IPs come out of 172.16.0.0/16, which sits inside the 172.16.0.0/12 that
             # this image trusts by default -- that would let every pod in the cluster relay
@@ -66,7 +66,7 @@ spec:
             # `noreply@fernfiles.com` both resolve to the same owner. A bare `fernfiles.com`
             # key is NOT a form postfix looks up and would reject every message.
             - name: POSTFIX_smtpd_sender_login_maps
-              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @productpoet.com=test@relay.local}"
+              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, @productpoet.com=test@relay.local}"
             - name: POSTFIX_smtpd_sender_restrictions
               value: reject_sender_login_mismatch,reject_unknown_sender_domain
             - name: SMTPD_SASL_USERS
