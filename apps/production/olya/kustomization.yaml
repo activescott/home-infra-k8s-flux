@@ -57,6 +57,14 @@ secretGenerator:
   - name: olya-google-workspace
     envs:
       - .env.secret.google-workspace.encrypted
+  # Key: openclaw_hooks_token, the bearer token Alertmanager presents to the gateway's /hooks
+  # endpoint. Same value as
+  # monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted;
+  # rotate both together. The `public-key-encrypted` part of the name marks a secret that was
+  # encrypted straight to the age recipient and has no plaintext anywhere; see README.md.
+  - name: olya-hooks
+    envs:
+      - .env.secret.olya-hooks.public-key-encrypted.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}

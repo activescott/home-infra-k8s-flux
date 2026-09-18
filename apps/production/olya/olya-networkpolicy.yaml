@@ -81,6 +81,9 @@ spec:
           protocol: TCP
     # Prometheus, for /api/diagnostics/prometheus. Scrapes with a bearer token
     # and X-Forwarded-For to satisfy gateway proxy attribution.
+    # Alertmanager, for the olya-hook webhook receiver posting to /hooks/alertmanager, with its
+    # own hook token and the same X-Forwarded-For header. Narrowing this to the Prometheus
+    # server pod would silently stop alert delivery.
     - from:
         - namespaceSelector:
             matchLabels:

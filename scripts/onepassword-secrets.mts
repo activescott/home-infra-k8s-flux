@@ -54,6 +54,13 @@ const BAD = "🔴"
 const EXCLUDED_DIRS = new Set([".git", "node_modules"])
 const EXCLUDED_SUFFIXES = [".encrypted", ".example", ".template"]
 
+// `.env.secret.<name>.public-key-encrypted.encrypted` is a machine-to-machine token generated
+// by a create-*.sh script and encrypted straight to the age recipient: no plaintext original
+// ever exists, on this disk or any other. Those are listed, so the inventory stays complete,
+// but never pushed, and 1Password never holds an attachment for one, which is what keeps pull
+// from expecting it too.
+const PUBLIC_KEY_ENCRYPTED_SUFFIX = ".public-key-encrypted"
+
 // A plaintext file with no ciphertext sibling is still a secret worth backing up
 // (the bootstrap creds under scripts/, the crossplane cloudflare tokens, the age key).
 const ORPHAN_PATTERNS = [
@@ -93,6 +100,8 @@ interface SecretFile {
   absPath: string
   /** plaintext is absent locally and must be sops-decrypted from absPath + ".encrypted" */
   needsDecrypt: boolean
+  /** no plaintext exists by design; see PUBLIC_KEY_ENCRYPTED_SUFFIX */
+  publicKeyEncrypted: boolean
 }
 
 interface SecretGroup {
@@ -282,6 +291,7 @@ function discover(repoRoot: string): SecretGroup[] {
       label,
       absPath: join(repoRoot, relPath),
       needsDecrypt,
+      publicKeyEncrypted: label.endsWith(PUBLIC_KEY_ENCRYPTED_SUFFIX),
     })
   }
 
@@ -583,6 +593,7 @@ function commandList(options: Options): void {
 
   let fileCount = 0
   let decryptCount = 0
+  let publicKeyCount = 0
   let missingCount = 0
   for (const group of groups) {
     const itemId = titles.get(group.title)
@@ -592,19 +603,29 @@ function commandList(options: Options): void {
     console.log(`\n${group.title.padEnd(titleWidth)}  ${dirColumn}${itemState}`.trimEnd())
     for (const file of group.files) {
       fileCount += 1
-      if (file.needsDecrypt) decryptCount += 1
-      const source = file.needsDecrypt ? "sops-decrypt" : "local plaintext"
+      if (file.publicKeyEncrypted) publicKeyCount += 1
+      else if (file.needsDecrypt) decryptCount += 1
+      const source = file.publicKeyEncrypted
+        ? "public-key encrypted, no plaintext"
+        : file.needsDecrypt
+          ? "sops-decrypt"
+          : "local plaintext"
       const attachment = item ? attachmentFor(item, file.label) : undefined
-      if (!options.offline && !attachment) missingCount += 1
+      if (!options.offline && !attachment && !file.publicKeyEncrypted) missingCount += 1
+      // A public-key-encrypted file has nothing to be attached, so neither "attached" nor
+      // "missing" is true of it; "n/a" keeps it out of the count it would otherwise inflate.
       const attached = options.offline
         ? ""
-        : `${attachment ? OK : WARN} ${attachment ? "attached" : "missing"} `.padEnd(13)
+        : file.publicKeyEncrypted
+          ? `${OK} n/a `.padEnd(13)
+          : `${attachment ? OK : WARN} ${attachment ? "attached" : "missing"} `.padEnd(13)
       console.log(`  ${attached}${file.label.padEnd(labelWidth)}  ${source}`)
     }
   }
   console.log(
     `\n${fileCount} secret file(s) in ${groups.length} group(s); ` +
-      `${decryptCount} need sops decryption (no local plaintext)`,
+      `${decryptCount} need sops decryption (no local plaintext)` +
+      (publicKeyCount > 0 ? `; ${publicKeyCount} public-key encrypted, nothing to back up` : ""),
   )
   if (!options.offline) {
     console.log(
@@ -672,21 +693,26 @@ function classify(
 function commandPush(options: Options, tmpRoot: string): void {
   preflight(options.vault)
   const groups = selectGroups(discover(options.repoRoot), options.only)
-  const needsSops = groups.some((group) => group.files.some((file) => file.needsDecrypt))
+  const needsSops = groups.some((group) =>
+    group.files.some((file) => file.needsDecrypt && !file.publicKeyEncrypted),
+  )
   const ageKeyPath = needsSops ? requireSops(options.repoRoot) : ""
   const titles = listItemsByTitle(options.vault)
 
-  const counts = { unchanged: 0, changed: 0, uploaded: 0, deleted: 0, blankLineOnly: 0 }
+  const counts = { unchanged: 0, changed: 0, uploaded: 0, deleted: 0, blankLineOnly: 0, skipped: 0 }
   const wouldDelete: string[] = []
 
   for (const group of groups) {
     pushGroup(group, options, tmpRoot, ageKeyPath, titles, counts, wouldDelete)
   }
 
+  const skippedNote =
+    counts.skipped > 0 ? `, ${counts.skipped} skipped (public-key encrypted, no plaintext)` : ""
+
   if (options.dryRun) {
     console.log(
       `\nDRY RUN: ${counts.uploaded} to upload, ${counts.changed} to replace, ` +
-        `${counts.unchanged} already current`,
+        `${counts.unchanged} already current${skippedNote}`,
     )
     if (options.deleteAfterPush) {
       console.log(`\nwould delete ${wouldDelete.length} local plaintext file(s):`)
@@ -696,6 +722,7 @@ function commandPush(options: Options, tmpRoot: string): void {
   }
   console.log(
     `\n${counts.uploaded} uploaded, ${counts.changed} replaced, ${counts.unchanged} unchanged` +
+      skippedNote +
       (options.deleteAfterPush ? `, ${counts.deleted} local plaintext file(s) deleted` : ""),
   )
   if (counts.blankLineOnly > 0) {
@@ -713,6 +740,7 @@ interface PushCounts {
   uploaded: number
   deleted: number
   blankLineOnly: number
+  skipped: number
 }
 
 /**
@@ -732,9 +760,20 @@ function pushGroup(
 ): void {
   const itemId = titles.get(group.title)
   let item = itemId ? getItem(itemId, options.vault) : undefined
-  const entries = classify(group, item, options, tmpRoot, ageKeyPath)
+  const skipped = group.files.filter((file) => file.publicKeyEncrypted)
+  const entries = classify(
+    { ...group, files: group.files.filter((file) => !file.publicKeyEncrypted) },
+    item,
+    options,
+    tmpRoot,
+    ageKeyPath,
+  )
   try {
     console.log(`\n${group.title}  [${group.relDir}]`)
+    for (const file of skipped) {
+      counts.skipped += 1
+      console.log(`  ${OK} skipped   ${file.label} (public-key encrypted, no plaintext)`)
+    }
     for (const entry of entries) {
       const mark = entry.status === "unchanged" ? OK : WARN
       const note = entry.matchedIgnoringBlankLines ? "  (matched ignoring blank lines)" : ""
@@ -756,6 +795,10 @@ function pushGroup(
       }
       return
     }
+
+    // A group of nothing but public-key-encrypted files has no plaintext to back up, so it
+    // gets no 1Password item at all rather than an empty one.
+    if (entries.length === 0) return
 
     if (!item) {
       item = createItem(group, options.vault, entries)
@@ -955,6 +998,10 @@ function usage(): void {
       `"${ITEM_TITLE_PREFIX}<group>", with one file attachment per secret`,
       `file and a ${REPO_PATH_FIELD} field naming the directory. Files are matched by`,
       "sha256, so re-running a command that has nothing to do writes nothing.",
+      "",
+      "A `.public-key-encrypted.encrypted` file was generated and encrypted straight to the",
+      "age recipient and never had a plaintext original, so there is nothing to back up. It",
+      "is listed for completeness and skipped by push.",
       "",
       "Usage:",
       "  onepassword-secrets.mts list [--offline] [--only <path|group>]...",
