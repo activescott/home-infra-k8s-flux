@@ -6,3 +6,4 @@ resources:
   - app-ingress.yaml
   - db-statefulset.yaml
   - db-service.yaml
+  - keys-pvc.yaml

@@ -41,6 +41,18 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: ALLOWED_EMAILS
+            # The one address that may read client records. ALLOWED_EMAILS
+            # admits Scott and Olya too; they sign in and get a 403 on
+            # anything client-owned (Scott, 2026-09-17,
+            # activescott/activeassistant#132). Unset admits nobody, so
+            # dropping this hides client data rather than exposing it. Its
+            # own Secret because the address belongs to a private person and
+            # this repo is public.
+            - name: CLIENT_DATA_OWNER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: client-owner
+                  key: CLIENT_DATA_OWNER_EMAIL
             - name: FROM_EMAIL
               valueFrom:
                 secretKeyRef:
@@ -78,6 +90,48 @@ spec:
                   name: app-creds
                   key: LOG_LEVEL
                   optional: true
+            # optional: not in .env.secret.app yet. The pod must still start
+            # without it; the features that call OpenRouter have not landed.
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: OPENROUTER_API_KEY
+                  optional: true
+            # Envelope encryption, docs/design/encryption.md in the app repo.
+            # Every client's data key lives in a file under KEYSTORE_DIR,
+            # wrapped under MASTER_KEY_<MASTER_KEY_ACTIVE>. The app unwraps a
+            # check value at startup and refuses to serve if the key does not
+            # match the keystore.
+            - name: KEYSTORE_DIR
+              value: /keys
+            - name: MASTER_KEY_ACTIVE
+              value: "1"
+            # Its own Secret, so it can be audited and rotated without
+            # touching app-creds. Rotation is not a one-line change: see
+            # apps/production/job-accelerator/README.md#master-key.
+            - name: MASTER_KEY_1
+              valueFrom:
+                secretKeyRef:
+                  name: master-key
+                  key: MASTER_KEY_1
+            # The retention timer in docs/design/flows.md: prompt Oksana once
+            # a client has gone this long unviewed, then delete this many days
+            # after an unanswered prompt (Scott's A = 90, B = 14). Set ahead of
+            # the sweep task that reads them; the env schema ignores unknown
+            # names, so they are inert until it lands.
+            - name: RETENTION_PROMPT_DAYS
+              value: "90"
+            - name: RETENTION_DELETE_DAYS
+              value: "14"
+            # Which model parses a resume. Scott's starting choice; a benchmark
+            # picks a cheaper one later. Not a secret, so it is set here and
+            # only the key lives in app-creds.
+            - name: OPENROUTER_MODEL_PARSE_PROFILE
+              value: anthropic/claude-sonnet-5
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
           resources:
             limits:
               cpu: "1"
@@ -105,3 +159,7 @@ spec:
               path: /ops/health/liveness
               port: 3300
             periodSeconds: 10
+      volumes:
+        - name: keys
+          persistentVolumeClaim:
+            claimName: keys
