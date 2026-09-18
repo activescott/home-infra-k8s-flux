@@ -1,0 +1,9 @@
+# Bind the base claim to the keystore PV rather than letting local-path
+# provision a directory in the k3s data dir on the scratch NVMe, which is not
+# on the pool and is not snapshotted.
+- op: add
+  path: /spec/storageClassName
+  value: local-path
+- op: add
+  path: /spec/volumeName
+  value: job-accelerator-prod-keys-pv

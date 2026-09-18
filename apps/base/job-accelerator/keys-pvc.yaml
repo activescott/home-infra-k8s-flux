@@ -1,0 +1,20 @@
+# The keystore: one file per client holding that client's data key wrapped
+# under MASTER_KEY_<n>. Deliberately not the database volume, and not under
+# /mnt/thedatapool/app-data/ in production -- a wrapped key that outlives a
+# client's deletion by more than about 7 days breaks the deletion bound, and
+# app-data is replicated and copied to B2 on retentions far longer than that.
+# See docs/design/encryption.md in activescott/job-accelerator.
+#
+# Production binds this to a PV on its own ZFS dataset (keys-pv.yaml in the
+# prod overlay). Nothing here names a volume, so a dev overlay can let its
+# provisioner satisfy it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keys
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

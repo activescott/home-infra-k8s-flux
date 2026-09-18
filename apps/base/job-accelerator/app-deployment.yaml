@@ -78,6 +78,35 @@ spec:
                   name: app-creds
                   key: LOG_LEVEL
                   optional: true
+            # Envelope encryption, docs/design/encryption.md in the app repo.
+            # Every client's data key lives in a file under KEYSTORE_DIR,
+            # wrapped under MASTER_KEY_<MASTER_KEY_ACTIVE>. The app unwraps a
+            # check value at startup and refuses to serve if the key does not
+            # match the keystore.
+            - name: KEYSTORE_DIR
+              value: /keys
+            - name: MASTER_KEY_ACTIVE
+              value: "1"
+            # Its own Secret, so it can be audited and rotated without
+            # touching app-creds. Rotation is not a one-line change: see
+            # apps/production/job-accelerator/README.md#master-key.
+            - name: MASTER_KEY_1
+              valueFrom:
+                secretKeyRef:
+                  name: master-key
+                  key: MASTER_KEY_1
+            # The retention timer in docs/design/flows.md: prompt Oksana once
+            # a client has gone this long unviewed, then delete this many days
+            # after an unanswered prompt (Scott's A = 90, B = 14). Set ahead of
+            # the sweep task that reads them; the env schema ignores unknown
+            # names, so they are inert until it lands.
+            - name: RETENTION_PROMPT_DAYS
+              value: "90"
+            - name: RETENTION_DELETE_DAYS
+              value: "14"
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
           resources:
             limits:
               cpu: "1"
@@ -105,3 +134,7 @@ spec:
               path: /ops/health/liveness
               port: 3300
             periodSeconds: 10
+      volumes:
+        - name: keys
+          persistentVolumeClaim:
+            claimName: keys
