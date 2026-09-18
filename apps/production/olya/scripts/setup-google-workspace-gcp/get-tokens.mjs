@@ -7,13 +7,41 @@ import http from "http";
 import https from "https";
 import { URL } from "url";
 import readline from "readline";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+import { execFileSync } from "child_process";
 
+// Full set per https://github.com/activescott/activeassistant/issues/78 - the MCP
+// server's default-enabled features (Docs, Drive, Calendar, Chat, Gmail, People,
+// Slides, Sheets) all need their scope present in the token, not just Gmail/Calendar.
 const SCOPES = [
-  "https://www.googleapis.com/auth/gmail.modify",
-  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/chat.spaces.readonly",
+  "https://www.googleapis.com/auth/chat.messages.readonly",
+  "https://www.googleapis.com/auth/chat.memberships.readonly",
+  "https://www.googleapis.com/auth/chat.spaces",
+  "https://www.googleapis.com/auth/chat.messages",
+  "https://www.googleapis.com/auth/chat.memberships",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.send",
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/directory.readonly",
+  "https://www.googleapis.com/auth/presentations.readonly",
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
+
+// This script - not the agent - is the only thing allowed to touch this path. See
+// the "DO NOT TYPE A REAL VALUE" header in the plaintext file itself for why.
+const repoDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
+const plaintextPath = join(repoDir, "apps/production/olya/.env.secret.google-workspace");
+const CREDENTIALS_KEY = "google_workspace_credentials_json";
 
 function prompt(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -28,6 +56,71 @@ function prompt(question) {
 function fail(msg) {
   console.error(`Error: ${msg}`);
   process.exit(1);
+}
+
+async function confirm(question) {
+  const answer = await prompt(`${question} [y/N] `);
+  return answer.trim().toLowerCase() === "y";
+}
+
+function writeCredentialsLine(output) {
+  if (!existsSync(plaintextPath)) {
+    fail(
+      `${plaintextPath} does not exist yet. Copy the template first:\n` +
+        `  cp apps/production/olya/env.secret.google-workspace.example ${plaintextPath}`
+    );
+  }
+  const lines = readFileSync(plaintextPath, "utf8").split("\n");
+  const idx = lines.findIndex((line) => line.trim().startsWith(`${CREDENTIALS_KEY}=`));
+  if (idx === -1) {
+    fail(`No "${CREDENTIALS_KEY}=" line found in ${plaintextPath} - template drift, fix by hand.`);
+  }
+  lines[idx] = `${CREDENTIALS_KEY}=${JSON.stringify(output)}`;
+  writeFileSync(plaintextPath, lines.join("\n"), { mode: 0o600 });
+}
+
+function encryptPlaintextFile() {
+  execFileSync(join(repoDir, "scripts/encrypt-env-files.sh"), [plaintextPath], {
+    cwd: repoDir,
+    stdio: "inherit",
+  });
+}
+
+function pushToOnePassword() {
+  execFileSync(join(repoDir, "scripts/onepassword-secrets.mts"), ["push", "--only", "olya"], {
+    cwd: repoDir,
+    stdio: "inherit",
+  });
+}
+
+async function runFollowUpSteps(output) {
+  console.log();
+  if (await confirm(`Write the new credentials into ${plaintextPath}?`)) {
+    writeCredentialsLine(output);
+    console.log(`Wrote ${plaintextPath}`);
+  } else {
+    console.log("Skipped - update the file yourself before encrypting/pushing.");
+    return;
+  }
+
+  if (await confirm("Re-encrypt it now (scripts/encrypt-env-files.sh)?")) {
+    encryptPlaintextFile();
+  } else {
+    console.log("Skipped - remember to encrypt before committing.");
+    return;
+  }
+
+  if (await confirm("Push the updated plaintext to 1Password now (--only olya)?")) {
+    pushToOnePassword();
+  } else {
+    console.log("Skipped - remember to back it up to 1Password.");
+  }
+
+  console.log(
+    "\nDone. Also still pending per issue #78: rotate the GCP OAuth client secret " +
+      "that was exposed in chat during initial setup, and commit the updated " +
+      ".encrypted file."
+  );
 }
 
 function exchangeCode({ code, clientId, clientSecret, redirectUri }) {
@@ -114,6 +207,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<h1>Success!</h1><p>Credentials printed in the terminal. You can close this window.</p>");
     server.close();
+    await runFollowUpSteps(output);
   } catch (e) {
     res.writeHead(500, { "Content-Type": "text/html" });
     res.end("<h1>Token exchange failed</h1><p>See the terminal for details.</p>");

@@ -21,7 +21,7 @@ secretGenerator:
   # filename) - "credentials.json" -> json, "htpasswd" -> binary. Do not
   # rename these keys without updating how the corresponding .encrypted file
   # was produced (see scripts/create-zot-sync-credentials.sh /
-  # create-zot-htpasswd.sh).
+  # scripts/create-zot-htpasswd.sh in this directory).
   - name: zot-sync-credentials
     files:
       - credentials.json=zot-sync-credentials.json.encrypted

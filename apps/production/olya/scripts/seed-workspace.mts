@@ -16,8 +16,7 @@
 //   review; and on 2026-09-15 the live openclaw.json was hand-edited and crashed the gateway.
 //
 //   Memory files are NOT declarative. memory-core writes them continuously (memory-flush before
-//   every compaction, a nightly dreaming sweep, observed-preference directives appended to
-//   USER.md) and the hourly sync job is what gets them into git. They live at MEMORY_LIVE, which
+//   every compaction, a nightly dreaming sweep) and the hourly sync job is what gets them into git. They live at MEMORY_LIVE, which
 //   stays writable, and reach workspace root as bind mounts declared on the olya container. This
 //   script's job is to make sure every mount SOURCE exists before that container starts.
 //
@@ -47,6 +46,7 @@ import {
   MEMORY_PATHS,
   STATE,
   WORKSPACE,
+  installGitHooks,
   installSubagentFiles,
   markMemorySkipWorktree,
   publishConfig,
@@ -251,6 +251,11 @@ execFileSync(join(HOME_DIR, "dotfiles", "script", "setup"), [], {
   env: process.env,
   stdio: "inherit",
 })
+
+// Right after the dotfiles setup that installs the git identity and signing config, because this
+// is the rest of that same configuration. It writes a different file on purpose; see
+// GIT_GLOBAL_CONFIG.
+installGitHooks()
 
 // LEGACY VOLUME SAFETY NET, idempotent, and it has already done its job on the live volume.
 //

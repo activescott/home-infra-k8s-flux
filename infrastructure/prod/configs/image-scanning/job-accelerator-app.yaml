@@ -1,0 +1,22 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-job-accelerator-app
+  annotations:
+    activescott.com/source-repo: activescott/job-accelerator
+spec:
+  image: ghcr.io/activescott/job-accelerator/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-job-accelerator-app
+spec:
+  imageRepositoryRef:
+    name: repo-job-accelerator-app
+  policy:
+    semver:
+      range: ">=0.0.0"

@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        app.activescott.com/component: app
+    spec:
+      containers:
+        - name: app
+          image: job-accelerator-image-app
+          ports:
+            - containerPort: 3300
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: JWT_SECRET
+            # The only addresses that can sign in. Kept in the encrypted
+            # secret rather than here because this repo is public.
+            - name: ALLOWED_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: ALLOWED_EMAILS
+            - name: FROM_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: FROM_EMAIL
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_HOST
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PORT
+            - name: SMTP_SECURE
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_SECURE
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_USER
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PASS
+            # optional: the logger falls back to its own default level.
+            - name: LOG_LEVEL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: LOG_LEVEL
+                  optional: true
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "0.05"
+              memory: "128Mi"
+          # Boot runs Prisma migrations before binding :3300, which can exceed
+          # a liveness probe's budget; the startupProbe gives boot its own
+          # 150s (30 x 5s) and suspends the other two until it passes. Same
+          # reasoning as fernfiles' app-deployment.yaml.
+          startupProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3300
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3300
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/health/liveness
+              port: 3300
+            periodSeconds: 10
