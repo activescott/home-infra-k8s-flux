@@ -35,6 +35,7 @@ resources:
   - ./cvat
   - ./zot
   - ./fernfiles
+  - ./job-accelerator
   # Postfix null client relaying to Cloudflare Email Sending. Apps reach it at
   # relay.email-relay.svc.cluster.local:587 -- see its README for the access
   # model and why the queue is not persistent.

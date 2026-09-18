@@ -126,6 +126,12 @@ spec:
       adopt: 5d1f4c23e330dade3284efe87f9eb984
       ttl: 1
       content: v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr0lb/GihaTKwu+07iQFSZUS6e8kuOGMLlbXFBTOIjhy2Hy2QIxp1+khaihSKSVrt4yjimgUd4GJ9Qt0qWOi2IvLvfUTNpmzmQDyXUzrntQqmyJXsGT0loKz7wQtIkQNXrD4RlwwDLlX7VzqcCPsf62cGCcD0puv7KoeAa/Xv0ad4I5n5JwrRnEu80zHbFFRChAAsIkI3cJvJ6YaUUvL3lgfkT2lMbEvBODfInNNbaluycRPFFkqWsDGGXJ2fQBoaivqo0O7NAEIpTRknivDRDKD60Z8F5T2T5ggmkxKwJI01MWd8hCQcAVUnHlW7USGMI9lCM2c0fs9WvHDL+bmYKwIDAQAB
+    - key: job-accelerator-cname
+      name: job-accelerator.pingpoet.com
+      type: CNAME
+      ttl: 1
+      comment: job-accelerator app in kubernetes (apps/production/job-accelerator)
+      content: k8s.activescott.com
     - key: mail-cname
       name: mail.pingpoet.com
       type: CNAME

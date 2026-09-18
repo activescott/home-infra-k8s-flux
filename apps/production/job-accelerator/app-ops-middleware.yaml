@@ -1,0 +1,14 @@
+# Blocks the app's operator surfaces (/ops/health/*) at the ingress, copied
+# from apps/production/fernfiles/app-ops-middleware.yaml, which has the full
+# reasoning. Kubelet probes reach the Service directly and never traverse
+# Traefik; everything arriving through job-accelerator.pingpoet.com gets a 403.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: job-accelerator-ops-deny
+  namespace: job-accelerator-prod
+spec:
+  # Traefik 3.x. (2.x called this ipWhiteList; the cluster runs 3.3.6.)
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
