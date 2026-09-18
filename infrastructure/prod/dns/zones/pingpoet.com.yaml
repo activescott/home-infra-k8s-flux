@@ -108,6 +108,8 @@ spec:
       ttl: 1
       proxied: true
       content: activescott.github.io
+    # Predates this zone's Email Sending onboarding, which is why it survived: onboarding
+    # writes Cloudflare's own _dmarc record only if none exists, confirmed on productpoet.com.
     - key: dmarc-txt
       name: _dmarc.pingpoet.com
       type: TXT
@@ -126,6 +128,12 @@ spec:
       adopt: 5d1f4c23e330dade3284efe87f9eb984
       ttl: 1
       content: v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr0lb/GihaTKwu+07iQFSZUS6e8kuOGMLlbXFBTOIjhy2Hy2QIxp1+khaihSKSVrt4yjimgUd4GJ9Qt0qWOi2IvLvfUTNpmzmQDyXUzrntQqmyJXsGT0loKz7wQtIkQNXrD4RlwwDLlX7VzqcCPsf62cGCcD0puv7KoeAa/Xv0ad4I5n5JwrRnEu80zHbFFRChAAsIkI3cJvJ6YaUUvL3lgfkT2lMbEvBODfInNNbaluycRPFFkqWsDGGXJ2fQBoaivqo0O7NAEIpTRknivDRDKD60Z8F5T2T5ggmkxKwJI01MWd8hCQcAVUnHlW7USGMI9lCM2c0fs9WvHDL+bmYKwIDAQAB
+    - key: job-accelerator-cname
+      name: job-accelerator.pingpoet.com
+      type: CNAME
+      ttl: 1
+      comment: job-accelerator app in kubernetes (apps/production/job-accelerator)
+      content: k8s.activescott.com
     - key: mail-cname
       name: mail.pingpoet.com
       type: CNAME
@@ -167,3 +175,35 @@ spec:
       adopt: 6d7c4ad5540fe4cef48e9459f67977d0
       ttl: 1
       content: pingpoet.github.io
+    # Created by Cloudflare Email Sending when this zone was onboarded, not by us. Every
+    # one comes back from the API with `meta.read_only: true`, and Cloudflare's docs say
+    # Email Sending records on the cf-bounce subdomain "stay managed by Email Service for
+    # the lifetime of the domain configuration" -- unlike Email Routing's root-domain
+    # records, they can never be unlocked. So they are declared Observe: git records that
+    # they exist and who owns them, and Crossplane never attempts a write it cannot win.
+    # Content is deliberately omitted; Cloudflare owns the values, including the DKIM key.
+    - key: cf-bounce-mx-route1
+      name: cf-bounce.pingpoet.com
+      type: MX
+      adopt: 4998ba382c01d3588d6e4bb899e0d5ca
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route2
+      name: cf-bounce.pingpoet.com
+      type: MX
+      adopt: 91e9bbde558193604b9b7c70b8472a53
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route3
+      name: cf-bounce.pingpoet.com
+      type: MX
+      adopt: 3e7416152e0533d0180a9224c0641311
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-spf-txt
+      name: cf-bounce.pingpoet.com
+      type: TXT
+      adopt: aee606cd34889820b28ce43b694bd53f
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-domainkey-txt
+      name: cf-bounce._domainkey.pingpoet.com
+      type: TXT
+      adopt: 6a3f05e5e0ba3f529f1deee219bcf1a9
+      managementPolicies: ["Observe"]
