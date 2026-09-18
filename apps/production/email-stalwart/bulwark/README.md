@@ -20,20 +20,18 @@ exists. Both changes land together:
             && sudo chown -R 1001:1001 /mnt/thedatapool/app-data/bulwark/prod'
    ```
 
-2. Make the secret. Copy and fill it in yourself — the agent must not create or read the real
-   path, for the reason in the template's banner. Encrypting it afterwards is safe for the
-   agent to run, since the script only ever prints file names. **From the repo root:**
+2. Make the secret. Fill it in yourself (the agent must not type or read the real values,
+   for the reason in the template's banner). **From the repo root:**
 
    ```bash
-   cp apps/production/email-stalwart/bulwark/env.secret.bulwark.example \
-      apps/production/email-stalwart/bulwark/.env.secret.bulwark
-   $EDITOR apps/production/email-stalwart/bulwark/.env.secret.bulwark
-   ./scripts/encrypt-env-files.sh apps/production/email-stalwart/bulwark
+   ./scripts/onepassword-secrets.mts new \
+     apps/production/email-stalwart/bulwark/.env.secret.bulwark \
+     --from apps/production/email-stalwart/bulwark/env.secret.bulwark.example
    ```
 
-   The script resolves its argument against your current directory. Running it from inside
-   this directory with a repo-root-relative path exits `Directory not found` and encrypts
-   nothing — quietly, if you piped the output somewhere.
+   That seeds a 0600 file in a 0700 temp directory, opens `$EDITOR` on it, encrypts it to
+   `.env.secret.bulwark.encrypted`, and removes the temp directory. No plaintext reaches a
+   repo path. It needs no age key, since encrypting only needs the public recipient.
 
 3. Uncomment `secretGenerator` in `kustomization.yaml`, add `- bulwark` to
    `../kustomization.yaml`, commit.

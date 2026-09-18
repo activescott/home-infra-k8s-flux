@@ -75,13 +75,12 @@ done
 cat <<EOF
 
 Sanity-check the round trips before committing (prints key names only, not the tokens):
-  for f in $config_dir/cloudflare-credentials.json.encrypted \\
-           $config_dir/cloudflare-email-credentials.json.encrypted; do
-    SOPS_AGE_KEY_FILE=$repo_dir/home-infra-private.agekey \\
-      sops -d --input-type json --output-type json "\$f" | jq 'keys'
+  for f in $config_dir/cloudflare-credentials.json \\
+           $config_dir/cloudflare-email-credentials.json; do
+    $repo_dir/scripts/onepassword-secrets.mts show "\$f" | jq 'keys'
   done
   # expect: ["api_token"] twice
 
-The plaintext .env.secret.* and *-credentials.json files are gitignored.
-Keep both tokens in 1Password as the backup of record.
+Then delete your plaintext .env.secret.* and *-credentials.json files. The committed
+ciphertext is the only copy of these tokens; 1Password holds the age key and nothing else.
 EOF

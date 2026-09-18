@@ -7,7 +7,7 @@ import http from "http";
 import https from "https";
 import { URL } from "url";
 import readline from "readline";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
@@ -86,11 +86,8 @@ function encryptPlaintextFile() {
   });
 }
 
-function pushToOnePassword() {
-  execFileSync(join(repoDir, "scripts/onepassword-secrets.mts"), ["push", "--only", "olya"], {
-    cwd: repoDir,
-    stdio: "inherit",
-  });
+function deletePlaintextFile() {
+  unlinkSync(plaintextPath);
 }
 
 async function runFollowUpSteps(output) {
@@ -99,7 +96,7 @@ async function runFollowUpSteps(output) {
     writeCredentialsLine(output);
     console.log(`Wrote ${plaintextPath}`);
   } else {
-    console.log("Skipped - update the file yourself before encrypting/pushing.");
+    console.log("Skipped - update the file yourself before encrypting.");
     return;
   }
 
@@ -110,10 +107,13 @@ async function runFollowUpSteps(output) {
     return;
   }
 
-  if (await confirm("Push the updated plaintext to 1Password now (--only olya)?")) {
-    pushToOnePassword();
+  // The .encrypted file is now the only copy that should exist. Nothing mirrors this
+  // plaintext anywhere, so leaving it on disk is the whole risk and none of the benefit.
+  if (await confirm(`Delete the plaintext ${plaintextPath} now?`)) {
+    deletePlaintextFile();
+    console.log(`Deleted ${plaintextPath}`);
   } else {
-    console.log("Skipped - remember to back it up to 1Password.");
+    console.log("Skipped - delete it yourself; the .encrypted file is the only copy.");
   }
 
   console.log(

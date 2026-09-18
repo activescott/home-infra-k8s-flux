@@ -78,8 +78,7 @@ this decrypts to a mode-0600 temp file and shreds it:
 
   tmp=\$(mktemp) && chmod 600 "\$tmp" \\
     && trap 'rm -P "\$tmp" 2>/dev/null || rm -f "\$tmp"' EXIT \\
-    && SOPS_AGE_KEY_FILE=$repo_dir/home-infra-private.agekey \\
-       sops -d --input-type binary --output-type binary ${key_file_encrypted} > "\$tmp" \\
+    && $repo_dir/scripts/onepassword-secrets.mts show ${key_file_encrypted} > "\$tmp" \\
     && ssh-keygen -lf "\$tmp" && ssh-keygen -y -P "" -f "\$tmp"
   # expect fingerprint ${fingerprint}, and a public key matching the one on olyapop
 

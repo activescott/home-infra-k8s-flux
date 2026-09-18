@@ -176,9 +176,35 @@ example at https://github.com/fluxcd/flux2-kustomize-helm-example
 
 Using [sops](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age).
 
-#### Encrypting
+The committed `.encrypted` file is the only copy of each secret. 1Password holds the age
+private key and nothing else. `scripts/onepassword-secrets.mts` reads that key with `op read`
+into `SOPS_AGE_KEY` for the sops child process; it is never written to disk.
 
-TLDR: put .env files in a dirctory and then run `/scripts/encrypt-env-files.sh <dir>` on the dir containing the .env file and it will save `.env*.encrypted` files that you can reference in kustomization files like:
+#### Reading and changing a secret
+
+```bash
+# decrypt to stdout, write nothing
+./scripts/onepassword-secrets.mts show apps/production/tayle/.env.secret.db
+
+# $EDITOR on sops' own 0600 temp file, re-encrypted on save, temp file removed
+./scripts/onepassword-secrets.mts edit apps/production/tayle/.env.secret.db
+
+# a secret that does not exist yet, optionally seeded from the app's example file
+./scripts/onepassword-secrets.mts new apps/production/foo/.env.secret.foo \
+  --from apps/production/foo/env.secret.foo.example
+
+# every ciphertext file, its format, and the recipient recorded inside it.
+# Reads git only: no 1Password, no key. Exits 1 on a retired recipient, a plaintext
+# sibling on disk, or plaintext with no ciphertext at all
+./scripts/onepassword-secrets.mts list
+```
+
+Either side of the pair works as `<file>`: `.env.secret.db` and `.env.secret.db.encrypted`
+resolve to the same secret. `encrypt-env-files.sh` still exists for the `create-*.sh` scripts
+that generate a value and encrypt it in one go; for anything a person types, use `edit` or
+`new` so no plaintext ever reaches a repo path.
+
+Reference an encrypted file from a kustomization the usual way:
 
 ```yaml
 secretGenerator:
@@ -197,56 +223,68 @@ and encrypted straight to the public age recipient, which every encrypted file r
 `sops_age__list_0__map_recipient`, so creating or rotating one needs no private key and leaves
 no plaintext anywhere. Only the cluster can read them.
 
-They are named `.env.secret.<name>.public-key-encrypted.encrypted`, which is how
-`scripts/onepassword-secrets.mts` tells them from the secrets that do have a gitignored
-plaintext original: it lists them as "public-key encrypted, no plaintext" and never reports one
-as a missing backup. Rotation instructions live in the README next to the app, starting with
-the Alertmanager hook token in
+They are named `.env.secret.<name>.public-key-encrypted.encrypted`. Rotation instructions live
+in the README next to the app, starting with the Alertmanager hook token in
 [apps/production/olya/README.md](apps/production/olya/README.md#alertmanager-hook-token).
 
 #### Decrypting
 
 The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we just have to have a `sops-age` secret in the `flux-system` namespace in the cluster.
 
-See `/infrastructure/configs/create-sops-age-decryption-secret.sh`
+`./scripts/create-sops-age-decryption-secret.sh` builds it from the age key(s) in 1Password.
+Pass no arguments to include every `*.agekey` attachment on the item, which is what you want
+mid-rotation; name one explicitly to narrow it afterwards.
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
-#### Backing plaintext up to 1Password
+#### The age key is the only thing in 1Password
 
-The `.encrypted` files are committed, but their plaintext originals are
-gitignored and live on one laptop. `scripts/onepassword-secrets.mts` mirrors
-that plaintext into 1Password so a re-encrypt or a new machine doesn't depend on
-one disk — one Secure Note item per directory, titled
-`home-infra kubernetes secrets <group>`, with one file attachment per secret
-file and a `repo_path` field naming the directory.
+One item, `home-infra kubernetes secrets sops-age-key`, with one `*.agekey` file attachment
+(two while a rotation is in flight). Everything else is reproducible from the ciphertext in
+git, so nothing else belongs there: two copies of a secret drift, and on 2026-09-17 they did.
+The per-directory items from the old backup scheme are still being cleared out; see
+[docs/specs/age-key-only-secrets/summary.md](docs/specs/age-key-only-secrets/summary.md).
+
+`op read` puts the key in `SOPS_AGE_KEY` in the environment of each sops child and nowhere
+else. `SOPS_AGE_KEY_FILE` and `SOPS_AGE_KEY_CMD` are deleted from that environment, because
+sops prefers the file over the key and a stale export would silently win.
+
+Keep a second copy of the key somewhere that is not the laptop and not 1Password. Losing it
+loses every secret in this repo, and 1Password is one account with one recovery path. Write
+it to an encrypted volume or print it, include the `# public key:` comment line, label it with
+the date, and verify it before trusting it:
 
 ```bash
-# what's on disk, and whether each file is already in 1Password
-./scripts/onepassword-secrets.mts list
-
-# classify everything without writing (new / changed / unchanged)
-./scripts/onepassword-secrets.mts push --dry-run
-
-# upload; re-running is a no-op for files whose content already matches
-./scripts/onepassword-secrets.mts push
-
-# get a directory's plaintext back so you can edit and re-encrypt it
-./scripts/onepassword-secrets.mts pull apps/production/authelia
-./scripts/onepassword-secrets.mts pull authelia --out /tmp/check   # non-destructive
+SOPS_AGE_KEY_FILE=/Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey \
+  sops decrypt --input-type dotenv --output-type dotenv \
+  apps/production/transmission/.env.secret.transmission.encrypted >/dev/null \
+  && echo "offline copy decrypts"
 ```
 
-Notes:
+Keep retired keys on the same medium. Every `*.encrypted` blob in this repo's git history is
+encrypted to whichever key was current at the time, so a `git revert` or a dig through an old
+commit needs them. Never delete one from 1Password either.
 
-- Files whose plaintext is already gone locally (the `create-*.sh` scripts
-  delete it after encrypting) are sops-decrypted to a 0600 temp file, uploaded,
-  and the temp file removed. That needs `home-infra-private.agekey` present.
-- `--delete-after-push` removes the local plaintext, but only after downloading
-  the attachment again and confirming its sha256 matches. `home-infra-private.agekey`
-  is excluded unless you also pass `--delete-age-key`.
-- `pull` resolves the target from 1Password (by group name or `repo_path`), not
-  from what happens to be on disk, so it still works after the plaintext is gone.
-  It refuses to overwrite an existing file without `--force`.
+#### Rotating the age key
+
+`rotate-age-key` does the repo-side half and nothing else: it refuses to run unless the tree
+is clean, the branch is not `main`, and 1Password already holds a key that can read files
+encrypted to `--new-recipient`. That last gate is the one that matters, since it keeps
+ciphertext from ever moving to a key that exists in only one place.
+
+```bash
+./scripts/onepassword-secrets.mts rotate-age-key --new-recipient age1... --dry-run
+./scripts/onepassword-secrets.mts rotate-age-key --new-recipient age1...
+./scripts/onepassword-secrets.mts list   # must exit 0 afterwards
+```
+
+The steps around it (generate the key, upload it as a **second** attachment, make the offline
+copy, put both keys in the cluster secret before any ciphertext changes, then narrow to one)
+are in
+[docs/specs/age-key-only-secrets/plan.md](docs/specs/age-key-only-secrets/plan.md#rotation-order-and-what-happens-to-flux),
+with a rollback per step. Both keys go into the cluster first because kustomize-controller
+tries every `.agekey` entry in the secret, which is what removes the outage window between
+merging re-encrypted files and swapping the key.
 
 ### Image Pull Secrets
 

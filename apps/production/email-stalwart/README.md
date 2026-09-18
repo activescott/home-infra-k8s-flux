@@ -246,6 +246,13 @@ The password lives in **two files that must hold the same value**, different nam
 | `apps/production/email-stalwart/.env.secret.stalwart`                | `STALWART_METRICS_PASSWORD` | Stalwart   |
 | `apps/production/monitoring/prometheus/.env.secret.stalwart-metrics` | `stalwart_metrics_password` | Prometheus |
 
+To rotate it, edit both and commit together:
+
+```bash
+./scripts/onepassword-secrets.mts edit apps/production/email-stalwart/.env.secret.stalwart
+./scripts/onepassword-secrets.mts edit apps/production/monitoring/prometheus/.env.secret.stalwart-metrics
+```
+
 ### After changing any MTA/TLS/metrics setting: restart
 
 **Saving a setting in the admin UI is not the same as the running server using it.** Stalwart

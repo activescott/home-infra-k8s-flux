@@ -13,27 +13,18 @@ The deployment uses the upstream kustomize base from `github.com/Arize-ai/phoeni
 
 ### 1. Create secrets
 
-Edit the placeholder files and fill in real values:
+Each command opens `$EDITOR` on a temp file and writes only the `.encrypted` result:
 
 ```bash
-# Phoenix secrets
-vi apps/production/arize-phoenix/.env.secret.phoenix
 # Set: PHOENIX_SECRET (32+ random chars), PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD, PHOENIX_SQL_DATABASE_URL
+./scripts/onepassword-secrets.mts new apps/production/arize-phoenix/.env.secret.phoenix
 
-# Database secrets
-vi apps/production/arize-phoenix/.env.secret.db
 # Set: POSTGRES_PASSWORD (must match the password in PHOENIX_SQL_DATABASE_URL)
+./scripts/onepassword-secrets.mts new apps/production/arize-phoenix/.env.secret.db
 ```
 
-Encrypt with SOPS:
-
-```bash
-sops --encrypt --age age1nur86m07v4f94xpc8ugg0cmum9fpyp3hcha2cya6x09uphu4zg5szrtzgt \
-  apps/production/arize-phoenix/.env.secret.phoenix > apps/production/arize-phoenix/.env.secret.phoenix.encrypted
-
-sops --encrypt --age age1nur86m07v4f94xpc8ugg0cmum9fpyp3hcha2cya6x09uphu4zg5szrtzgt \
-  apps/production/arize-phoenix/.env.secret.db > apps/production/arize-phoenix/.env.secret.db.encrypted
-```
+Use `edit` instead of `new` once the files exist. Both take the recipient from
+`scripts/_sops_config.include.sh`, so neither goes stale at the next key rotation.
 
 ### 2. DNS
 

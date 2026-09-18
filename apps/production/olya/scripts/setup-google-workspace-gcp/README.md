@@ -38,9 +38,12 @@ and prints the credentials JSON — then, each gated by its own `[y/N]` prompt s
 happens without your say-so, offers to:
 
 1. write that JSON into `google_workspace_credentials_json=` in
-   `.env.secret.google-workspace`,
-2. re-encrypt it (`scripts/encrypt-env-files.sh`), and
-3. push the updated plaintext to 1Password (`onepassword-secrets.mts push --only olya`).
+   `.env.secret.google-workspace`, and
+2. re-encrypt it (`scripts/encrypt-env-files.sh`).
+
+Delete the plaintext afterwards; the committed ciphertext is the only copy. To change the
+value later, use
+`./scripts/onepassword-secrets.mts edit apps/production/olya/.env.secret.google-workspace`.
 
 Run this yourself, not via the agent — the plaintext file is exactly what the "DO
 NOT TYPE A REAL VALUE" header at the top of it warns about; the script does the

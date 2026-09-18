@@ -23,18 +23,17 @@
 `APP_URL` (`https://job-accelerator.pingpoet.com`) is not secret, so it's set as a plain
 `value:` in `patch-app-deployment.yaml` instead of here.
 
-These are ordinary plaintext-backed secrets managed through
-`./scripts/onepassword-secrets.mts`, group `job-accelerator`. Pull the plaintext with:
+Read or change either one with:
 
 ```bash
-./scripts/onepassword-secrets.mts pull job-accelerator
+./scripts/onepassword-secrets.mts show apps/production/job-accelerator/.env.secret.app
+./scripts/onepassword-secrets.mts edit apps/production/job-accelerator/.env.secret.app
 ```
 
 ## One-time setup
 
-The two `.encrypted` files here were created by encrypting straight to the public key,
-with no plaintext copy ever pushed to 1Password, and `SMTP_PASS` was never set. From the
-repo root:
+The two `.encrypted` files here were created by encrypting straight to the public key and
+`SMTP_PASS` was never set. From the repo root:
 
 1. Generate the relay password:
 
@@ -42,43 +41,20 @@ repo root:
    openssl rand -hex 32
    ```
 
-2. Add this app to the relay's SASL users:
+2. Add this app to the relay's SASL users. Append
+   `,jobaccelerator@relay.local:<password>` to `SMTPD_SASL_USERS`:
 
    ```bash
-   ./scripts/onepassword-secrets.mts pull email-relay
+   ./scripts/onepassword-secrets.mts edit apps/production/email-relay/.env.secret.relay
    ```
 
-   Append `,jobaccelerator@relay.local:<password>` to `SMTPD_SASL_USERS` in
-   `apps/production/email-relay/.env.secret.relay`, then:
+3. Add `SMTP_PASS=<password>` here:
 
    ```bash
-   ./scripts/encrypt-env-files.sh apps/production/email-relay
+   ./scripts/onepassword-secrets.mts edit apps/production/job-accelerator/.env.secret.app
    ```
 
-3. Decrypt both job-accelerator files to plaintext once:
-
-   ```bash
-   SOPS_AGE_KEY_FILE=home-infra-private.agekey sops decrypt \
-     --input-type dotenv --output-type dotenv \
-     apps/production/job-accelerator/.env.secret.app.encrypted \
-     > apps/production/job-accelerator/.env.secret.app
-   SOPS_AGE_KEY_FILE=home-infra-private.agekey sops decrypt \
-     --input-type dotenv --output-type dotenv \
-     apps/production/job-accelerator/.env.secret.db.encrypted \
-     > apps/production/job-accelerator/.env.secret.db
-   ```
-
-4. Add `SMTP_PASS=<password>` to `.env.secret.app`, then:
-
-   ```bash
-   ./scripts/encrypt-env-files.sh apps/production/job-accelerator
-   ```
-
-5. Push both groups to 1Password and commit the `.encrypted` files:
-
-   ```bash
-   ./scripts/onepassword-secrets.mts push --only email-relay --only job-accelerator
-   ```
+4. Commit both `.encrypted` files.
 
 ## Rotation
 
