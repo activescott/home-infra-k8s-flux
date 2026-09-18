@@ -11,7 +11,18 @@
 //
 // TypeScript run through Node's native type stripping. No build step and no transpiler; the
 // image ships Node 24.
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { execFileSync } from "node:child_process"
 import { dirname, join } from "node:path"
 
@@ -60,6 +71,14 @@ export const CLI_IMAGES_LIVE = join(STATE, "openclaw", "cli-images")
  * check-memory-mounts.mts exists to turn that into a loud failure.
  */
 export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "IDENTITY.md", "memory"]
+
+/**
+ * The skills the coding harnesses need, canonical copy in the checkout. One directory per skill,
+ * each holding a SKILL.md, which is the layout both harnesses search for.
+ *
+ * Her own skills stay at <workspace>/skills, where only OpenClaw's skill loader reads them.
+ */
+export const SHARED_SKILLS = join(WORKSPACE, ".agents", "skills")
 
 /**
  * The entries in MEMORY_PATHS that are directories rather than regular files. Exported because
@@ -245,13 +264,15 @@ export function publishConfig(): void {
 }
 
 /**
- * Installs the shared subagent instructions where each coding harness looks for them.
+ * Installs the shared subagent instructions where each coding harness looks for them, then links
+ * the shared skills the instructions refer to.
  *
  * The harnesses read their own instruction files from their own config paths, so these have to
  * be copied into place rather than referenced. Copies, not symlinks: OpenClaw's skill loader
  * enforces symlink containment and the harnesses are inconsistent about following them. The same
  * policy is why the memory paths are bind mounts rather than symlinks; see
- * docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md.
+ * docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md. The skills are the exception
+ * and linkSharedSkills says why.
  *
  * The source is the working tree, which is safe only because the caller has just reset it to
  * origin's tip. It was not safe when the sync fast-forwarded and warned on divergence: a locally
@@ -272,5 +293,79 @@ export function installSubagentFiles(): void {
     if (!existsSync(source) || !lstatSync(source).isFile()) continue
     mkdirSync(dirname(target), { recursive: true })
     copyFileSync(source, target)
+  }
+
+  linkSharedSkills(SHARED_SKILLS, HOME_DIR)
+}
+
+/**
+ * Points a harness skill path at the checkout. Idempotent, which matters because the sidecar
+ * runs this every 15 minutes: a link that already points at the source is left as it is.
+ *
+ * A link pointing somewhere else is replaced. Anything that is NOT a symlink is left alone and
+ * logged, because removing it to make room would delete whatever owns it.
+ */
+function linkSkillPath(source: string, target: string): void {
+  const existing = lstatSync(target, { throwIfNoEntry: false })
+  if (existing?.isSymbolicLink()) {
+    if (readlinkSync(target) === source) return
+    rmSync(target)
+  } else if (existing) {
+    console.log(`==> WARNING: ${target} is not a symlink; leaving it alone`)
+    return
+  }
+  mkdirSync(dirname(target), { recursive: true })
+  symlinkSync(source, target)
+  console.log(`==> linked ${target} -> ${source}`)
+}
+
+/**
+ * Links the shared skills into the skill directories the coding harnesses search.
+ *
+ * The instruction files above are COPIED out of the checkout, so a repo-relative link written
+ * inside one resolves to nothing at the destination. That is not hypothetical: both files told
+ * every coding agent to read `../../shared/writing-style.md`, which exists relative to the source
+ * and nowhere near `~/.claude/CLAUDE.md`, so no coding agent ever read it
+ * (activescott/activeassistant#122). The skills are reached through a link at a fixed absolute
+ * path instead.
+ *
+ * Symlinks rather than copies, unlike the instruction files: there is then one file to edit, and
+ * $HOME is writable while nothing in either harness path-checks these locations. A link into
+ * WORKSPACE resolves from the olya container even though that mount is read-only there.
+ *
+ * The two halves are not symmetrical, and that is the point:
+ *
+ *   ~/.agents/skills is one of the six locations opencode searches, and nothing else writes it,
+ *   so it is a single link for the whole tree.
+ *
+ *   ~/.claude/skills is NOT ours alone. The Anthropic-managed skills arrive under synced/ and a
+ *   whole-directory link would detach them, so this links one entry per skill beside it.
+ */
+export function linkSharedSkills(skillsDir: string, homeDir: string): void {
+  if (!existsSync(skillsDir)) {
+    console.log(`==> no shared skills at ${skillsDir}; nothing to link`)
+    return
+  }
+
+  linkSkillPath(skillsDir, join(homeDir, ".agents", "skills"))
+
+  const claudeSkills = join(homeDir, ".claude", "skills")
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    linkSkillPath(join(skillsDir, entry.name), join(claudeSkills, entry.name))
+  }
+
+  // A skill renamed or removed upstream leaves a dangling link behind, which the harness then
+  // scans and cannot read. Only links whose target is inside skillsDir are considered, so
+  // synced/ and anything else in that directory is untouchable here.
+  if (!existsSync(claudeSkills)) return
+  for (const entry of readdirSync(claudeSkills, { withFileTypes: true })) {
+    if (!entry.isSymbolicLink()) continue
+    const link = join(claudeSkills, entry.name)
+    const target = readlinkSync(link)
+    if (target.startsWith(`${skillsDir}/`) && !existsSync(target)) {
+      console.log(`==> removing stale skill link ${link} -> ${target}`)
+      rmSync(link)
+    }
   }
 }
