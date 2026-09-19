@@ -8,7 +8,6 @@
 - `DATABASE_URL`: full Postgres connection string, including the password.
 - `JWT_SECRET`: signs session tokens.
 - `ALLOWED_EMAILS`: the only addresses that can sign in.
-- `FROM_EMAIL`: the `From:` address on outgoing mail, `noreply@pingpoet.com`.
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`: point at the email-relay Service.
 - `SMTP_USER`, `SMTP_PASS`: SASL login for the relay.
 
@@ -39,15 +38,19 @@ Values that are not secret are set as plain `value:` in the manifests rather tha
 | Variable | Value | Where |
 | --- | --- | --- |
 | `APP_URL` | `https://job-accelerator.pingpoet.com` | `patch-app-deployment.yaml` |
+| `FROM_EMAIL` | `job-accelerator-noreply@pingpoet.com` | `patch-app-from-email.yaml` |
 | `KEYSTORE_DIR` | `/keys` | `apps/base/job-accelerator/app-deployment.yaml` |
 | `MASTER_KEY_ACTIVE` | `1` | same |
 | `RETENTION_PROMPT_DAYS` | `90` | same |
 | `RETENTION_DELETE_DAYS` | `14` | same |
 | `OPENROUTER_MODEL_PARSE_PROFILE` | `anthropic/claude-sonnet-5` | same |
 
-Every address is an exception. `ALLOWED_EMAILS` and `CLIENT_DATA_OWNER_EMAIL` stay in
-encrypted secrets because this repo is public and both name private people. A value being
-guessable is not a reason to publish it.
+`ALLOWED_EMAILS` and `CLIENT_DATA_OWNER_EMAIL` stay in encrypted secrets because this repo
+is public and both name private people. A value being guessable is not a reason to publish
+it. `FROM_EMAIL` is different: it is a role account that rides in the headers of every
+message the app sends, so it is already public. The base deployment still reads it from
+`app-creds` and `patch-app-from-email.yaml` overrides that with a plain value, which leaves
+the key in `.env.secret.app` unused.
 
 The model is plain env, in the table above. `OPENROUTER_API_KEY` is not set yet; add it to
 `.env.secret.app` with `./scripts/onepassword-secrets.mts edit
@@ -144,7 +147,7 @@ recipient the file already records, so the address never lands on disk in the cl
 cd apps/production/job-accelerator
 file=.env.secret.client-owner.public-key-encrypted.encrypted
 recipient=$(sed -n 's/^sops_age__list_[0-9]*__map_recipient=//p' "$file")
-read -rp "new address: " owner
+owner='first@example.com,second@example.com'
 printf 'CLIENT_DATA_OWNER_EMAIL=%s\n' "$owner" | sops encrypt \
   --age "$recipient" --input-type dotenv --output-type dotenv \
   --filename-override "$file" > "$file.tmp" && mv "$file.tmp" "$file"
@@ -310,7 +313,29 @@ here is automated, and no agent touches the NAS. Access details are in `home-inf
      | head -1
    ```
 
+## Worker
+
+The `worker` Deployment runs the app image as `node build/worker/worker.js` and polls every
+watched ATS board hourly. A board is watched by running `add-feed.js` in that pod, which
+records the board and polls it once. It is idempotent: re-running it for a board already
+watched changes nothing but polls again.
+
+```bash
+kubectl --context nas -n job-accelerator-prod exec deploy/worker -- \
+  node build/worker/scripts/add-feed.js greenhouse gitlab GitLab gitlab.com
+kubectl --context nas -n job-accelerator-prod exec deploy/worker -- \
+  node build/worker/scripts/add-feed.js lever spotify Spotify spotify.com
+kubectl --context nas -n job-accelerator-prod exec deploy/worker -- \
+  node build/worker/scripts/add-feed.js ashby ashby Ashby ashbyhq.com
+```
+
+Arguments are `<source> <board-token> <employer-name> [domain] [host]`. This is a stopgap
+until the app's suggestions page (activescott/activeassistant#144) adds boards itself.
+
 ## Sending mail
 
-`pingpoet.com` must be onboarded to Cloudflare Email Sending before the relay can send as
-`noreply@pingpoet.com`.
+`pingpoet.com` was onboarded to Cloudflare Email Sending on 2026-09-18, so the relay can
+send as `job-accelerator-noreply@pingpoet.com`. email-relay's
+`POSTFIX_smtpd_sender_login_maps` ties `@pingpoet.com` to the `jobaccelerator@relay.local`
+SASL login, which is what `SMTP_USER`/`SMTP_PASS` authenticate as, so any local part on the
+domain works without another relay change.
