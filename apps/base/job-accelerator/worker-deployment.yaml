@@ -34,15 +34,34 @@ spec:
           command: ["node", "--enable-source-maps", "build/worker/worker.js"]
           # The whole secret rather than the app's per-key list. The worker
           # reads DATABASE_URL, JWT_SECRET, SMTP_USER and SMTP_PASS (the env
-          # schema requires the last two in production) and LOG_LEVEL if set.
-          # No keystore and no master key: nothing it runs touches client
-          # data yet.
+          # schema requires the last two in production), OPENROUTER_API_KEY,
+          # and LOG_LEVEL if set.
+          #
+          # parse_profile reads and writes client data, so the worker needs
+          # the same models, keystore and master key as the app. The keys
+          # PVC is ReadWriteOnce, which binds it to one node, not one pod;
+          # on this single-node cluster both pods mount it.
           envFrom:
             - secretRef:
                 name: app-creds
+            - configMapRef:
+                name: models
           env:
             - name: NODE_ENV
               value: production
+            # Must match the app's; see app-deployment.yaml.
+            - name: KEYSTORE_DIR
+              value: /keys
+            - name: MASTER_KEY_ACTIVE
+              value: "1"
+            - name: MASTER_KEY_1
+              valueFrom:
+                secretKeyRef:
+                  name: master-key
+                  key: MASTER_KEY_1
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
           resources:
             limits:
               cpu: "0.5"
@@ -50,3 +69,7 @@ spec:
             requests:
               cpu: "0.02"
               memory: "128Mi"
+      volumes:
+        - name: keys
+          persistentVolumeClaim:
+            claimName: keys
