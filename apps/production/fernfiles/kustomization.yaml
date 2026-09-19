@@ -65,4 +65,4 @@ images:
   # earlier tag does not exist in the registry and the pod would never pull.
   - name: fernfiles-image-inference
     newName: ghcr.io/activescott/fernfiles/inference-service # {"$imagepolicy": "flux-system:policy-fernfiles-inference-service:name"}
-    newTag: v0.73.1 # {"$imagepolicy": "flux-system:policy-fernfiles-inference-service:tag"}
+    newTag: v0.73.2 # {"$imagepolicy": "flux-system:policy-fernfiles-inference-service:tag"}
