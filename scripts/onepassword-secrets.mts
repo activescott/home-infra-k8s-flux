@@ -1206,16 +1206,49 @@ interface DotenvHashes {
   unnamed: string[]
 }
 
+/**
+ * The quote a value leaves open at the end of `text`, or undefined when it ends closed.
+ * Backslash escapes count inside double quotes only, as in dotenv.
+ */
+function openQuoteAfter(text: string, open: string | undefined): string | undefined {
+  let quote = open
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i]
+    if (quote === undefined) {
+      if (char === '"' || char === "'") quote = char
+    } else if (quote === '"' && char === "\\") {
+      i += 1
+    } else if (char === quote) {
+      quote = undefined
+    }
+  }
+  return quote
+}
+
 function dotenvValueHashes(bytes: Buffer): DotenvHashes {
   const values = new Map<string, string>()
   const unnamed: string[] = []
+  // A quoted value can span lines. Its continuation lines belong to the key that opened
+  // the quote, so the tail of a PEM or base64 blob is never read as a name.
+  let current: { key: string; value: string } | undefined
+  let quote: string | undefined
   for (const line of bytes.toString("utf8").split("\n")) {
+    if (current && quote) {
+      current.value += `\n${line}`
+      quote = openQuoteAfter(line, quote)
+      values.set(current.key, sha256(Buffer.from(current.value, "utf8")))
+      continue
+    }
     const trimmed = line.trim()
     if (trimmed === "" || trimmed.startsWith("#")) continue
     const eq = trimmed.indexOf("=")
     const key = eq > 0 ? trimmed.slice(0, eq) : ""
-    if (DOTENV_KEY.test(key)) {
-      values.set(key, sha256(Buffer.from(trimmed.slice(eq + 1), "utf8")))
+    const rest = trimmed.slice(eq + 1)
+    // `abc==` is base64 padding, not a key named abc.
+    if (DOTENV_KEY.test(key) && !/^=+$/.test(rest)) {
+      current = { key, value: rest }
+      quote = openQuoteAfter(rest, undefined)
+      values.set(key, sha256(Buffer.from(rest, "utf8")))
     } else {
       unnamed.push(sha256(Buffer.from(trimmed, "utf8")))
     }
@@ -1235,7 +1268,9 @@ function describeMismatch(onePassword: Buffer, fromGit: Buffer, format: SopsForm
     (key) => right.values.has(key) && right.values.get(key) !== left.values.get(key),
   )
   const parts: string[] = []
-  if (onlyOnePassword.length > 0) parts.push(`1Password only: ${onlyOnePassword.join(", ")}`)
+  // A count, not names: git's side went through sops, so its names are real keys, but the
+  // 1Password side is whatever was attached and can hold anything.
+  if (onlyOnePassword.length > 0) parts.push(`${onlyOnePassword.length} key(s) in 1Password only`)
   if (onlyGit.length > 0) parts.push(`git only: ${onlyGit.join(", ")}`)
   if (changed.length > 0) parts.push(`different value: ${changed.join(", ")}`)
   if (left.unnamed.join() !== right.unnamed.join()) parts.push("lines with no key name differ")
