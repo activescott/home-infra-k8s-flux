@@ -55,6 +55,15 @@ workload's next *execution* waits for its own trigger. To watch progress
 after a push, use `flux --context nas get kustomization apps` or
 `kubectl --context nas get helmreleases -A` directly.
 
+## Secrets
+
+The committed `*.encrypted` file is the only copy. There is no gitignored plaintext original
+to look for and no per-secret 1Password item to pull from; 1Password holds the age private
+key and nothing else. Reach for `./scripts/onepassword-secrets.mts show <file>` to read one
+and `edit <file>` to change one, `new <file>` to create one. `list` is the check: it reads git
+only, needs no key, and exits 1 if anything is on a retired recipient or has plaintext sitting
+next to it. Never write a decrypted secret to a repo path, and never print a value.
+
 ## Observability
 
 See `apps/production/monitoring/README.md` for full architecture, chart versions, storage paths, and log collection details.
