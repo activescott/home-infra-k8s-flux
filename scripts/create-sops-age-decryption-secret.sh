@@ -17,7 +17,9 @@
 #   ./scripts/create-sops-age-decryption-secret.sh home-infra-private-20260918.agekey
 #
 # Either way it refuses to apply unless one of the keys has the public key declared in
-# scripts/_sops_config.include.sh, so narrowing to the wrong key cannot stall Flux.
+# scripts/_sops_config.include.sh. That file is read from this checkout, so the guard is
+# only as current as the checkout: pull main before narrowing, or a stale age_key_public
+# lets the old key through alone and Flux stalls on the re-encrypted files.
 #
 # Written for bash 3.2 too (macOS /bin/bash): no mapfile, no here-docs.
 set -euo pipefail
@@ -101,4 +103,27 @@ for name in "${attachments[@]}"; do
   echo "  $name: $size bytes"
 done
 
-echo "SUCCESS: secret 'sops-age' holds ${#attachments[@]} age identity/identities"
+# Read back what the Secret holds rather than trusting the list above: an entry this run
+# did not name stays if the Secret was last written without kubectl apply. The template
+# prints keys only, so no key material passes through here.
+present=()
+while IFS= read -r data_key; do
+  [[ -n "$data_key" ]] && present+=("$data_key")
+done < <(kubectl --context "$CONTEXT" get secret sops-age -n flux-system \
+  -o 'go-template={{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}')
+
+echo "Data keys in the secret now:"
+extra=0
+for data_key in ${present[@]+"${present[@]}"}; do
+  echo "  $data_key"
+  case " ${attachments[*]} " in
+    *" $data_key "*) ;;
+    *) extra=$((extra + 1)) ;;
+  esac
+done
+if [[ $extra -gt 0 ]]; then
+  echo "ERROR: the secret holds $extra key(s) this run did not apply; see the list above" >&2
+  exit 1
+fi
+
+echo "SUCCESS: secret 'sops-age' holds ${#present[@]} age identity/identities"
