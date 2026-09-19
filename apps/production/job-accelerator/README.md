@@ -339,6 +339,25 @@ here is automated, and no agent touches the NAS. Access details are in `home-inf
      | head -1
    ```
 
+## Worker
+
+The `worker` Deployment runs the app image as `node build/worker/worker.js` and polls every
+watched ATS board hourly. A board is watched by running `add-feed.js` in that pod, which
+records the board and polls it once. It is idempotent: re-running it for a board already
+watched changes nothing but polls again.
+
+```bash
+kubectl --context nas -n job-accelerator-prod exec deploy/worker -- \
+  node build/worker/scripts/add-feed.js greenhouse gitlab GitLab gitlab.com
+kubectl --context nas -n job-accelerator-prod exec deploy/worker -- \
+  node build/worker/scripts/add-feed.js lever spotify Spotify spotify.com
+kubectl --context nas -n job-accelerator-prod exec deploy/worker -- \
+  node build/worker/scripts/add-feed.js ashby ashby Ashby ashbyhq.com
+```
+
+Arguments are `<source> <board-token> <employer-name> [domain] [host]`. This is a stopgap
+until the app's suggestions page (activescott/activeassistant#144) adds boards itself.
+
 ## Sending mail
 
 `pingpoet.com` was onboarded to Cloudflare Email Sending on 2026-09-18, so the relay can

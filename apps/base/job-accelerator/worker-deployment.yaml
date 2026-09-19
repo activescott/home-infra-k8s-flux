@@ -1,0 +1,52 @@
+# The task worker (activescott/job-accelerator#36): claims rows from the
+# `task` table and, for now, polls the watched ATS boards hourly. Same image
+# as the app, started with its own command, so the two always run the same
+# release. Setting `command` bypasses docker-entrypoint.sh, so the worker
+# never runs migrations; the app pod does.
+#
+# No ports, no ingress, no probes: the process listens on nothing, and
+# Kubernetes restarting it when it exits is the whole liveness story.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  # One worker, and never two at once, not even during a rollout: the
+  # stale-claim sweep treats any claim older than 30 minutes as a dead pod's.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+        app.activescott.com/component: worker
+    spec:
+      # worker.ts aborts its loop on SIGTERM and lets the task in flight
+      # finish, so its row is not left claimed.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: job-accelerator-image-app
+          command: ["node", "--enable-source-maps", "build/worker/worker.js"]
+          # The whole secret rather than the app's per-key list. The worker
+          # reads DATABASE_URL, JWT_SECRET, SMTP_USER and SMTP_PASS (the env
+          # schema requires the last two in production) and LOG_LEVEL if set.
+          # No keystore and no master key: nothing it runs touches client
+          # data yet.
+          envFrom:
+            - secretRef:
+                name: app-creds
+          env:
+            - name: NODE_ENV
+              value: production
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "0.02"
+              memory: "128Mi"
