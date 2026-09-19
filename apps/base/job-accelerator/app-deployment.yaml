@@ -124,11 +124,10 @@ spec:
               value: "90"
             - name: RETENTION_DELETE_DAYS
               value: "14"
-            # Which model parses a resume. Scott's starting choice; a benchmark
-            # picks a cheaper one later. Not a secret, so it is set here and
-            # only the key lives in app-creds.
-            - name: OPENROUTER_MODEL_PARSE_PROFILE
-              value: anthropic/claude-sonnet-5
+          # OPENROUTER_MODEL_*, shared with the worker. See kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: models
           volumeMounts:
             - name: keys
               mountPath: /keys

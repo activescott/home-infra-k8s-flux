@@ -43,7 +43,15 @@ Values that are not secret are set as plain `value:` in the manifests rather tha
 | `MASTER_KEY_ACTIVE` | `1` | same |
 | `RETENTION_PROMPT_DAYS` | `90` | same |
 | `RETENTION_DELETE_DAYS` | `14` | same |
-| `OPENROUTER_MODEL_PARSE_PROFILE` | `anthropic/claude-sonnet-5` | same |
+
+The model names are not in this table: `OPENROUTER_MODEL_PARSE_PROFILE` and
+`OPENROUTER_MODEL_SUGGEST_EMPLOYERS` come from the generated `models` ConfigMap
+(`apps/base/job-accelerator/kustomization.yaml`), read by both the app and worker
+Deployments through `envFrom` so the two cannot drift.
+
+The worker also gets `KEYSTORE_DIR`, `MASTER_KEY_ACTIVE` and `MASTER_KEY_1` (the same
+values as the app, set directly in `worker-deployment.yaml`), plus the `keys` volume,
+mounted read-only since the worker only reads keys.
 
 `ALLOWED_EMAILS` and `CLIENT_DATA_OWNER_EMAIL` stay in encrypted secrets because this repo
 is public and both name private people. A value being guessable is not a reason to publish
@@ -52,7 +60,7 @@ message the app sends, so it is already public. The base deployment still reads 
 `app-creds` and `patch-app-from-email.yaml` overrides that with a plain value, which leaves
 the key in `.env.secret.app` unused.
 
-The model is plain env, in the table above. `OPENROUTER_API_KEY` is not set yet; add it to
+The models are plain env too, in the `models` ConfigMap above. `OPENROUTER_API_KEY` is not set yet; add it to
 `.env.secret.app` with `./scripts/onepassword-secrets.mts edit
 apps/production/job-accelerator/.env.secret.app`. The deployment marks it `optional: true`, so
 the pod starts without it. The key belongs to the OpenRouter workspace "Job Accelerator", which
