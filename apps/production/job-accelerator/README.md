@@ -173,7 +173,7 @@ recipient the file already records, so the address never lands on disk in the cl
 cd apps/production/job-accelerator
 file=.env.secret.client-owner.public-key-encrypted.encrypted
 recipient=$(sed -n 's/^sops_age__list_[0-9]*__map_recipient=//p' "$file")
-read -rp "new address: " owner
+owner='first@example.com,second@example.com'
 printf 'CLIENT_DATA_OWNER_EMAIL=%s\n' "$owner" | sops encrypt \
   --age "$recipient" --input-type dotenv --output-type dotenv \
   --filename-override "$file" > "$file.tmp" && mv "$file.tmp" "$file"
