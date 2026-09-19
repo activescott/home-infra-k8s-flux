@@ -21,6 +21,7 @@
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import {
+  accessSync,
   chmodSync,
   copyFileSync,
   existsSync,
@@ -31,6 +32,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  constants as fsConstants,
   unlinkSync,
   writeFileSync,
 } from "node:fs"
@@ -995,8 +997,8 @@ function shellQuote(word: string): string {
  */
 function editorSafeSopsEnv(vault: string): NodeJS.ProcessEnv {
   const env = sopsEnv(vault)
-  // The order sops itself uses, with vi standing in for its vim/nano/vi search.
-  const editor = process.env.SOPS_EDITOR || process.env.EDITOR || "vi"
+  // The order sops itself uses.
+  const editor = process.env.SOPS_EDITOR || process.env.EDITOR || defaultEditor()
   const configHome =
     process.env.XDG_CONFIG_HOME === undefined
       ? ["-u", "XDG_CONFIG_HOME"]
@@ -1005,8 +1007,23 @@ function editorSafeSopsEnv(vault: string): NodeJS.ProcessEnv {
   return env
 }
 
+/** The editor sops falls back to when EDITOR is unset: the first of vim, nano, vi on PATH. */
+function defaultEditor(): string {
+  for (const name of ["vim", "nano", "vi"]) {
+    for (const dir of (process.env.PATH ?? "").split(":").filter(Boolean)) {
+      try {
+        accessSync(join(dir, name), fsConstants.X_OK)
+        return name
+      } catch {
+        // not here; keep looking
+      }
+    }
+  }
+  fail("EDITOR is unset and none of vim, nano, vi is on PATH; set EDITOR")
+}
+
 function runEditor(path: string): void {
-  const editor = process.env.EDITOR ?? process.env.VISUAL ?? "vi"
+  const editor = process.env.EDITOR ?? process.env.VISUAL ?? defaultEditor()
   const parts = editor.split(/\s+/).filter(Boolean)
   const result = spawnSync(parts[0], [...parts.slice(1), path], { stdio: "inherit" })
   if (result.error) fail(`could not start editor "${editor}": ${result.error.message}`)
@@ -1925,7 +1942,7 @@ function usage(): void {
       "  OP_VAULT            default vault",
       "  OP_AGE_KEY_REF      full op:// reference to the age key, overriding item lookup.",
       "                      Point it at a scratch item to test without the real key.",
-      "  EDITOR              used by edit and new. Default: vi.",
+      "  EDITOR              used by edit and new. Default: first of vim, nano, vi on PATH.",
     ].join("\n"),
   )
 }
