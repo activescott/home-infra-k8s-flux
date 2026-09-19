@@ -32,7 +32,8 @@ Three independent layers, because each one alone has a hole:
 - `SMTPD_SASL_USERS` — `user:pass` pairs for the apps, comma separated. Each password must
   match the `SMTP_PASS` in that app's own secret.
 
-Encrypt with `./scripts/encrypt-env-files.sh apps/production/email-relay`.
+Change any of them with
+`./scripts/onepassword-secrets.mts edit apps/production/email-relay/.env.secret.relay`.
 
 ## The queue is not persistent
 

@@ -60,32 +60,30 @@ message the app sends, so it is already public. The base deployment still reads 
 `app-creds` and `patch-app-from-email.yaml` overrides that with a plain value, which leaves
 the key in `.env.secret.app` unused.
 
-The models are plain env too, in the `models` ConfigMap above. `OPENROUTER_API_KEY` is not set yet; it goes in
-`.env.secret.app` through the usual 1Password round trip: pull the group, add
-`OPENROUTER_API_KEY=...`, run `./scripts/encrypt-env-files.sh apps/production/job-accelerator`,
-push. The deployment marks it `optional: true`, so the pod starts without it. The key belongs
-to the OpenRouter workspace "Job Accelerator", which enforces zero data retention and
-disallows training on its traffic.
+The models are plain env too, in the `models` ConfigMap above. `OPENROUTER_API_KEY` is not set yet; add it to
+`.env.secret.app` with `./scripts/onepassword-secrets.mts edit
+apps/production/job-accelerator/.env.secret.app`. The deployment marks it `optional: true`, so
+the pod starts without it. The key belongs to the OpenRouter workspace "Job Accelerator", which
+enforces zero data retention and disallows training on its traffic.
 
 The two `RETENTION_*` values are Scott's answers to open question 1 in the app's
 `docs/design/flows.md`: prompt Oksana once a client has gone 90 days unviewed, delete 14 days
 after an unanswered prompt. They are set ahead of the `retention_sweep` task that reads them.
 
-`app-creds` and `db-creds` are ordinary plaintext-backed secrets managed through
-`./scripts/onepassword-secrets.mts`, group `job-accelerator`. `master-key` and `client-owner`
-are not: the `public-key-encrypted` in their names says they have no plaintext copy anywhere,
-so the script lists them and skips them rather than reporting a missing backup. Pull the
-plaintext with:
+`app-creds` and `db-creds` are ordinary SOPS secrets; read or change either with the commands
+below. `master-key` and `client-owner` are not: the `public-key-encrypted` in their names says
+nobody has ever seen their values, so there is nothing to decrypt for a person to read. See
+[Master key](#master-key) and [`CLIENT_DATA_OWNER_EMAIL`](#client_data_owner_email).
 
 ```bash
-./scripts/onepassword-secrets.mts pull job-accelerator
+./scripts/onepassword-secrets.mts show apps/production/job-accelerator/.env.secret.app
+./scripts/onepassword-secrets.mts edit apps/production/job-accelerator/.env.secret.app
 ```
 
 ## One-time setup
 
-The two `.encrypted` files here were created by encrypting straight to the public key,
-with no plaintext copy ever pushed to 1Password, and `SMTP_PASS` was never set. From the
-repo root:
+The two `.encrypted` files here were created by encrypting straight to the public key and
+`SMTP_PASS` was never set. From the repo root:
 
 1. Generate the relay password:
 
@@ -93,58 +91,34 @@ repo root:
    openssl rand -hex 32
    ```
 
-2. Add this app to the relay's SASL users:
+2. Add this app to the relay's SASL users. Append
+   `,jobaccelerator@relay.local:<password>` to `SMTPD_SASL_USERS`:
 
    ```bash
-   ./scripts/onepassword-secrets.mts pull email-relay
+   ./scripts/onepassword-secrets.mts edit apps/production/email-relay/.env.secret.relay
    ```
 
-   Append `,jobaccelerator@relay.local:<password>` to `SMTPD_SASL_USERS` in
-   `apps/production/email-relay/.env.secret.relay`, then:
+3. Add `SMTP_PASS=<password>` here:
 
    ```bash
-   ./scripts/encrypt-env-files.sh apps/production/email-relay
+   ./scripts/onepassword-secrets.mts edit apps/production/job-accelerator/.env.secret.app
    ```
 
-3. Decrypt both job-accelerator files to plaintext once:
-
-   ```bash
-   SOPS_AGE_KEY_FILE=home-infra-private.agekey sops decrypt \
-     --input-type dotenv --output-type dotenv \
-     apps/production/job-accelerator/.env.secret.app.encrypted \
-     > apps/production/job-accelerator/.env.secret.app
-   SOPS_AGE_KEY_FILE=home-infra-private.agekey sops decrypt \
-     --input-type dotenv --output-type dotenv \
-     apps/production/job-accelerator/.env.secret.db.encrypted \
-     > apps/production/job-accelerator/.env.secret.db
-   ```
-
-4. Add `SMTP_PASS=<password>` to `.env.secret.app`, then:
-
-   ```bash
-   ./scripts/encrypt-env-files.sh apps/production/job-accelerator
-   ```
-
-5. Push both groups to 1Password and commit the `.encrypted` files:
-
-   ```bash
-   ./scripts/onepassword-secrets.mts push --only email-relay --only job-accelerator
-   ```
+4. Commit both `.encrypted` files.
 
 ## Rotation
 
 `MASTER_KEY_1` does not follow any of this. See [Master key](#master-key).
-`CLIENT_DATA_OWNER_EMAIL` has no 1Password copy either; it has its own steps
+`CLIENT_DATA_OWNER_EMAIL` is its own case; it has its own steps
 [below](#client_data_owner_email).
 
-Every other rotation follows the same steps:
+Every other rotation is `edit` on each file that holds the value, then a PR with the
+`.encrypted` files:
 
-1. Pull the plaintext: `./scripts/onepassword-secrets.mts pull job-accelerator`, plus
-   `./scripts/onepassword-secrets.mts pull email-relay` for the relay password.
-2. Edit the value(s).
-3. Re-encrypt the changed directory or directories: `./scripts/encrypt-env-files.sh <dir>`.
-4. Push the plaintext back: `./scripts/onepassword-secrets.mts push --only <group>...`.
-5. Commit the `.encrypted` files via a PR.
+```bash
+./scripts/onepassword-secrets.mts edit apps/production/job-accelerator/.env.secret.app
+./scripts/onepassword-secrets.mts edit apps/production/email-relay/.env.secret.relay
+```
 
 `app-creds`, `db-creds`, and `relay-creds` all come from `secretGenerator` with no
 `disableNameSuffixHash`, so a changed value renames the generated Secret, which rolls the
