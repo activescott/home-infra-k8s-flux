@@ -62,8 +62,7 @@ The encrypted Docker Hub sync credential has been saved to:
   ${credentials_file_encrypted}
 
 Sanity-check the round-trip before committing:
-  SOPS_AGE_KEY_FILE=$repo_dir/home-infra-private.agekey \\
-    sops -d --input-type json --output-type json ${credentials_file_encrypted} | jq 'keys'
+  $repo_dir/scripts/onepassword-secrets.mts show ${credentials_file_encrypted} | jq 'keys'
   # expect: ["index.docker.io"]
 
 To deploy, commit and push:

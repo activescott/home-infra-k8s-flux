@@ -8,3 +8,13 @@ resources:
   - db-statefulset.yaml
   - db-service.yaml
   - keys-pvc.yaml
+# Which models the app and the worker call through OpenRouter, read by both
+# through envFrom so the two cannot drift. Not secrets; the key lives in
+# app-creds. PARSE_PROFILE is Scott's starting choice, and a benchmark picks a
+# cheaper one later. SUGGEST_EMPLOYERS is the same model, spelled out so that
+# changing one is a deliberate edit to the other too.
+configMapGenerator:
+  - name: models
+    literals:
+      - OPENROUTER_MODEL_PARSE_PROFILE=anthropic/claude-sonnet-5
+      - OPENROUTER_MODEL_SUGGEST_EMPLOYERS=anthropic/claude-sonnet-5

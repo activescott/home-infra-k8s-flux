@@ -93,8 +93,13 @@ No DNS/cert work needed (wildcard already covers it).
 No anonymous access anywhere on the registry API (these registries are
 internet-reachable by design, for cert trust — see plan.md).
 `/metrics` is the one deliberate exception, see "Monitoring" below.
-Passwords live in 1Password; identifiers are in
-`home-infra-private/inventory/registries.md`.
+The committed `zot-htpasswd.encrypted` holds only bcrypt hashes, which the
+passwords are not derivable from, so the passwords are stored separately. They
+are still a 1Password attachment (`zot/.env.secret.zot-passwords`) and move to
+`apps/production/zot/.env.secret.zot-passwords.encrypted` as part of
+[#159](https://github.com/activescott/home-infra-k8s-flux/issues/159); after
+that, read them with `./scripts/onepassword-secrets.mts show`. Identifiers are
+in `home-infra-private/inventory/registries.md`.
 
 | Account | Role | Used for |
 |---|---|---|

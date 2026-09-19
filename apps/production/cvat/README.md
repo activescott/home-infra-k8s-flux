@@ -49,10 +49,10 @@ ownership on the NAS, not re-enable the chmod.
 
 ## Secrets
 
-- `cvat-postgres-secret` (SOPS, `.env.secret.cvat-postgres` → `.encrypted`, plaintext in
-  1Password): keys `username`/`database`/`password`, consumed by both the postgres pod
-  and the chart's backends. Re-encrypt with `./scripts/encrypt-env-files.sh
-apps/production/cvat`.
+- `cvat-postgres-secret` (SOPS, `.env.secret.cvat-postgres.encrypted`): keys
+  `username`/`database`/`password`, consumed by both the postgres pod and the chart's
+  backends. Change it with `./scripts/onepassword-secrets.mts edit
+  apps/production/cvat/.env.secret.cvat-postgres`.
 - `cvat-cache-auth` (plain yaml, not secret): empty `password` for the chart's
   redis/kvrocks env refs — both run without auth, cluster-internal only.
 - CVAT superuser: created once after first boot (server pod name differs under the
