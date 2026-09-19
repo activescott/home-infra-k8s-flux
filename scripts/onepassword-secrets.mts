@@ -1228,8 +1228,9 @@ function commandRotateAgeKey(options: Options): void {
       `  1. ./scripts/onepassword-secrets.mts list   # must exit 0\n` +
       `  2. review git diff --stat, commit, PR, merge\n` +
       `  3. confirm Flux is green: flux --context nas get kustomization apps\n` +
-      `  4. re-apply the cluster secret with the new key only:\n` +
-      `     ./scripts/create-sops-age-decryption-secret.sh\n` +
+      `  4. re-apply the cluster secret with the new key only, naming it (with no argument\n` +
+      `     it applies both, since the old one is not renamed until step 5):\n` +
+      `     ./scripts/create-sops-age-decryption-secret.sh home-infra-private-<YYYYMMDD>${AGE_KEY_SUFFIX}\n` +
       `  5. in 1Password, rename the retired attachment to ` +
       `home-infra-private-retired-<YYYYMMDD>${AGE_KEY_SUFFIX} and the new one to ` +
       `home-infra-private${AGE_KEY_SUFFIX}\n` +

@@ -117,8 +117,8 @@ agent's to run. In order.
      && echo "1Password copy matches" && rm home-infra-private.agekey
    ```
 
-   A `show` that succeeds is not this check: it proves some key on the machine works, and
-   until the file is gone that includes the file.
+   `show` never reads this file, only the key from 1Password, so it cannot tell you whether
+   the file and the 1Password copy are the same key. The check above can.
 
 8. Tell the agent, and it opens PR 2.
 

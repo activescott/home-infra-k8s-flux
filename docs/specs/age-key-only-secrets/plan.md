@@ -79,7 +79,7 @@ but a renamed item then fails with a clear message instead of a path parse error
 const key = op(["read", `op://${vault}/${itemId}/${AGE_KEY_FILENAME}`])
 if (key.status !== 0) fail(...)            // stderr only, never stdout
 const env = { ...process.env, SOPS_AGE_KEY: key.stdout.toString("utf8").trim() }
-delete env.SOPS_AGE_KEY_FILE               // higher precedence than SOPS_AGE_KEY
+delete env.SOPS_AGE_KEY_FILE               // sops merges it with SOPS_AGE_KEY
 delete env.SOPS_AGE_KEY_CMD
 ```
 
@@ -226,7 +226,7 @@ in the cluster before any ciphertext changes:
 | 4 | Add the new key to the in-cluster secret **alongside** the old one, two `.agekey` data entries | Scott | re-apply the secret with the old key only |
 | 5 | `rotate-age-key --new-recipient <new>` on a branch, review `git diff --stat`, commit, PR, merge | agent or Scott | `git checkout -- .` before commit; `git revert` after merge, which restores ciphertext the still-present old key decrypts |
 | 6 | Confirm Flux is green: `flux --context nas get kustomization apps`, `kubectl --context nas get kustomizations -A` | either | step 5's revert |
-| 7 | Re-apply the in-cluster secret with the new key only | Scott | re-add the old entry |
+| 7 | Re-apply the in-cluster secret with the new key only, naming it: `create-sops-age-decryption-secret.sh home-infra-private-<YYYYMMDD>.agekey`. With no argument it would apply both, since the old one is not renamed until step 8 | Scott | re-add the old entry |
 | 8 | In 1Password, rename the old attachment to `home-infra-private-retired-<YYYYMMDD>.agekey` and the new one to `home-infra-private.agekey` | Scott | rename back |
 
 Steps 4 and 7 are `kubectl` against the cluster, which AGENTS.md otherwise forbids.
@@ -478,7 +478,7 @@ had this property; it is not new, but it is now the only plaintext that exists.
 
 **1Password becomes a single point of failure for the whole cluster.** That is the
 point of requirement 6, and the offline copy is the answer. It only works if it is
-actually verified, hence the decrypt check in step 3.
+actually verified, hence the `age-keygen -y` check in step 3.
 
 **A `git revert` that reaches back past a rotation produces ciphertext the cluster
 cannot read.** Retired keys are kept for this, but the cluster only holds the current
