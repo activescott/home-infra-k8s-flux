@@ -13,6 +13,13 @@ spec:
         app: app
         app.activescott.com/component: app
     spec:
+      # The image runs as uid 1000 (activescott/job-accelerator#101); the keys
+      # dataset must be chowned to 1000:1000 first, see
+      # apps/production/job-accelerator/README.md#keystore-dataset.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
       containers:
         - name: app
           image: job-accelerator-image-app
