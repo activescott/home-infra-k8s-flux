@@ -62,6 +62,7 @@ spec:
           volumeMounts:
             - name: keys
               mountPath: /keys
+              readOnly: true
           resources:
             limits:
               cpu: "0.5"
