@@ -587,6 +587,45 @@ function recipientsOf(encryptedPath: string, format: SopsFormat): string[] {
     .filter((recipient): recipient is string => Boolean(recipient))
 }
 
+const NON_AGE_KEY_TYPES = ["pgp", "kms", "gcp_kms", "azure_kv", "hc_vault"]
+
+/**
+ * Problems in a file's sops metadata that recipientsOf cannot see: a key of another type
+ * can decrypt the file too, and rotate --rm-age would never remove it. sops' MAC does not
+ * cover this metadata, so an added entry leaves the file valid.
+ */
+function foreignKeysOf(encryptedPath: string, format: SopsFormat): string[] {
+  const text = readFileSync(encryptedPath, "utf8")
+  const types = new Set<string>()
+  let keyGroups = 0
+  if (format === "dotenv") {
+    for (const match of text.matchAll(/^sops_([a-z_]+?)__list_(\d+)__/gm)) {
+      if (NON_AGE_KEY_TYPES.includes(match[1])) types.add(match[1])
+      if (match[1] === "key_groups") keyGroups = Math.max(keyGroups, Number(match[2]) + 1)
+    }
+    // Inside a key group the type follows the group index.
+    for (const match of text.matchAll(/^sops_key_groups__list_\d+__map_([a-z_]+?)__/gm)) {
+      if (NON_AGE_KEY_TYPES.includes(match[1])) types.add(match[1])
+    }
+  } else {
+    const sops = (JSON.parse(text) as { sops?: Record<string, unknown> }).sops ?? {}
+    const groups = Array.isArray(sops.key_groups)
+      ? (sops.key_groups as Record<string, unknown>[])
+      : []
+    keyGroups = groups.length
+    for (const holder of [sops, ...groups]) {
+      for (const type of NON_AGE_KEY_TYPES) {
+        const entries = holder?.[type]
+        if (Array.isArray(entries) && entries.length > 0) types.add(type)
+      }
+    }
+  }
+  const problems: string[] = []
+  if (types.size > 0) problems.push(`non-age keys: ${[...types].sort().join(", ")}`)
+  if (keyGroups > 1) problems.push(`${keyGroups} key groups`)
+  return problems
+}
+
 /** The single declared recipient, read from the file that declares it. */
 function configuredRecipient(repoRoot: string): string {
   const path = join(repoRoot, SOPS_CONFIG_INCLUDE)
@@ -879,6 +918,12 @@ function commandList(options: Options): void {
               ? `${recipients.length} recipients; only the one of record belongs`
               : "recipient is not the one of record; rotation did not finish",
           )
+        }
+        const foreign = foreignKeysOf(`${file.absPath}.encrypted`, format)
+        if (foreign.length > 0) {
+          if (mark === OK) staleRecipient += 1
+          mark = BAD
+          notes.push(`${foreign.join("; ")}; only the age recipient of record belongs`)
         }
         if (file.hasPlaintext) {
           strayPlaintext += 1
