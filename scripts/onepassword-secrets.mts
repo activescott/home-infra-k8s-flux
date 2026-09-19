@@ -1943,6 +1943,7 @@ function usage(): void {
       "  OP_VAULT            default vault",
       "  OP_AGE_KEY_REF      full op:// reference to the age key, overriding item lookup.",
       "                      Point it at a scratch item to test without the real key.",
+      "                      Leave it unset for a real rotation: the gate would check that item instead.",
       "  EDITOR              used by edit and new. Default: first of vim, nano, vi on PATH.",
     ].join("\n"),
   )
