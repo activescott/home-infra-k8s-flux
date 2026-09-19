@@ -88,3 +88,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-job-accelerator-suggestions
+    namespace: monitoring
+    files:
+      - dashboards/job-accelerator-suggestions.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
