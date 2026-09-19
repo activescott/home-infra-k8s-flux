@@ -1,0 +1,31 @@
+# Only the app and the worker may reach Postgres. Without this the db Service
+# answers anyone in the cluster who has the password (activescott/job-accelerator#24).
+#
+# Nothing else connects over the network. The app pod applies migrations (the
+# worker's `command` skips the entrypoint), there is no db-backup CronJob here and
+# no Postgres exporter, and the db's own probes are `exec pg_isready`. `kubectl exec
+# db-0 -- psql` runs inside the pod, so this does not affect it either. Anything
+# added later that talks to 5432, a backup job included, needs a rule here, or it
+# times out with nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-app-worker
+  namespace: job-accelerator-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: app
+        - podSelector:
+            matchLabels:
+              app: worker
+      ports:
+        - port: 5432
+          protocol: TCP

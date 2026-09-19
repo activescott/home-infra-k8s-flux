@@ -8,6 +8,7 @@ resources:
   # through the Service instead.
   - app-ops-middleware.yaml
   - app-ops-ingress.yaml
+  - db-networkpolicy.yaml
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 patches:
   # ghcr.io/activescott/job-accelerator is private, so both Deployments need
