@@ -66,6 +66,16 @@ secretGenerator:
   - name: client-owner
     envs:
       - .env.secret.client-owner.public-key-encrypted.encrypted
+  # Signs the five-minute cookie that binds a WebAuthn ceremony to the browser
+  # it started in. Was JWT_SECRET, so one value signed both sessions and
+  # challenges (activescott/job-accelerator#106). `public-key-encrypted`
+  # because nobody ever saw it: it was piped straight into sops against the
+  # age recipient and never written to disk in the clear, so
+  # onepassword-secrets.mts skips it rather than reporting a missing backup.
+  # Replacing the file only drops the challenges in flight, which live seconds.
+  - name: passkey-challenge
+    envs:
+      - .env.secret.passkey-challenge.public-key-encrypted.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 # The app and worker Deployments both name job-accelerator-image-app, so one
 # image update rolls both.
