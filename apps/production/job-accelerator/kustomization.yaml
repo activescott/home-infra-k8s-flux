@@ -72,4 +72,4 @@ secretGenerator:
 images:
   - name: job-accelerator-image-app
     newName: ghcr.io/activescott/job-accelerator/app # {"$imagepolicy": "flux-system:policy-job-accelerator-app:name"}
-    newTag: v0.8.0 # {"$imagepolicy": "flux-system:policy-job-accelerator-app:tag"}
+    newTag: v0.9.1 # {"$imagepolicy": "flux-system:policy-job-accelerator-app:tag"}
