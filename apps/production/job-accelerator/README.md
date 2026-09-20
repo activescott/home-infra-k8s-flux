@@ -253,8 +253,10 @@ here is automated, and no agent touches the NAS. Access details are in `home-inf
    # 1000:1000 700
    ```
 
-   Root can write regardless of the mode; `0700` is what keeps every other account on the box
-   out of the key files.
+   The containers drop every capability, including `CAP_DAC_OVERRIDE`, so root can write here
+   only because it owns the dataset and the key files; a later chown to another uid would break
+   key writes. `0700` is what keeps every other account on the box out. job-accelerator#101
+   moves the app to uid 1000 and adds a chown step for this dataset.
 
    Run it again once the new pod is `Running`. The old root pod can still write root-owned
    0600 key files in the gap between this chown and the rollout, and the new pod couldn't

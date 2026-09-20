@@ -23,6 +23,21 @@ spec:
       containers:
         - name: app
           image: job-accelerator-image-app
+          # Still uid 0 with a writable root filesystem (activescott/job-accelerator#40
+          # wants both gone). docker-entrypoint.sh runs `prisma migrate deploy` and
+          # `prisma generate` on every boot, and the image installs Prisma with
+          # --ignore-scripts, so both first download the engines into
+          # /app/node_modules/@prisma/engines, which root owns. Any other uid, or a
+          # read-only root, gets "Can't write to .../@prisma/engines" and the migrate
+          # loop in the entrypoint never exits. That needs an image change first. Root
+          # owns everything this container writes (the engines, /root/.npm,
+          # /root/.cache/prisma, /keys), so it needs none of the dropped capabilities.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 3300
           env:
