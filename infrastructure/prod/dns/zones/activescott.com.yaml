@@ -76,12 +76,16 @@ spec:
       adopt: 01f2512222cebbba6d6015c339893cc8
       ttl: 1
       content: k8s.activescott.com
+    # rua= moved off admin@ so aggregate reports reach whoever is watching them without
+    # also handing them this zone's general admin mail. ruf= stays: forensic reports quote
+    # the message that triggered them. dmarc@ is routed in
+    # ../email-routing/activescott.com.yaml.
     - key: dmarc-txt
       name: _dmarc.activescott.com
       type: TXT
       adopt: 23f6012744cdecb426f5724cdce3c489
       ttl: 1
-      content: v=DMARC1; p=reject; sp=reject; rua=mailto:admin@activescott.com; ruf=mailto:admin@activescott.com
+      content: v=DMARC1; p=reject; sp=reject; rua=mailto:dmarc@activescott.com; ruf=mailto:admin@activescott.com
     - key: eth-cname
       name: eth.activescott.com
       type: CNAME

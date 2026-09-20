@@ -30,6 +30,11 @@ spec:
     # (developers.cloudflare.com/email-service/configuration/domains/). Whether an existing
     # DMARC record survives onboarding decides who can own this record on the real sending
     # domains, so it is established here first and re-read afterwards.
+    #
+    # rua= already names a dmarc@ address on this zone, but nothing delivers it: this zone
+    # has no apex MX and Email Routing is unconfigured, so aggregate reports sent here
+    # bounce. Fixing that means turning Email Routing on and letting it write the apex MX,
+    # which is a change to a zone already onboarded to Email Sending and is not made here.
     - key: dmarc-txt
       name: _dmarc.productpoet.com
       type: TXT
