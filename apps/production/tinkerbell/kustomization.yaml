@@ -3,6 +3,7 @@ resources:
   - db-pv.yaml
   - ../../base/tinkerbell/
   - app-ingress-certificate.yaml
+  - db-networkpolicy.yaml
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 patches:
   - path: patch-app-deployment.yaml
