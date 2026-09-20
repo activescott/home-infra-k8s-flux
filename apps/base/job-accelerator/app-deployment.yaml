@@ -56,6 +56,16 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: JWT_SECRET
+            # Signs the five-minute cookie that binds a WebAuthn ceremony to
+            # one browser. Shared JWT_SECRET until
+            # activescott/job-accelerator#106; its own Secret now, so the
+            # session key and the challenge key fail separately. Only this
+            # Deployment: the worker never builds the passkey provider.
+            - name: PASSKEY_CHALLENGE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: passkey-challenge
+                  key: PASSKEY_CHALLENGE_SECRET
             # The only addresses that can sign in. Kept in the encrypted
             # secret rather than here because this repo is public.
             - name: ALLOWED_EMAILS
