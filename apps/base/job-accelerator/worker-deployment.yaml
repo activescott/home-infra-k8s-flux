@@ -28,6 +28,13 @@ spec:
       # worker.ts aborts its loop on SIGTERM and lets the task in flight
       # finish, so its row is not left claimed.
       terminationGracePeriodSeconds: 60
+      # The image runs as uid 1000 (activescott/job-accelerator#101); the keys
+      # dataset must be chowned to 1000:1000 first, see
+      # apps/production/job-accelerator/README.md#keystore-dataset.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
       containers:
         - name: worker
           image: job-accelerator-image-app

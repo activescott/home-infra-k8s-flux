@@ -202,9 +202,9 @@ that and destroys every client's data if the keystore is not empty.
 ## Keystore dataset
 
 The keystore is a hostPath PV at `/mnt/thedatapool/job-accelerator-keys`
-(`keys-pv.yaml`), mounted at `/keys`. The app container runs as **uid 0, gid 0** — the image
-sets no `USER` and the Deployment sets no `runAsUser` — so the directory is owned by
-`root:root`, mode `0700`.
+(`keys-pv.yaml`), mounted at `/keys`. The app container runs as **uid 1000, gid 1000**
+(activescott/job-accelerator#101) — the image sets `USER 1000` and the Deployment sets
+`runAsUser: 1000` — so the directory must be owned by `1000:1000`, mode `0700`.
 
 It is deliberately not under `/mnt/thedatapool/app-data/` like the database volume. app-data
 is replicated to `backupspool/replication` and is on the weekly B2 include list, neither
@@ -242,7 +242,7 @@ here is automated, and no agent touches the NAS. Access details are in `home-inf
 2. **Own it and lock it down**, over SSH as root:
 
    ```bash
-   chown 0:0 /mnt/thedatapool/job-accelerator-keys
+   chown 1000:1000 /mnt/thedatapool/job-accelerator-keys
    chmod 0700 /mnt/thedatapool/job-accelerator-keys
    ```
 
@@ -250,13 +250,17 @@ here is automated, and no agent touches the NAS. Access details are in `home-inf
 
    ```bash
    stat -c '%u:%g %a' /mnt/thedatapool/job-accelerator-keys
-   # 0:0 700
+   # 1000:1000 700
    ```
 
    The containers drop every capability, including `CAP_DAC_OVERRIDE`, so root can write here
    only because it owns the dataset and the key files; a later chown to another uid would break
    key writes. `0700` is what keeps every other account on the box out. job-accelerator#101
    moves the app to uid 1000 and adds a chown step for this dataset.
+
+   Run it again once the new pod is `Running`. The old root pod can still write root-owned
+   0600 key files in the gap between this chown and the rollout, and the new pod couldn't
+   read them. The command is safe to repeat.
 
 3. **Keep it out of replication.** Under Data Protection → Replication Tasks, confirm no task
    lists `thedatapool/job-accelerator-keys` as a source and no task sources `thedatapool`
