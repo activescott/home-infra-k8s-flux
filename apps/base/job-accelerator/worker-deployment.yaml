@@ -32,6 +32,17 @@ spec:
         - name: worker
           image: job-accelerator-image-app
           command: ["node", "--enable-source-maps", "build/worker/worker.js"]
+          # Same uid as the app, which writes the key files 0600: this has to read
+          # them. See app-deployment.yaml for why that is still root. It never runs
+          # the entrypoint, so nothing here writes to the image; /tmp is there in
+          # case a library reaches for os.tmpdir().
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           # The whole secret rather than the app's per-key list. The worker
           # reads DATABASE_URL, JWT_SECRET, SMTP_USER and SMTP_PASS (the env
           # schema requires the last two in production), OPENROUTER_API_KEY,
@@ -63,6 +74,8 @@ spec:
             - name: keys
               mountPath: /keys
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           resources:
             limits:
               cpu: "0.5"
@@ -74,3 +87,6 @@ spec:
         - name: keys
           persistentVolumeClaim:
             claimName: keys
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
