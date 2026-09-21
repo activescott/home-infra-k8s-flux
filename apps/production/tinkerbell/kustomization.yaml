@@ -3,6 +3,7 @@ resources:
   - db-pv.yaml
   - ../../base/tinkerbell/
   - app-ingress-certificate.yaml
+  - db-networkpolicy.yaml
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 patches:
   - path: patch-app-deployment.yaml
@@ -35,7 +36,7 @@ secretGenerator:
 images:
   - name: tinkerbell-image-app
     newName: ghcr.io/activescott/tinkerbell/app # {"$imagepolicy": "flux-system:policy-tinkerbell-app:name"}
-    newTag: v0.42.3 # {"$imagepolicy": "flux-system:policy-tinkerbell-app:tag"}
+    newTag: v0.43.0 # {"$imagepolicy": "flux-system:policy-tinkerbell-app:tag"}
   - name: tinkerbell-image-mcp-gateway
     newName: ghcr.io/activescott/tinkerbell/mcp-gateway # {"$imagepolicy": "flux-system:policy-tinkerbell-mcp-gateway:name"}
     newTag: v0.3.2 # {"$imagepolicy": "flux-system:policy-tinkerbell-mcp-gateway:tag"}
