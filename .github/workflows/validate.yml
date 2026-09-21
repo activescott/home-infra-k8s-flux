@@ -8,7 +8,9 @@ on:
 
 jobs:
   kustomize-build:
-    runs-on: ubuntu-latest
+    # Fork PRs stay on GitHub-hosted runners: this repo is public and the
+    # self-hosted runner is a privileged dind pod on the cluster's only node.
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || 'home-infra-k8s-flux-runners' }}
     steps:
       - uses: actions/checkout@v7
 
