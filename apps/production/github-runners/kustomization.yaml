@@ -9,5 +9,11 @@ resources:
   - ./runners/tinkerbell
   - ./runners/ramblefeed
   - ./runners/fernfiles
+  - ./runners/job-accelerator
+  - ./runners/home-infra-k8s-flux
+  - ./runners/auth
+  - ./runners/activeassistant
+  - ./runners/gpu-agent
+  - ./runners/browser-chaperone
 
 buildMetadata: [originAnnotations, transformerAnnotations]
