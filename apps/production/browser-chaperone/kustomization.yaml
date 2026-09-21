@@ -45,6 +45,16 @@ secretGenerator:
   - name: app-creds
     envs:
       - .env.secret.app.encrypted
+  # JWT_SECRET, ALLOWED_EMAILS and the email-relay login. SMTP_PASS must match the
+  # browserchaperone@relay.local entry in email-relay's SMTPD_SASL_USERS.
+  - name: app-signin
+    envs:
+      - .env.secret.app-signin.encrypted
+  # One Secret for both Deployments: the browser sends this token on every /internal/* call
+  # and the app refuses any call without it.
+  - name: internal-api-token
+    envs:
+      - .env.secret.internal-api-token.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
