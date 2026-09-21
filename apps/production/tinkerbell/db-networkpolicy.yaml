@@ -1,0 +1,33 @@
+# Only the app may reach Postgres. Without this the db Service answers anyone in
+# the cluster who has the password (activescott/home-infra-k8s-flux#178).
+#
+# mcp-gateway and searxng are the other two workloads. mcp-gateway mounts the
+# whole app-creds secret through `envFrom`, so it does hold DATABASE_URL, but it
+# has no Postgres client to use it with: packages/mcp-gateway depends on the MCP
+# SDK, ai, pino and zod, imports no other workspace package, and reads tool
+# accounts through the web-app layer instead (see its types.ts). searxng holds
+# no database credential at all. There is no db-backup CronJob here and no
+# Postgres exporter, the tinkerbell_app Prometheus job scrapes 3100 rather than
+# the db, and the db's own probes are `exec pg_isready`. `kubectl exec db-0 --
+# psql` runs inside the pod, so this does not affect it either. If mcp-gateway
+# ever opens its own connection, it needs a rule here, or it times out with
+# nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-app
+  namespace: tinkerbell-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 5432
+          protocol: TCP

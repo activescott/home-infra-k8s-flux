@@ -68,3 +68,7 @@ resources:
   # Authelia login portal at auth.activescott.com. Secrets and data dir
   # created 2026-09-14; see apps/production/authelia/ for configuration.
   - ./authelia
+  # The browser service's egress proxy and the NetworkPolicies for browser-chaperone
+  # (activescott/activeassistant#196). The browser service and approval app are not deployed
+  # yet; see browser-chaperone/networkpolicy.yaml.
+  - ./browser-chaperone

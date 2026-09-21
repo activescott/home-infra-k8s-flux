@@ -1,0 +1,169 @@
+# Who may talk to what in browser-chaperone (activescott/activeassistant#191, #196).
+#
+# Only the egress proxy is deployed here so far. The browser service, the approval app and its
+# database are not, and these policies are written against the labels in browser-chaperone's
+# k8s/base (`app: browser`, `app: app`, `app: db`), so they are in force from the moment those
+# land rather than added afterwards.
+#
+# The assistant's pod (namespace olya) is the one to keep out. Its own egress policy already
+# denies all of 172.16.0.0/12, so today it cannot reach anything in this namespace at all, and
+# its ServiceAccount is read-only with no Secrets, ConfigMaps, exec, port-forward or proxy
+# (apps/production/olya/olya-rbac.yaml). The policies below make this namespace refuse it too,
+# so the allowlist store stays closed if that policy is ever loosened to let her drive the
+# browser.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. Kubelet
+# probes come from the node and are not affected.
+---
+# The browser pod: out through the proxy and to the approval app, and nowhere else. The browser
+# service sets no NO_PROXY and has no second route, so a navigation that tries to skip the proxy
+# has nowhere to go.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: browser
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: browser
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # The drive API has no authentication of its own; this is what stands in for it. Only the
+    # assistant drives the browser.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 3500
+          protocol: TCP
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: egress-proxy
+      ports:
+        - port: 3128
+          protocol: TCP
+    # GET /internal/allowlist/check and POST /internal/allowlist/requests.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 3400
+          protocol: TCP
+    # DNS, for the two Service names above. Chromium resolves nothing else itself: with a proxy
+    # configured it hands the hostname to the proxy.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The proxy: reachable from the browser only, and out to the internet but no private network.
+# The except list matches the assistant's own policy in apps/production/olya.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: egress-proxy
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: egress-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: browser
+      ports:
+        - port: 3128
+          protocol: TCP
+
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The approval app holds every write route to the allowlist. In-cluster, only the browser
+# service calls it; people reach the UI through Traefik. Ingress only: what the app itself
+# needs to reach is decided when it is deployed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: app
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: browser
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 3400
+          protocol: TCP
+---
+# The allowlist store. Only the approval app connects; it applies migrations at boot, and the
+# db's probes are `exec pg_isready`. A backup job added later needs a rule here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 5432
+          protocol: TCP

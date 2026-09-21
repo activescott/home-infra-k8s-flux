@@ -57,16 +57,26 @@ spec:
   zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
   zoneName: activescott.com
   aliases:
+    # New rule, so no id in `adopt` below: this zone kept its aggregate reports on admin@
+    # while the sending domains moved to a dedicated dmarc@ years later. Same name and
+    # priority as the dmarc rule on those zones.
+    #
+    # activescott.com is at p=reject, unlike the p=none sending domains, so its aggregate
+    # reports are the only warning of a legitimate sender failing alignment and being
+    # silently rejected. They go to Olya, who is watching them.
+    - localPart: dmarc
+      ruleName: dmarc-reports
+      priority: 10
+      destination: olya@pingpoet.com
     # Predates Crossplane by three years -- created 2022-08-27, the same day the destination
     # address was verified on the account, which makes this the oldest routing rule on it.
     # Was a hand-written EmailRoutingRule until it moved here so its forward address could
     # come from the Secret instead of sitting in git.
     #
-    # Load-bearing beyond forwarding: _dmarc.activescott.com publishes
-    # rua=/ruf=mailto:admin@activescott.com, so this is what makes this zone's DMARC reports
-    # land. activescott.com is at p=reject, unlike the p=none sending domains, so the reports
-    # are the only warning of a legitimate sender failing alignment and being silently
-    # rejected.
+    # Still carries this zone's forensic reports: _dmarc.activescott.com publishes
+    # ruf=mailto:admin@activescott.com. Only rua= moved to dmarc@ above, because a forensic
+    # report quotes the message that triggered it and there is no reason to send other
+    # people's mail to a third address.
     #
     # ruleName is Cloudflare's auto-generated label, reproduced verbatim, and priority stays
     # at the 0 it was adopted with: both are live state, and changing either here would write

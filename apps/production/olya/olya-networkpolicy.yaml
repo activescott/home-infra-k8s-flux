@@ -161,3 +161,16 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
+
+    # The browser service's drive API (activescott/activeassistant#229). The browser pod's own
+    # policy in apps/production/browser-chaperone admits her on this port and nothing else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: browser-chaperone-prod
+          podSelector:
+            matchLabels:
+              app: browser
+      ports:
+        - port: 3500
+          protocol: TCP
