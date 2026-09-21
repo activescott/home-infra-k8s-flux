@@ -284,18 +284,18 @@ not tied to one failure mode, so what's actually wrong varies. Diagnosed causes 
 
 - **Warn volume**: usually the relevance guard rejecting `searxng-google` results on
   job-board queries (quoted `site:` operators plus `OR`), which runs a chronic ~50%
-  rejection rate — a burst of concurrent searches is what pushes it past the hourly
+  rejection rate, and a burst of concurrent searches is what pushes it past the hourly
   threshold. See activescott/tinkerbell#186. Breakdown by message:
   `topk(10, sum by (msg) (count_over_time({namespace="tinkerbell-prod", level="warn"}[1h])))`.
 - **Error volume**: usually a relevance-guard retry that excludes the one provider it
-  just rejected, leaving nothing to query — it logs at error level even though the
+  just rejected, leaving nothing to query, so it logs at error level even though the
   caller goes on to serve the first attempt, a handled condition rather than a real
   failure. See activescott/tinkerbell#187. Check each error line's `errors` field
   (empty in the handled case) and whether it's followed within milliseconds by a
   "Validation retry search failed, serving first attempt" warn line:
   `{namespace="tinkerbell-prod", level=~"error|fatal"} | json`.
 
-File the triage issue in `activescott/tinkerbell`, not here — the rule lives in this
+File the triage issue in `activescott/tinkerbell`, not here: the rule lives in this
 repo, but the code it watches does not.
 
 ### Crossplane sync alerts
@@ -303,15 +303,19 @@ repo, but the code it watches does not.
 `CrossplaneResourcesNotSynced` fires per-GVK, not per-resource, so start with the
 specific resource's own `Synced` condition message rather than the alert. Crossplane
 providers generally don't send their errors to Loki, so when the condition message
-alone isn't enough, check Kubernetes events instead:
+alone isn't enough, check Kubernetes events instead. The alert's `namespace` label is
+the provider's namespace, not the resource's: managed resources are namespaced where
+they're declared, so scope to that namespace once you know it. `-A` across namespaces
+is fine as a default:
 
 ```bash
-kubectl -n crossplane-system get events --field-selector reason=CannotCreateExternalResource
+kubectl -A get events --field-selector reason=CannotCreateExternalResource
 ```
 
 Diagnosed case so far (activescott/home-infra-k8s-flux#186, #187): a Cloudflare API
-token missing an account-level permission failed resource creation with a 403; the fix
-was granting that permission on the token. File the triage issue in this repo —
+token missing an account-level permission failed resource creation with a 403,
+surfaced in the `cloudflare` namespace's events. The fix is granting that permission
+on the token; #187 tracks it, blocked on Scott. File the triage issue in this repo,
 Crossplane and its providers are declared here.
 
 ### Notes

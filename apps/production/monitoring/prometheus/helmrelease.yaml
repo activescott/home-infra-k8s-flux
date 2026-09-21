@@ -227,7 +227,7 @@ spec:
                     NOT update while the reason stays the same, so a stale-looking timestamp
                     does not mean the controller has stopped retrying -- and an unchanging one
                     does not mean it is still trying either.
-                  query: 'kubectl -n crossplane-system get events --field-selector reason=CannotCreateExternalResource'
+                  query: 'kubectl -A get events --field-selector reason=CannotCreateExternalResource'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/README.md#crossplane-sync-alerts
                   repo: activescott/home-infra-k8s-flux
               # CrossplaneResourcesNotSynced resolves on exists - synced == 0,
@@ -848,14 +848,14 @@ spec:
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'Tinkerbell warn volume up — usually searxng-google failing the relevance guard.'
+                  summary: 'Tinkerbell warn volume up, known cause: searxng-google failing the relevance guard.'
                   description: >-
-                    The relevance guard rejects searxng-google results on job-board queries
-                    (quoted `site:` operators plus `OR`) at a chronic ~50% rate; a burst of
-                    concurrent searches is what pushes that past the hourly threshold, not a new
-                    failure. It does not mean the app is down: info lines still dominate and a
-                    rejected search is served as a degraded result rather than failing outright.
-                    See activescott/tinkerbell#186 for the reproduction.
+                    Known cause so far: the relevance guard rejecting searxng-google results on
+                    job-board queries (quoted `site:` operators plus `OR`) at a chronic ~50% rate,
+                    which a burst of concurrent searches pushes past the hourly threshold. Confirm
+                    by checking that info lines still dominate and rejected searches are served as
+                    degraded results rather than failing outright. See activescott/tinkerbell#186.
+                    Anything that doesn't match this pattern is a new failure.
                   query: 'topk(10, sum by (msg) (count_over_time({namespace="tinkerbell-prod", level="warn"}[1h])))'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/README.md#tinkerbell-log-volume-alerts
                   repo: activescott/tinkerbell
@@ -868,14 +868,15 @@ spec:
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'Tinkerbell error volume up — often a relevance-guard retry with no providers left.'
+                  summary: 'Tinkerbell error volume up, known cause: relevance-guard retry with no providers left.'
                   description: >-
-                    A retry search that excludes the one provider the relevance guard rejected has
-                    no provider left to query, so it logs at error level even though the caller
-                    goes on to serve the first attempt — a handled condition, not a real failure.
-                    Check whether the error line's `errors` field is empty and is followed within
-                    milliseconds by a "Validation retry search failed, serving first attempt" warn
-                    line; that pattern is the handled case. See activescott/tinkerbell#187.
+                    Known cause so far: a relevance-guard retry that excludes the one provider it
+                    just rejected has no provider left to query, so it logs at error level even
+                    though the caller goes on to serve the first attempt. Confirm by checking that
+                    the error line's `errors` field is empty and is followed within milliseconds by
+                    a "Validation retry search failed, serving first attempt" warn line. See
+                    activescott/tinkerbell#187. Anything that doesn't match this pattern is a new
+                    failure.
                   query: '{namespace="tinkerbell-prod", level=~"error|fatal"} | json'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/README.md#tinkerbell-log-volume-alerts
                   repo: activescott/tinkerbell
