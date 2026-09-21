@@ -1,0 +1,29 @@
+# Only the app may reach Postgres. Without this the db Service answers anyone in
+# the cluster who has the password (activescott/home-infra-k8s-flux#178).
+#
+# app is the only other workload in the namespace, and the only holder of
+# DATABASE_URL: it applies Prisma migrations itself during boot. There is no
+# db-backup CronJob here and no Postgres exporter, no Prometheus job points at
+# this namespace, and the db's own probes are `exec pg_isready`. `kubectl exec
+# db-0 -- psql` runs inside the pod, so this does not affect it either. Anything
+# added later that talks to 5432, a backup job included, needs a rule here, or
+# it times out with nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-app
+  namespace: ramblefeed-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 5432
+          protocol: TCP

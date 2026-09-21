@@ -9,9 +9,10 @@
 # source a value from a Secret. Both functions used here are already installed for
 # DNSZone.
 #
-# The destination address is read at compose time from the SOPS-encrypted Secret
-# cloudflare/email-routing-destination (key `destination`), via ExtraResources.
-# It is not in any manifest in this repo.
+# The default destination address is read at compose time from the SOPS-encrypted
+# Secret cloudflare/email-routing-destination (key `destination`), via
+# ExtraResources. It is not in any manifest in this repo. An alias may name its
+# own `destination` instead, which is only for addresses DNS already publishes.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -42,12 +43,15 @@ spec:
             {{- $mailboxes := list "abuse" "noc" "security" "postmaster" "hostmaster" "webmaster" -}}
             {{- /*
               Flatten the mandatory six and the per-zone aliases into one list of
-              {localPart, ruleName, priority} so the rule body below is written
-              once. The six are all ruleName == localPart at priority 10.
+              {localPart, ruleName, priority, destination} so the rule body below
+              is written once. The six are all ruleName == localPart at priority
+              10, and they never override the destination: an RFC 2142 mailbox
+              that did not reach the Secret's address on some zones would be the
+              drift this API exists to remove.
             */ -}}
             {{- $entries := list -}}
             {{- range $mailbox := $mailboxes -}}
-            {{- $entries = append $entries (dict "localPart" $mailbox "ruleName" $mailbox "priority" 10) -}}
+            {{- $entries = append $entries (dict "localPart" $mailbox "ruleName" $mailbox "priority" 10 "destination" "") -}}
             {{- end -}}
             {{- range $alias := ($xr.spec.aliases | default list) -}}
             {{- if has $alias.localPart $mailboxes -}}
@@ -61,7 +65,7 @@ spec:
             */ -}}
             {{- $priority := 10 -}}
             {{- if hasKey $alias "priority" -}}{{- $priority = $alias.priority -}}{{- end -}}
-            {{- $entries = append $entries (dict "localPart" $alias.localPart "ruleName" ($alias.ruleName | default $alias.localPart) "priority" $priority) -}}
+            {{- $entries = append $entries (dict "localPart" $alias.localPart "ruleName" ($alias.ruleName | default $alias.localPart) "priority" $priority "destination" ($alias.destination | default "")) -}}
             {{- end -}}
             {{- $adopt := $xr.spec.adopt | default dict -}}
             ---
@@ -144,7 +148,12 @@ spec:
                 actions:
                   - type: forward
                     value:
-                      - {{ $destination | quote }}
+                      # The Secret's address unless the alias named its own. An
+                      # override has to be verified on the Cloudflare account
+                      # first; until it is, Cloudflare refuses the update and
+                      # this rule keeps delivering to whatever it delivered to
+                      # before, which is the failure worth having.
+                      - {{ $entry.destination | default $destination | quote }}
             {{- end }}
             {{- end }}
     - step: auto-ready

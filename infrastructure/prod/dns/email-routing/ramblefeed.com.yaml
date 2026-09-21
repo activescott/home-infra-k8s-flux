@@ -66,9 +66,14 @@ spec:
     # reports bounce and the p=none monitoring period observes nothing. Created by Crossplane
     # on 2026-08-28 as a hand-written EmailRoutingRule; moved here so its forward address
     # comes from the Secret instead of sitting in git.
+    #
+    # Aggregate reports go to Olya, who is watching them for the move to p=quarantine, so
+    # this one overrides the Secret's destination. Her address is in git rather than the
+    # Secret because _dmarc publishes it to the world either way.
     - localPart: dmarc
       ruleName: dmarc-reports
       priority: 10
+      destination: olya@pingpoet.com
     # Predates Crossplane, created through the dashboard on 2025-11-03.
     #
     # ruleName is Cloudflare's auto-generated label, reproduced verbatim, and priority stays

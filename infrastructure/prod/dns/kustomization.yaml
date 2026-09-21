@@ -25,6 +25,10 @@ resources:
   # on both, and Cloudflare still returns a placeholder disabled catch-all for a zone that
   # has never enabled the feature. Adopting that would declare configuration that does not
   # exist. Add a file here if either zone ever turns routing on.
+  #
+  # destinations.yaml is not a zone: it holds the addresses those rules forward to, which
+  # Cloudflare verifies once per account rather than per zone.
+  - email-routing/destinations.yaml
   - email-routing/activescott.com.yaml
   - email-routing/coinpoet.com.yaml
   - email-routing/datamanifest.com.yaml
