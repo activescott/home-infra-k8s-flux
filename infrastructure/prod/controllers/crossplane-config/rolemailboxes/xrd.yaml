@@ -60,10 +60,11 @@ spec:
                 aliases:
                   type: array
                   description: >
-                    Zone-specific forwards that share the same destination as the
-                    RFC 2142 set. They live here rather than in their own
+                    Zone-specific forwards, defaulting to the same destination as
+                    the RFC 2142 set and overriding it per entry with
+                    `destination`. They live here rather than in their own
                     manifests because a managed resource cannot read a Secret, and
-                    the destination is only reachable from a Composition. The
+                    the default destination is only reachable from a Composition. The
                     mandatory six above are unaffected -- an alias adds a rule, it
                     never replaces or reconfigures one.
                     Not all of these are role addresses in the RFC 2142 sense:
@@ -98,6 +99,23 @@ spec:
                           matchers cannot overlap, so relative order never decides
                           delivery; the value only matters because changing it
                           writes to Cloudflare.
+                      destination:
+                        type: string
+                        description: >
+                          Forward to this address instead of the one in the
+                          Secret. Only for an address that is already public by
+                          construction: the dmarc ones are published in each
+                          zone's rua= tag, so writing them here reveals nothing
+                          DNS does not. Everything else omits this and keeps the
+                          Secret's destination, which is the whole reason that
+                          address appears in no manifest.
+
+                          Cloudflare will only forward to a destination address
+                          that is verified on the account, so every value used
+                          here needs an EmailRoutingAddress and a human to click
+                          the link Cloudflare mails. See
+                          ../../../dns/email-routing/destinations.yaml.
+                        pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
                     required: [localPart]
                 adopt:
                   type: object

@@ -1,0 +1,37 @@
+# Email Routing destination addresses. Account-scoped, not zone-scoped, which is why this
+# file is not named after a zone: Cloudflare verifies an address once for the whole account
+# and every zone's rules then forward to it.
+#
+# A rule may only forward to an address listed here and verified. Creating this resource
+# makes Cloudflare mail a verification link to the address; clicking it is a human step no
+# manifest can perform, the same shape as Email Sending onboarding. Until someone clicks,
+# status.atProvider.verified stays null, Cloudflare rejects any rule that forwards here, and
+# the rules keep delivering wherever they delivered before.
+#
+# scott@willeke.com, the destination every other rule uses, is deliberately absent. It was
+# verified in 2022 and is held in the SOPS-encrypted Secret cloudflare/email-routing-
+# destination so it appears in no manifest; declaring it here would put it back in git for
+# nothing. See ../../controllers/crossplane-config/rolemailboxes/composition.yaml.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingAddress
+metadata:
+  name: olya-pingpoet-com
+  namespace: cloudflare
+spec:
+  # Same everything-except-Delete policy as the rules alongside it: Crossplane may observe,
+  # create and update, never remove. Deleting a destination address would break every rule
+  # pointing at it across every zone at once.
+  #
+  # `deletionPolicy: Orphan` does NOT exist on namespaced managed resources
+  # (`*.m.cloudflare.com`); setting it fails the Flux dry-run and blocks the kustomization.
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  # The Email Routing token. Destination addresses are an account-level permission
+  # (Email Routing Addresses) rather than the zone-level Email Routing Rules the existing
+  # resources use, so this is the first resource here to need it. If the token was issued
+  # without it, this resource reports 403 and nothing else in the directory is affected.
+  providerConfigRef:
+    kind: ProviderConfig
+    name: email-routing
+  forProvider:
+    accountId: c88dfb5cc7256dd4a215040b01182eaa
+    email: olya@pingpoet.com
