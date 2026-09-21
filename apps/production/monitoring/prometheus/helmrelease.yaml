@@ -228,7 +228,7 @@ spec:
                     does not mean the controller has stopped retrying -- and an unchanging one
                     does not mean it is still trying either.
                   query: 'kubectl -A get events --field-selector reason=CannotCreateExternalResource'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/README.md#crossplane-sync-alerts
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CrossplaneResourcesNotSynced.md
                   repo: activescott/home-infra-k8s-flux
               # CrossplaneResourcesNotSynced resolves on exists - synced == 0,
               # which is reached either by synced rising OR by exists falling to
@@ -857,7 +857,7 @@ spec:
                     degraded results rather than failing outright. See activescott/tinkerbell#186.
                     Anything that doesn't match this pattern is a new failure.
                   query: 'topk(10, sum by (msg) (count_over_time({namespace="tinkerbell-prod", level="warn"}[1h])))'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/README.md#tinkerbell-log-volume-alerts
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppWarnVolumeElevated.md
                   repo: activescott/tinkerbell
               - alert: TinkerbellAppErrorVolumeElevated
                 # Threshold unchanged, but it now means 3 error lines from the app rather
@@ -878,7 +878,7 @@ spec:
                     activescott/tinkerbell#187. Anything that doesn't match this pattern is a new
                     failure.
                   query: '{namespace="tinkerbell-prod", level=~"error|fatal"} | json'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/README.md#tinkerbell-log-volume-alerts
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppErrorVolumeElevated.md
                   repo: activescott/tinkerbell
           - name: email-relay
             rules:
