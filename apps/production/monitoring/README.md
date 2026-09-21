@@ -270,6 +270,50 @@ OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are availa
 
 Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
+## Alert Runbooks
+
+Pointers for alerts that have actually fired, added as they're diagnosed rather than
+guessed up front (activescott/activeassistant#147). Each covered rule's `runbook_url`
+annotation links to the matching section below.
+
+### Tinkerbell log-volume alerts
+
+`TinkerbellAppWarnVolumeElevated` and `TinkerbellAppErrorVolumeElevated` (rule group
+`tinkerbell-log-health` in `prometheus/helmrelease.yaml`) are general volume backstops,
+not tied to one failure mode, so what's actually wrong varies. Diagnosed causes so far:
+
+- **Warn volume**: usually the relevance guard rejecting `searxng-google` results on
+  job-board queries (quoted `site:` operators plus `OR`), which runs a chronic ~50%
+  rejection rate — a burst of concurrent searches is what pushes it past the hourly
+  threshold. See activescott/tinkerbell#186. Breakdown by message:
+  `topk(10, sum by (msg) (count_over_time({namespace="tinkerbell-prod", level="warn"}[1h])))`.
+- **Error volume**: usually a relevance-guard retry that excludes the one provider it
+  just rejected, leaving nothing to query — it logs at error level even though the
+  caller goes on to serve the first attempt, a handled condition rather than a real
+  failure. See activescott/tinkerbell#187. Check each error line's `errors` field
+  (empty in the handled case) and whether it's followed within milliseconds by a
+  "Validation retry search failed, serving first attempt" warn line:
+  `{namespace="tinkerbell-prod", level=~"error|fatal"} | json`.
+
+File the triage issue in `activescott/tinkerbell`, not here — the rule lives in this
+repo, but the code it watches does not.
+
+### Crossplane sync alerts
+
+`CrossplaneResourcesNotSynced` fires per-GVK, not per-resource, so start with the
+specific resource's own `Synced` condition message rather than the alert. Crossplane
+providers generally don't send their errors to Loki, so when the condition message
+alone isn't enough, check Kubernetes events instead:
+
+```bash
+kubectl -n crossplane-system get events --field-selector reason=CannotCreateExternalResource
+```
+
+Diagnosed case so far (activescott/home-infra-k8s-flux#186, #187): a Cloudflare API
+token missing an account-level permission failed resource creation with a 403; the fix
+was granting that permission on the token. File the triage issue in this repo —
+Crossplane and its providers are declared here.
+
 ### Notes
 
 - Loki has `auth_enabled: false`, so it can also be queried directly via port-forward: `kubectl --context nas port-forward -n monitoring svc/loki 3100:3100`
