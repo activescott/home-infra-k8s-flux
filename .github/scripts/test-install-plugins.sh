@@ -84,7 +84,7 @@ installed_version() {
     -e OPENCLAW_STATE_DIR=/state/openclaw \
     -e OPENCLAW_CONFIG_PATH=/state/config/openclaw.json \
     -v "$1:/state" --entrypoint openclaw "$image" plugins inspect "$2" --json \
-    | yq -p json '.install.resolvedVersion // ""' || true
+    | tee /dev/stderr | yq -p json '.install.resolvedVersion // ""' || true
 }
 
 # Asserts one run: exit status, a log line proving which path ran, and that every plugin on the
