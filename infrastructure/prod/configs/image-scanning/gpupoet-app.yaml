@@ -3,7 +3,7 @@ kind: ImageRepository
 metadata:
   name: repo-gpupoet-app
 spec:
-  image: ghcr.io/activescott/gpu-agent/app
+  image: ghcr.io/activescott/gpu-poet/app
   interval: 5h
   secretRef:
     name: github-container-registry-secret
