@@ -12,7 +12,7 @@ spec:
       # groups). The cluster-scoped v1-style groups also exist in the provider, but this
       # repo deliberately uses the namespaced form so Cloudflare resources live in a real
       # namespace instead of a global bucket.
-      version: "2.4.0"
+      version: "2.4.1"
       sourceRef:
         kind: HelmRepository
         name: crossplane-stable
