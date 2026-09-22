@@ -1557,16 +1557,21 @@ spec:
               # one too. When she's the thing that's down, that can't happen, so this alert is
               # matched ahead of the olya-hook route and sent straight to Scott instead.
               #
-              # One OR'd expression rather than four separate alerts: all four conditions are
+              # One OR'd expression rather than three separate alerts: all three conditions are
               # the same underlying event -- olya-0 stuck -- and separate alerts would page
-              # Scott four times for one outage. kube_pod_status_ready alone doesn't cover an
+              # Scott three times for one outage. kube_pod_status_ready alone doesn't cover an
               # unscheduled pod (Pending, no Ready condition reported yet), so phase="Pending"
               # is matched explicitly rather than relied on to fall out of the ready check.
+              #
+              # No OOMKilled clause: kube_pod_init_container_status_last_terminated_reason
+              # reports lastState, which keeps reading OOMKilled after a retry succeeds until
+              # the pod is next recreated, so it would still be firing 10 minutes into a pod
+              # that's healthy again. A real stuck state is already covered by the not-Ready
+              # and CrashLoopBackOff clauses above.
               - alert: OlyaPodNotReady
                 expr: >-
                   kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
                   or kube_pod_init_container_status_waiting_reason{namespace="olya",pod="olya-0",reason="CrashLoopBackOff"} > 0
-                  or kube_pod_init_container_status_last_terminated_reason{namespace="olya",pod="olya-0",reason="OOMKilled"} > 0
                   or kube_pod_status_phase{namespace="olya",pod="olya-0",phase="Pending"} > 0
                 for: 10m
                 labels:
@@ -1575,9 +1580,9 @@ spec:
                   summary: olya-0 has not been Ready for 10 minutes
                   description: >-
                     olya-0 has been not-Ready for over 10 minutes: the pod itself isn't Ready,
-                    an init container is stuck in CrashLoopBackOff or was OOMKilled, or the pod
-                    is Pending. Single replica, so this is a total outage of the assistant --
-                    and she can't triage this one herself.
+                    an init container is stuck in CrashLoopBackOff, or the pod is Pending.
+                    Single replica, so this is a total outage of the assistant, and she can't
+                    triage this one herself.
                   query: 'kubectl -n olya describe pod olya-0'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
                   repo: activescott/home-infra-k8s-flux

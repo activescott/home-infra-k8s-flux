@@ -1,8 +1,9 @@
 # OlyaPodNotReady
 
 olya-0 (namespace `olya`) has been not-Ready for 10+ minutes: the pod itself isn't Ready,
-an init container is stuck in `CrashLoopBackOff` or was `OOMKilled`, or the pod is
-Pending. Single replica, so this is a total outage of the assistant. It's routed straight
+an init container is stuck in `CrashLoopBackOff`, or the pod is Pending. `CrashLoopBackOff`
+is often the tail end of an `OOMKilled` init container that's now stuck retrying. Single
+replica, so this is a total outage of the assistant. It's routed straight
 to Scott instead of through the olya-hook receiver (`prometheus/helmrelease.yaml`) for the
 obvious reason: she can't triage her own outage.
 
