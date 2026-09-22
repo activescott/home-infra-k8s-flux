@@ -1,0 +1,24 @@
+- op: add
+  path: /spec/template/spec/imagePullSecrets
+  value:
+    - name: github-container-registry-secret
+# The image sets no NODE_ENV. Production is what makes the app refuse to start without
+# SMTP credentials and INTERNAL_API_TOKEN rather than run unable to sign anyone in.
+- op: add
+  path: /spec/template/spec/containers/0/env
+  value:
+    - name: NODE_ENV
+      value: production
+    # email-relay's sender map gives this exact address to browserchaperone@relay.local.
+    - name: FROM_EMAIL
+      value: browser-chaperone-noreply@pingpoet.com
+- op: add
+  path: /spec/template/spec/containers/0/envFrom/-
+  value:
+    secretRef:
+      name: app-signin
+- op: add
+  path: /spec/template/spec/containers/0/envFrom/-
+  value:
+    secretRef:
+      name: internal-api-token

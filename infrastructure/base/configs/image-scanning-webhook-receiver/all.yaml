@@ -131,3 +131,9 @@ spec:
     - kind: ImageRepository
       name: repo-job-accelerator-app
       namespace: flux-system
+    - kind: ImageRepository
+      name: repo-browser-chaperone-app
+      namespace: flux-system
+    - kind: ImageRepository
+      name: repo-browser-chaperone-browser
+      namespace: flux-system
