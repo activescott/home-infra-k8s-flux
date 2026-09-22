@@ -7,7 +7,9 @@ set -euo pipefail
 image=$1
 mem=$2
 olya=$PWD/apps/production/olya
-work=$(mktemp -d)
+# Under RUNNER_TEMP because files here are bind-mounted, and the runner's Docker daemon shares
+# its work volume but not its /tmp.
+work=$(mktemp -d -p "${RUNNER_TEMP:-/tmp}")
 failures=0
 
 # The pod mounts these from the olya-scripts ConfigMap with defaultMode 0555; git keeps them 0644.
