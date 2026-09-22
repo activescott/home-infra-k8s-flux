@@ -76,10 +76,20 @@ secretGenerator:
   - name: passkey-challenge
     envs:
       - .env.secret.passkey-challenge.public-key-encrypted.encrypted
+  # Signs the client's approval links (activescott/job-accelerator#157;
+  # docs/design/flows.md, "Signed approval links"). `public-key-encrypted`
+  # because nobody ever saw it: it was piped straight into sops against the
+  # age recipient and never written to disk in the clear, so
+  # onepassword-secrets.mts skips it rather than reporting a missing backup.
+  # Replacing the file invalidates any links already sent, forcing the app to
+  # resend them.
+  - name: approval-link
+    envs:
+      - .env.secret.approval-link.public-key-encrypted.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 # The app and worker Deployments both name job-accelerator-image-app, so one
 # image update rolls both.
 images:
   - name: job-accelerator-image-app
     newName: ghcr.io/activescott/job-accelerator/app # {"$imagepolicy": "flux-system:policy-job-accelerator-app:name"}
-    newTag: v0.20.0 # {"$imagepolicy": "flux-system:policy-job-accelerator-app:tag"}
+    newTag: v0.27.0 # {"$imagepolicy": "flux-system:policy-job-accelerator-app:tag"}

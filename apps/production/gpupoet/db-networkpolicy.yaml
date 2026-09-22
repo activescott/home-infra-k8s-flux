@@ -1,0 +1,34 @@
+# Only the app and the nightly backup may reach Postgres. Without this the db
+# Service answers anyone in the cluster who has the password
+# (activescott/home-infra-k8s-flux#178).
+#
+# Nothing else connects over the network. ebay-revalidation,
+# amazon-revalidation and cleanup-listings are curl images that POST to
+# app:3000; indexnow-notifier and amazon-searcher read only their own keys out
+# of app-creds, not POSTGRES_PRISMA_URL. There is no Postgres exporter and no
+# Prometheus job pointed at 5432, and the db StatefulSet declares no probes.
+# `kubectl exec db-0 -- psql` runs inside the pod, so this does not affect it
+# either. Anything added later that talks to 5432 needs a rule here, or it
+# times out with nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-app-backup
+  namespace: gpupoet-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: app
+        - podSelector:
+            matchLabels:
+              app: db-backup
+      ports:
+        - port: 5432
+          protocol: TCP

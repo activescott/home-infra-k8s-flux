@@ -270,6 +270,12 @@ OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are availa
 
 Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
+## Alert Runbooks
+
+Runbooks live in `runbooks/`, one file per alert, added as alerts are diagnosed
+rather than guessed up front (activescott/activeassistant#147). Each covered
+rule's `runbook_url` annotation points at its file.
+
 ### Notes
 
 - Loki has `auth_enabled: false`, so it can also be queried directly via port-forward: `kubectl --context nas port-forward -n monitoring svc/loki 3100:3100`

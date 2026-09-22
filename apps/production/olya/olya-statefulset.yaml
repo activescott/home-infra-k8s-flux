@@ -111,13 +111,22 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          # 2Gi is load-bearing, not headroom. The skip path (`openclaw plugins inspect`)
+          # finishes in ~1s well under 256Mi, so the limit looks oversized until an OpenClaw
+          # upgrade invalidates the trust record on the PVC and this container takes the
+          # install path instead: `openclaw plugins install` runs a real npm install, which
+          # OOMKills at both 256Mi and 512Mi and completes in ~29s at 1Gi (measured against
+          # olya:main-1790035615 / OpenClaw 2026.9.5). The `--force` reinstall path (version
+          # mismatch, not just missing record) is heavier still: it OOMKilled at 1Gi after
+          # running ~5min before the kill, so it's bumped to 2Gi. Every OpenClaw major re-runs
+          # one of these paths, so do not size this back down to what a steady-state boot uses.
           resources:
             requests:
               cpu: "50m"
               memory: 64Mi
             limits:
               cpu: "1"
-              memory: 256Mi
+              memory: 2Gi
           volumeMounts:
             - name: state
               mountPath: /state
@@ -217,6 +226,9 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: telegram_allow_from
+            # Where alert triage delivers, deliberately separate from the allowlist above.
+            - name: TELEGRAM_ALERT_CHAT_ID
+              value: "510755639"
             # OpenRouter API key for the fallback model chain.
             - name: OPENROUTER_API_KEY
               valueFrom:
@@ -298,13 +310,19 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
+          # 12Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
+          # peaking at 7.93Gi (8,511,156,224 bytes) against the prior 8Gi limit, OOMKilling the
+          # container mid-turn with three heavy agent sessions overlapping (install/build/test
+          # work, not gh-only or review sessions). Backing out the ~1.1Gi idle baseline puts each
+          # heavy session at roughly 2-2.5Gi. 12Gi covers three heavy sessions plus the idle
+          # baseline with about 3.5Gi of margin, versus zero margin at 8Gi.
           resources:
             requests:
               cpu: "500m"
-              memory: 1Gi
+              memory: 2Gi
             limits:
               cpu: "4"
-              memory: 8Gi
+              memory: 12Gi
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false

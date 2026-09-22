@@ -3,7 +3,7 @@ kind: ImageRepository
 metadata:
   name: repo-indexnow-notifier
 spec:
-  image: ghcr.io/activescott/gpu-agent/indexnow-notifier
+  image: ghcr.io/activescott/gpu-poet/indexnow-notifier
   interval: 5h
   secretRef:
     name: github-container-registry-secret
