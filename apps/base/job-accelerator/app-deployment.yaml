@@ -66,6 +66,16 @@ spec:
                 secretKeyRef:
                   name: passkey-challenge
                   key: PASSKEY_CHALLENGE_SECRET
+            # Signs and verifies the client's approval links
+            # (activescott/job-accelerator#157). Its own Secret, generated
+            # straight into sops, for the same reason as
+            # PASSKEY_CHALLENGE_SECRET above. Only this Deployment: the
+            # worker never signs or checks a link.
+            - name: APPROVAL_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: approval-link
+                  key: APPROVAL_LINK_SECRET
             # The only addresses that can sign in. Kept in the encrypted
             # secret rather than here because this repo is public.
             - name: ALLOWED_EMAILS

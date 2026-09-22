@@ -224,6 +224,9 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: telegram_allow_from
+            # Where alert triage delivers, deliberately separate from the allowlist above.
+            - name: TELEGRAM_ALERT_CHAT_ID
+              value: "510755639"
             # OpenRouter API key for the fallback model chain.
             - name: OPENROUTER_API_KEY
               valueFrom:
