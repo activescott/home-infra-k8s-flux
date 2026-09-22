@@ -74,13 +74,17 @@ for (const line of lines) {
   // A present record only proves *some* version was installed. bumping the pin in
   // managed-plugins.txt doesn't invalidate the old record, so without comparing
   // versions this install skips forever and the plugin never actually upgrades.
+  //
+  // No version covers "Plugin not found" as well as a missing record: on an empty
+  // $OPENCLAW_STATE_DIR inspect reports the former, and skipping there never installs at all.
   const { missingRecord, installedVersion } = inspect(id)
-  const versionMismatch = installedVersion !== undefined && installedVersion !== pinnedVersion
 
-  if (missingRecord || versionMismatch) {
+  if (installedVersion !== pinnedVersion) {
     const reason = missingRecord
       ? "trust record missing"
-      : `installed version ${installedVersion} != pinned ${pinnedVersion}`
+      : installedVersion === undefined
+        ? "not installed"
+        : `installed version ${installedVersion} != pinned ${pinnedVersion}`
     console.log(`install-plugins: ${id} ${reason}; installing ${spec}`)
     try {
       execFileSync("openclaw", ["plugins", "install", spec, "--accept-capabilities", "--force"], {
@@ -103,7 +107,7 @@ for (const line of lines) {
       }
     }
   } else {
-    console.log(`install-plugins: ${id} trust record present at ${pinnedVersion}; skipping`)
+    console.log(`install-plugins: ${id} trust record present at ${installedVersion}; skipping`)
   }
 }
 

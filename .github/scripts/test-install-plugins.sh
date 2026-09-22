@@ -30,11 +30,13 @@ new_volume() {
   local vol=ip-test-$1-$RANDOM
   docker volume create "$vol" >/dev/null
   # The PVC is chowned to 1000 on the NAS and seed-workspace has published openclaw.json by
-  # the time install-plugins runs. An empty config stands in for the real one, which lives in
-  # the private activeassistant repo.
+  # the time install-plugins runs. The real one lives in the private activeassistant repo; this
+  # keeps the part of its plugins block that names acpx. acpx is deliberately not in its
+  # load.paths, so the baked copy under /opt/olya/plugins is invisible to inspect there too.
   docker run --rm -u 0 -v "$vol:/state" --entrypoint sh "$image" -c '
     mkdir -p /state/home /state/openclaw /state/config &&
-    echo "{}" > /state/config/openclaw.json &&
+    echo "{\"plugins\":{\"allow\":[\"acpx\"],\"entries\":{\"acpx\":{\"enabled\":true}}}}" \
+      > /state/config/openclaw.json &&
     chown -R 1000:1000 /state' >/dev/null
   echo "$vol"
 }
@@ -127,7 +129,7 @@ done
 echo "::group::fresh install (empty volume)"
 fresh=$(new_volume fresh)
 run_install "$fresh" "$mem" "$olya/managed-plugins.txt" "$work/fresh.log"
-check_pinned fresh "$fresh" "$work/fresh.log" 0 "trust record missing; installing"
+check_pinned fresh "$fresh" "$work/fresh.log" 0 "(trust record missing|not installed); installing"
 echo "::endgroup::"
 
 echo "::group::skip (volume already at the pinned version)"
