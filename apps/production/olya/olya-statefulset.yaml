@@ -111,13 +111,20 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          # 1Gi is load-bearing, not headroom. The skip path (`openclaw plugins inspect`)
+          # finishes in ~1s well under 256Mi, so the limit looks oversized until an OpenClaw
+          # upgrade invalidates the trust record on the PVC and this container takes the
+          # install path instead: `openclaw plugins install` runs a real npm install, which
+          # OOMKills at both 256Mi and 512Mi and completes in ~29s at 1Gi (measured against
+          # olya:main-1790035615 / OpenClaw 2026.9.5). Every OpenClaw major re-runs that
+          # install, so do not size this back down to what a steady-state boot uses.
           resources:
             requests:
               cpu: "50m"
               memory: 64Mi
             limits:
               cpu: "1"
-              memory: 256Mi
+              memory: 1Gi
           volumeMounts:
             - name: state
               mountPath: /state

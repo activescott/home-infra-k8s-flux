@@ -10,6 +10,23 @@ images:
     newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
 
 patches:
+  # db-networkpolicy.yaml has to name this pod, and a Job pod otherwise carries
+  # only job-name, which is a different value every run.
+  - target:
+      kind: CronJob
+      name: db-backup
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: db-backup
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              metadata:
+                labels:
+                  app: db-backup
   - target:
       kind: PersistentVolumeClaim
       name: db-backup-pvc

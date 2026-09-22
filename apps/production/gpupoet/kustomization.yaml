@@ -8,6 +8,7 @@ resources:
   - www-redirect-middleware.yaml
   - www-redirect-ingress.yaml
   - indexnow-pv.yaml
+  - db-networkpolicy.yaml
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 patches:
   - path: patch-app-ingress.yaml
@@ -82,7 +83,7 @@ secretGenerator:
 images:
   - name: gpupoet-image-app
     newName: ghcr.io/activescott/gpu-agent/app # {"$imagepolicy": "flux-system:policy-gpupoet-app:name"}
-    newTag: v202609201018 # {"$imagepolicy": "flux-system:policy-gpupoet-app:tag"}
+    newTag: v202609211125 # {"$imagepolicy": "flux-system:policy-gpupoet-app:tag"}
   - name: gpupoet-image-db
     newName: postgres
     newTag: "17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675"
