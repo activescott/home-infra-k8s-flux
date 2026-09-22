@@ -10,6 +10,10 @@ olya=$PWD/apps/production/olya
 work=$(mktemp -d)
 failures=0
 
+# The pod mounts these from the olya-scripts ConfigMap with defaultMode 0555; git keeps them 0644.
+cp -r "$olya/scripts" "$work/scripts"
+chmod 0555 "$work"/scripts/*
+
 mapfile -t specs < <(grep -vE '^\s*(#|$)' "$olya/managed-plugins.txt")
 
 plugin_id() { sed -E 's/@[0-9].*$//; s#^.*/##' <<<"$1"; }
@@ -59,7 +63,7 @@ run_install() {
     -e OPENCLAW_CONFIG_PATH=/state/config/openclaw.json \
     -v "$vol:/state" -v "$tmpvol:/tmp" \
     -v "$cfg:/cfg/managed-plugins.txt:ro" \
-    -v "$olya/scripts:/scripts:ro" \
+    -v "$work/scripts:/scripts:ro" \
     --entrypoint sh "$image" -c '
       /scripts/install-plugins.mts; rc=$?
       peak=$(cat /sys/fs/cgroup/memory.peak 2>/dev/null) && echo "test: memory.peak $((peak / 1048576))Mi"
