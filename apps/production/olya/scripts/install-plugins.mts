@@ -51,7 +51,7 @@ for (const line of lines) {
       ? "trust record missing"
       : `installed version ${installedVersion} != pinned ${pinnedVersion}`
     console.log(`install-plugins: ${id} ${reason}; installing ${spec}`)
-    execFileSync("openclaw", ["plugins", "install", spec, "--accept-capabilities"], {
+    execFileSync("openclaw", ["plugins", "install", spec, "--accept-capabilities", "--force"], {
       stdio: "inherit",
     })
   } else {
