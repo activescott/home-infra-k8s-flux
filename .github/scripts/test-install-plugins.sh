@@ -83,7 +83,7 @@ installed_version() {
     -e HOME=/state/home \
     -e OPENCLAW_STATE_DIR=/state/openclaw \
     -e OPENCLAW_CONFIG_PATH=/state/config/openclaw.json \
-    -v "$1:/state" --entrypoint openclaw "$image" plugins inspect "$2" --json 2>/dev/null \
+    -v "$1:/state" --entrypoint openclaw "$image" plugins inspect "$2" --json \
     | yq -p json '.install.resolvedVersion // ""' || true
 }
 
