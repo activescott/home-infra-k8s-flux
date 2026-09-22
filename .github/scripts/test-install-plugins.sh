@@ -129,7 +129,9 @@ done
 echo "::group::fresh install (empty volume)"
 fresh=$(new_volume fresh)
 run_install "$fresh" "$mem" "$olya/managed-plugins.txt" "$work/fresh.log"
-check_pinned fresh "$fresh" "$work/fresh.log" 0 "(trust record missing|not installed); installing"
+# With acpx enabled in config, inspect on an empty state dir installs the catalog version itself,
+# which is the pin as long as the pin matches the image's OpenClaw. Either way it must end at the pin.
+check_pinned fresh "$fresh" "$work/fresh.log" 0 "acpx (.*; installing|trust record present at .*; skipping)"
 echo "::endgroup::"
 
 echo "::group::skip (volume already at the pinned version)"
@@ -150,8 +152,9 @@ run_install "$older" "$mem" "$olya/managed-plugins.txt" "$work/mismatch.log"
 check_pinned mismatch "$older" "$work/mismatch.log" 0 "installed version .* != pinned"
 echo "::endgroup::"
 
-# Not a state the pod meets on purpose: the upgrade is starved of memory, which is how #203 and
-# #204 failed. The pod must still boot on the older version.
+# Not a state the pod meets on purpose: the container is starved of memory, which is how #203
+# and #204 failed. At 256m inspect is OOMKilled before any install starts, so this takes the
+# inspect-failed branch, not the failed-upgrade one. The pod must still boot on the older version.
 echo "::group::failed upgrade falls back (older volume, 256m)"
 run_install "$older_copy" 256m "$olya/managed-plugins.txt" "$work/fallback.log"
 check fallback "$older_copy" "$work/fallback.log" 0 "install-plugins: WARNING .* failed .*; keeping" "$older_cfg"
