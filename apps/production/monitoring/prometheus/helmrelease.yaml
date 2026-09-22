@@ -113,15 +113,22 @@ spec:
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 4h
-          # Every alert also goes to Olya, who files and triages it. `continue` lets the alert
-          # carry on to the route below it. The second route is not redundant: once any child
-          # route matches, Alertmanager stops falling back to the root receiver, so without it
-          # Scott would receive nothing.
+          # OlyaPodNotReady fires because Olya is down, so it's the one alert that must
+          # skip her hook rather than go through it -- she can't triage her own outage.
+          # Matching it here, ahead of the olya-hook route, sends it straight to Scott.
+          #
+          # Every other alert also goes to Olya, who files and triages it. `continue` lets the
+          # alert carry on to the route below it. The second route is not redundant: once any
+          # child route matches, Alertmanager stops falling back to the root receiver, so
+          # without it Scott would receive nothing.
           #
           # group_by '...' gives each alert its own notification, so one alert joining a group
           # does not resend the others and start a triage run for each. repeat_interval is
           # longer than Scott's because a repeat is only a still-firing check for her.
           routes:
+            - receiver: on_call_operator_default
+              matchers:
+                - alertname="OlyaPodNotReady"
             - receiver: olya-hook
               group_by: ["..."]
               repeat_interval: 24h
@@ -1543,6 +1550,37 @@ spec:
                   description: >-
                     The {{ $labels.controller }} controller in flux-system has been producing
                     reconciliation errors for 15 minutes. Check its logs.
+          - name: olya
+            rules:
+              # olya-0 is the assistant that triages every other alert in this file (see the
+              # olya-hook route above) and would normally be the one filing and working this
+              # one too. When she's the thing that's down, that can't happen, so this alert is
+              # matched ahead of the olya-hook route and sent straight to Scott instead.
+              #
+              # One OR'd expression rather than four separate alerts: all four conditions are
+              # the same underlying event -- olya-0 stuck -- and separate alerts would page
+              # Scott four times for one outage. kube_pod_status_ready alone doesn't cover an
+              # unscheduled pod (Pending, no Ready condition reported yet), so phase="Pending"
+              # is matched explicitly rather than relied on to fall out of the ready check.
+              - alert: OlyaPodNotReady
+                expr: >-
+                  kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
+                  or kube_pod_init_container_status_waiting_reason{namespace="olya",pod="olya-0",reason="CrashLoopBackOff"} > 0
+                  or kube_pod_init_container_status_last_terminated_reason{namespace="olya",pod="olya-0",reason="OOMKilled"} > 0
+                  or kube_pod_status_phase{namespace="olya",pod="olya-0",phase="Pending"} > 0
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: olya-0 has not been Ready for 10 minutes
+                  description: >-
+                    olya-0 has been not-Ready for over 10 minutes: the pod itself isn't Ready,
+                    an init container is stuck in CrashLoopBackOff or was OOMKilled, or the pod
+                    is Pending. Single replica, so this is a total outage of the assistant --
+                    and she can't triage this one herself.
+                  query: 'kubectl -n olya describe pod olya-0'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
+                  repo: activescott/home-infra-k8s-flux
 
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |
