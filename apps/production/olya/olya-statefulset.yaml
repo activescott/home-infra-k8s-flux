@@ -308,13 +308,19 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
+          # 12Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
+          # peaking at 7.93Gi (8,511,156,224 bytes) against the prior 8Gi limit, OOMKilling the
+          # container mid-turn with three heavy agent sessions overlapping (install/build/test
+          # work, not gh-only or review sessions). Backing out the ~1.1Gi idle baseline puts each
+          # heavy session at roughly 2-2.5Gi. 12Gi covers three heavy sessions plus the idle
+          # baseline with about 3.5Gi of margin, versus zero margin at 8Gi.
           resources:
             requests:
               cpu: "500m"
-              memory: 1Gi
+              memory: 2Gi
             limits:
               cpu: "4"
-              memory: 8Gi
+              memory: 12Gi
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
