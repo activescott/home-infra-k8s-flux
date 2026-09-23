@@ -71,3 +71,8 @@ resources:
   # browser-chaperone: the approval app, its database, the browser service, and the browser's
   # egress proxy and NetworkPolicies (activescott/activeassistant#196, #229).
   - ./browser-chaperone
+  # A vcluster for coding agents to run tests against, so they never need rights on nas1
+  # (activescott/activeassistant#346). Kept out of ./olya on purpose: nothing about the sandbox
+  # should restart olya-0. She cannot reach it yet -- see "Getting the kubeconfig into olya-0"
+  # in apps/production/agent-sandbox-k8s/README.md.
+  - ./agent-sandbox-k8s
