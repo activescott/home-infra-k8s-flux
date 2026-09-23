@@ -714,6 +714,42 @@ spec:
               }
             }
 
+            // OpenRouter budget/key-limit refusals (activescott/home-infra-k8s-flux#220).
+            // OpenRouter answers 403 specifically for a workspace or key budget cap
+            // ("Workspace monthly budget of $50.00 exceeded" or a key-limit equivalent),
+            // distinct from 401 (bad key) and 429 (rate limit). Every caller puts both
+            // words in the line: Olya's own narrated reports quote the "OpenRouter"/"403"
+            // text verbatim, and Job Accelerator's tasks.queue logger records the
+            // openrouter client's thrown message verbatim
+            // ("OpenRouter answered 403 for <purpose>") -- its `openrouter` module itself
+            // only logs on success, never the refusal, since the client never reads the
+            // response body on a non-2xx (job-accelerator
+            // packages/web-app/app/lib/openrouter/client.server.ts). Matching on
+            // "openrouter" + "403" rather than "budget" alone also keeps this clear of the
+            // unrelated CloudflareAPIBudget* alerts above.
+            //
+            // namespace!="monitoring" excludes Loki's own query-log lines: Loki logs every
+            // LogQL query it runs, so without the exclusion, querying Loki about this exact
+            // alert (in Explore, or re-running the verification query from #220) makes the
+            // counter increment on itself.
+            stage.match {
+              selector = "{namespace=~\".+\", namespace!=\"monitoring\"} |~ \"(?i)openrouter\" |~ \"(?i)403\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "openrouter_budget_refused_total"
+                  description = "OpenRouter calls refused with 403 (workspace or key budget exceeded)"
+                  match_all   = true
+                  action      = "inc"
+
+                  // Default 5m would delete the series between refusals -- rare by
+                  // design, since a budget cap doesn't reset for weeks -- leaving
+                  // increase() nothing to measure.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 
