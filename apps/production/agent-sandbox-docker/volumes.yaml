@@ -1,0 +1,74 @@
+# olya-0's work repos, mounted into the sandbox at the path she sees them at.
+#
+# Docker resolves a bind mount source on the DAEMON's filesystem, not the client's. So
+# `docker run -v /state/repos/x:/src` issued from olya-0 against this daemon only works if the
+# same tree is at the same path here, and a compose file with `./:/app` in it only works if the
+# repo it lives in is one of them. That is the whole reason this volume exists.
+#
+# /state/home is deliberately absent and must stay absent: it holds her ssh key, the gh OAuth
+# profile and the rest of her credential set. So are /state/config, /state/openclaw and
+# /state/memory.
+#
+# A second PV over a subdirectory of olya's, rather than the olya PVC, because PVCs are
+# namespaced and this pod is not in the olya namespace. ReadWriteOnce is per node rather than
+# per pod and this is a single node cluster, so both pods can hold it at once; the same
+# reasoning is written out in apps/production/olya/olya-pvc.yaml, where the memory-sync CronJob
+# already shares the parent volume with olya-0.
+#
+# `type: Directory` so the pod refuses to start when the path is missing. At the default, the
+# kubelet lets the runtime create a root-owned empty directory instead, and the sandbox comes up
+# healthy with no repos in it and every bind mount silently pointing at nothing.
+# scripts/volume-layout.mts creates this directory as uid 1000, so it is there once olya has
+# booted once.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agent-sandbox-docker-pv-olya-repos
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /mnt/thedatapool/app-data/olya/repos
+    type: Directory
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: olya-repos
+  namespace: agent-sandbox-docker
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  volumeName: agent-sandbox-docker-pv-olya-repos
+  resources:
+    requests:
+      storage: 20Gi
+---
+# The image and container store, so a restart does not re-pull every image.
+#
+# Provisioned by local-path instead of pinned to a hostPath PV on the ZFS pool, unlike most
+# volumes in this repo, for two reasons. Everything under /mnt/thedatapool/app-data/ is in the
+# B2 backup include list, and a rebuildable image cache has no business there. And overlayfs
+# will not take a ZFS directory as its upperdir, so a store on the pool would drop dockerd to
+# the vfs driver, which copies whole layers instead of stacking them.
+#
+# local-path does not enforce capacity. The request below is a label; the real limit is free
+# space in the k3s data directory. Its reclaim policy is Delete, which is the intent: losing
+# this volume costs a re-pull.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: docker-data
+  namespace: agent-sandbox-docker
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 40Gi

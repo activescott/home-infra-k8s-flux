@@ -1,0 +1,105 @@
+# What the sandbox may talk to. This is half of the access model; the client certificate in
+# certificates.yaml is the other half.
+#
+# Read apps/production/olya/olya-networkpolicy.yaml first. Its two warnings apply here too:
+# egress rules match the packet's destination address rather than the next hop, and a
+# destination that is missing from this file fails as a connection timeout with nothing logged.
+#
+# nas1 addressing, for reference: pods 172.16.0.0/16, services 172.17.0.0/16, node 10.1.111.20,
+# LAN 10.1.111.0/24.
+#
+# ON "EGRESS LIMITED TO REGISTRIES", which is what activescott/activeassistant#347 asks for.
+# kube-router matches egress on CIDRs, and the registries this needs (docker.io, ghcr.io,
+# registry.k8s.io, and whatever a Dockerfile's package manager reaches) are CDN-hosted behind
+# address sets that change without notice and are shared with the rest of the internet. There
+# is no ipBlock that means "registries". So the rules below take the two restrictions that are
+# expressible and honest: every private range is denied outright, and the public internet is
+# reachable on 80 and 443 only. A real registry allowlist needs the egress proxy and
+# pull-through mirror from activescott/activeassistant#344; the cluster already has the mirror
+# half of that in apps/production/zot, unused from here so far. See README.md.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dockerd
+  namespace: agent-sandbox-docker
+spec:
+  # Every pod in the namespace, so an added sidecar or debug pod inherits this rather than
+  # running open.
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # olya-0 and nothing else. Narrowed to the pod, not the namespace: the memory-sync CronJob
+    # runs in `olya` too and has no reason to be root in the sandbox.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              # Set automatically on every namespace, so this matches without labelling `olya`.
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 2376
+          protocol: TCP
+    # A throwaway docker client in this namespace, for the verification in README.md and for
+    # diagnosing the daemon without waiting on the olya side. It has to be labelled `app:
+    # docker-cli` on purpose, and creating any pod here at all needs cluster write access, which
+    # is enough to edit this file anyway. The paired egress rule is below.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: docker-cli
+      ports:
+        - port: 2376
+          protocol: TCP
+
+  egress:
+    # The other half of the rule above. Without it the client pod's packets leave under the
+    # 0.0.0.0/0 rule's `except` for 172.16.0.0/12 and time out.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: dockerd
+      ports:
+        - port: 2376
+          protocol: TCP
+
+    # Registries and package mirrors, as closely as CIDR matching gets to them. The `except`
+    # blocks deny the LAN, the node, every other namespace in the cluster and the link-local
+    # metadata range, so a container that breaks out of the nested runtime still cannot reach
+    # olya-0, Grafana, the Kubernetes API or anything on the LAN that authenticates by network
+    # position.
+    #
+    # 80 and 443 only. Port 22 is deliberately absent: the sandbox has no ssh key and no repo to
+    # push to, and leaving it out removes the obvious exfiltration channel. A test that needs
+    # some other outbound port fails as a timeout, and widening this is a decision to record
+    # here rather than a default.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+
+    # DNS. Without this nothing resolves and the rule above looks broken.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP

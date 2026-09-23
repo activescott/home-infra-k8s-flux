@@ -1,0 +1,198 @@
+# Rootless dockerd, for coding agents that need real containers to test against
+# (activescott/activeassistant#347, part of #345). olya-0 drives it over TCP with DOCKER_HOST
+# and a client certificate; nothing in this pod can reach her, and this pod holds no credential
+# of any kind.
+#
+# WHAT THIS POD IS ALLOWED, AND WHY
+#
+# The image is the upstream rootless variant: dockerd runs as uid 1000 inside a user namespace
+# that RootlessKit sets up, so "root" in a nested container is uid 100000-165535 on the node,
+# not uid 0. Three container defaults get in the way of building that user namespace, and each
+# one below is relaxed for a named reason:
+#
+#   seccompProfile: Unconfined
+#       RuntimeDefault is containerd's profile, derived from Docker's, which blocks the
+#       namespace-creating syscalls (clone with CLONE_NEWUSER, unshare, mount) unless the
+#       process holds CAP_SYS_ADMIN. RootlessKit's first act is exactly that clone, so under
+#       RuntimeDefault the daemon never starts. Relaxing seccomp does NOT hand the pod new
+#       privileges: every syscall it unblocks is still evaluated against the capabilities and
+#       namespaces below, which are what actually confine it.
+#
+#   appArmorProfile: Unconfined
+#       The runtime's default profile denies mount(2) outright. RootlessKit mounts a tmpfs over
+#       /etc and /run (its --copy-up), and the nested runc mounts a root filesystem per
+#       container. Unconfined here is a no-op on a node with AppArmor disabled, which is why it
+#       is stated rather than left to chance.
+#
+#   allowPrivilegeEscalation: true, with SETUID and SETGID added back
+#       newuidmap and newgidmap write the uid_map and gid_map that give the nested namespace its
+#       65536 subordinate ids (/etc/subuid ships as rootless:100000:65536). They are setuid-root
+#       helpers, so allowPrivilegeEscalation: false sets no_new_privs and neuters them, and a
+#       bare `drop: ALL` empties the bounding set so the setuid bit buys nothing. Without both,
+#       RootlessKit falls back to mapping the single uid 1000 and any image whose entrypoint
+#       switches user fails to start. These two capabilities are the entire addition; ALL is
+#       dropped first.
+#
+# WHAT IT STILL DOES NOT GET
+#
+#   privileged: false, and there is no path to it here.
+#   No host namespaces: hostPID, hostIPC, hostNetwork and hostUsers are all left at their
+#       defaults, so the pod has its own pid, ipc and network namespaces and its uid 0 does not
+#       exist.
+#   No CAP_SYS_ADMIN, CAP_NET_ADMIN or CAP_MKNOD on the node. The nested containers get those
+#       inside RootlessKit's user namespace, where they are scoped to that namespace's own
+#       mounts and network and mean nothing to the node.
+#   No service account token, no Secret beyond its own server certificate, no Docker socket
+#       from the node, no /dev/fuse.
+#   procMount stays Default, so runc's masks over /proc/kcore, /proc/acpi, /proc/sys and the
+#       rest are in place. Unmasked is not available on this cluster anyway: since the feature
+#       went beta it requires hostUsers: false, and Kubernetes user namespaces want a 6.3
+#       kernel while nas1 runs 5.15. If RootlessKit ever fails on `mount proc`, the fix is to
+#       stop it creating a nested pid namespace, not to unmask /proc; see README.md.
+#
+# The boundary is still a shared kernel, which is the risk #345 accepts and #344 exists to
+# replace. Read the risk section in README.md before widening anything here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dockerd
+  namespace: agent-sandbox-docker
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate. Both volumes are ReadWriteOnce and the image store cannot have
+  # two daemons in it, so a rolling update would wedge on a second pod that never schedules.
+  # replicas: 0 is the kill switch: commit it and Flux applies within seconds of the webhook.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dockerd
+  template:
+    metadata:
+      labels:
+        # Alloy promotes this to the Loki `app` label, so the daemon log is
+        # {namespace="agent-sandbox-docker", app="dockerd"}.
+        app: dockerd
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        # uid/gid 1000 is the image's `rootless` user, the one /etc/subuid and /etc/subgid have
+        # entries for. Running as anything else fails the entrypoint's own precondition check.
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        # Applies to the emptyDirs below. It does not apply to either PersistentVolume: both are
+        # hostPath-backed, and the kubelet does not chown those. The local-path provisioner
+        # creates its directory mode 0777, and the repos directory is already uid 1000.
+        fsGroup: 1000
+        seccompProfile:
+          type: Unconfined
+        appArmorProfile:
+          type: Unconfined
+      containers:
+        - name: dockerd
+          # 29.8.0 rather than the newer 29.8.1: Renovate's minimumReleaseAge is 7 days and
+          # 29.8.1 published 2026-09-18. Renovate owns this image and will offer it once it
+          # ages out.
+          image: docker:29.8.0-dind-rootless@sha256:e17fa54c2ffd511d8407c746eec77f7814e6f74fe20caf822dad1870599984c0
+          # No args. With DOCKER_TLS_CERTDIR set, the image's entrypoint already appends
+          # --tlsverify with the three paths below, binds tcp://0.0.0.0:2376, and hands
+          # RootlessKit `-p 0.0.0.0:2376:2376/tcp` so the listener inside its network namespace
+          # is published into the pod's. Passing dockerd flags by hand would replace that.
+          env:
+            # The entrypoint generates its own CA here when it finds one missing. It skips
+            # generation entirely when server/{ca,cert,key}.pem exist and ca/key.pem does not,
+            # which is the shape the cert-manager mount below produces: it verifies the chain
+            # and moves on. Do not mount anything at /certs/ca.
+            - name: DOCKER_TLS_CERTDIR
+              value: /certs
+          ports:
+            - name: docker
+              containerPort: 2376
+          securityContext:
+            privileged: false
+            readOnlyRootFilesystem: true
+            # See the header. Both of these are the minimum for newuidmap/newgidmap.
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - SETUID
+                - SETGID
+          # TCP, not exec. The daemon's unix socket lives at /run/user/1000/docker.sock inside
+          # RootlessKit's mount namespace, so nothing outside that namespace, probes included,
+          # can see it. The trade is that this reports the published port rather than a healthy
+          # daemon; `docker info` from olya-0 is the real check.
+          startupProbe:
+            tcpSocket:
+              port: docker
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: docker
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: docker
+            periodSeconds: 30
+            failureThreshold: 5
+          # The limit is the only thing bounding the nested containers. Rootless dockerd gets no
+          # delegated cgroup here, so it cannot apply `docker run -m` to them, and everything it
+          # starts is accounted against this one cgroup. Sizing it is how you cap a runaway test.
+          resources:
+            requests:
+              cpu: "200m"
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 6Gi
+          volumeMounts:
+            - name: certs
+              mountPath: /certs/server
+              readOnly: true
+            - name: docker-data
+              mountPath: /home/rootless/.local/share/docker
+            # readOnlyRootFilesystem, so the three paths the entrypoint writes before
+            # RootlessKit takes over need real volumes: $HOME for the data directory's parents,
+            # /run for XDG_RUNTIME_DIR (/run/user/1000) and the pid file sweep, /tmp for
+            # everything after.
+            - name: home
+              mountPath: /home/rootless
+            - name: run
+              mountPath: /run
+            - name: tmp
+              mountPath: /tmp
+            - name: olya-repos
+              mountPath: /state/repos
+      volumes:
+        # ca.pem, cert.pem and key.pem are the names the entrypoint looks for; cert-manager
+        # writes ca.crt, tls.crt and tls.key. `items` renames them and keeps anything else in
+        # the Secret off disk.
+        - name: certs
+          secret:
+            secretName: dockerd-tls-server
+            # 0440, not 0400: a Secret volume is owned root:fsGroup, so the group bit is the
+            # one uid 1000 reads through.
+            defaultMode: 0440
+            items:
+              - key: ca.crt
+                path: ca.pem
+              - key: tls.crt
+                path: cert.pem
+              - key: tls.key
+                path: key.pem
+        - name: docker-data
+          persistentVolumeClaim:
+            claimName: docker-data
+        - name: olya-repos
+          persistentVolumeClaim:
+            claimName: olya-repos
+        - name: home
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
