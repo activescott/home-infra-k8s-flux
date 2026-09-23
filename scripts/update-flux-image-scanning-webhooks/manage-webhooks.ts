@@ -5,6 +5,7 @@ import { Octokit } from '@octokit/rest';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 interface ImageRepository {
   name: string;
@@ -93,12 +94,13 @@ async function promptForToken(prompt: string): Promise<string> {
 
 // `show` decrypts to stdout and writes nothing to disk; its diagnostics go to stderr,
 // which is passed through so a failed 1Password sign-in is visible.
-function loadTokenFromSecret(showScript: string, secret: string): string | null {
+function loadTokenFromSecret(showScript: string, secret: string, cwd: string): string | null {
   if (!fs.existsSync(showScript)) {
     return null;
   }
 
   const result = spawnSync(showScript, ['show', secret], {
+    cwd,
     encoding: 'utf8',
     stdio: ['inherit', 'pipe', 'inherit'],
   });
@@ -161,8 +163,9 @@ class UpdateFluxImageScanningWebhooks {
     let githubToken = process.env.GITHUB_TOKEN;
 
     if (!githubToken) {
-      const showScript = path.resolve(process.cwd(), 'scripts', 'onepassword-secrets.mts');
-      const secretToken = loadTokenFromSecret(showScript, TOKEN_SECRET);
+      const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+      const showScript = path.resolve(repoRoot, 'scripts', 'onepassword-secrets.mts');
+      const secretToken = loadTokenFromSecret(showScript, TOKEN_SECRET, repoRoot);
       if (secretToken) {
         console.log(`GITHUB_TOKEN loaded from ${TOKEN_SECRET}.encrypted`);
         githubToken = secretToken;
@@ -171,7 +174,7 @@ class UpdateFluxImageScanningWebhooks {
 
     if (!githubToken) {
       console.log(
-        `GITHUB_TOKEN not found in environment or via ./scripts/onepassword-secrets.mts show ${TOKEN_SECRET}.`
+        `GITHUB_TOKEN not found in environment or via repo root's ./scripts/onepassword-secrets.mts show ${TOKEN_SECRET}.`
       );
       githubToken = await promptForToken('Enter GITHUB_TOKEN: ');
 
