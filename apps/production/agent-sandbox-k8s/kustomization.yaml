@@ -7,7 +7,11 @@ resources:
   - resourcequota.yaml
   - limitrange.yaml
   - networkpolicy.yaml
+  - validatingadmissionpolicy.yaml
 
-namespace: agent-sandbox-k8s
-
+# No `namespace:` transformer here. kustomize decides whether a kind is namespaced from a bundled
+# OpenAPI schema that is still v1.21.2, which predates ValidatingAdmissionPolicy, so it treats the
+# policies as namespaced and stamps metadata.namespace on them. `patches:` cannot take it back off
+# because patches run before the transformer. Every namespaced object in this directory names its
+# own namespace instead, and a new one has to keep doing so.
 buildMetadata: [originAnnotations, transformerAnnotations]

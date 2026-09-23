@@ -18,7 +18,8 @@
 # services.nodeports: 0 is a security rule wearing a quota's clothes. An agent with cluster-admin
 # in the virtual cluster can create a NodePort Service; vcluster would sync it here and publish
 # the sandbox on the node's LAN address, outside everything networkpolicy.yaml decides. The quota
-# refuses it, and the refusal is visible on the syncer rather than silent.
+# refuses it, and the refusal is visible on the syncer rather than silent. It does not cover
+# spec.externalIPs, which is not a Service type and needs the admission policy next door.
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -33,8 +34,14 @@ spec:
     limits.memory: 24Gi
     limits.ephemeral-storage: 64Gi
     count/pods: "24"
-    # 5Gi of the storage is the control plane's own volume claim.
-    count/persistentvolumeclaims: "8"
-    requests.storage: 20Gi
+    # One claim and 5Gi of storage is exactly the control plane's own volume, which leaves none
+    # for an agent. That is deliberate and it is not a size: local-path does not enforce capacity,
+    # so a 10Gi claim can write until the disk is full, and these claims land in the k3s data
+    # directory beside the datastore and containerd's image store. A test that fills it takes the
+    # node down with it. Raise this when a sandbox StorageClass backed by a zvol or a
+    # ZFS-quota'd dataset exists, and not before. Tests that need scratch space use emptyDir,
+    # which is the ephemeral-storage above and is enforced by kubelet eviction.
+    count/persistentvolumeclaims: "1"
+    requests.storage: 5Gi
     services.nodeports: "0"
     services.loadbalancers: "0"

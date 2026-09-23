@@ -93,6 +93,12 @@ spec:
     # (docker.oci-registry.activescott.com and friends) resolve to 10.1.111.20 on this LAN, which
     # the except list above denies, so a client that wants the mirror has to be pointed at the
     # Service.
+    #
+    # It buys nothing today: the mirrors want the `mirror` htpasswd user and zot's defaultPolicy
+    # is empty, so a sandbox with no credential gets 401 on every request. The follow-up that
+    # puts that credential in the sandbox is putting a read-only pull credential somewhere an
+    # agent's test workload can read it. Low value, but it is a credential, so decide it on
+    # purpose rather than by leaving this rule here.
     - to:
         - namespaceSelector:
             matchLabels:
