@@ -71,38 +71,110 @@ cost is that the macros and lists the rules need are copied into the file rather
 inherited, so a change to upstream's definitions does not reach us. `falcoctl artifact follow`
 is off for the same reason: rule changes should arrive through git.
 
-Eight rules, in three priority tiers:
+Eleven rules, in three priority tiers:
 
 | Rule | Priority | Scope |
 | ---- | -------- | ----- |
 | Agent sandbox container escape attempt | CRITICAL | sandboxes + olya |
-| Agent sandbox privileged container started | CRITICAL | sandboxes + olya |
-| Agent sandbox container started with a sensitive host mount | CRITICAL | sandboxes + olya |
+| Agent sandbox privileged container started | CRITICAL | sandboxes + olya, kubelet-started containers only |
+| Agent sandbox container started with a sensitive host mount | CRITICAL | sandboxes + olya, kubelet-started containers only |
+| Agent sandbox container started with elevated capabilities | CRITICAL | sandboxes + olya, nested containers included |
+| Agent sandbox nested container mounted a sensitive path | CRITICAL | agent-sandbox-docker |
 | Kubernetes credential read in agent sandbox container | CRITICAL | sandboxes |
 | Sensitive config file written in agent sandbox container | ERROR | sandboxes + olya |
+| Git configuration or hook written from the Docker sandbox | ERROR | agent-sandbox-docker |
 | Agent sandbox container made an unexpected private network connection | ERROR | sandboxes |
-| Terminal shell in agent sandbox container | WARNING | sandboxes + olya |
+| Terminal shell in Olya's namespace | WARNING | olya |
 | Binary directory written in agent sandbox container | WARNING | sandboxes + olya |
 
 The credential-read and network rules exclude Olya's namespace on purpose: she reads her own
 service account token and talks to the cluster as a matter of course, so including her would
 mean an alert that fires every restart.
 
-Three of these are low-noise by construction rather than by tuning, and it is worth knowing
-which lever does the work:
-
-- The escape rule excludes the container runtimes by process name. A sandbox running a real
-  Docker daemon or a k3s control plane calls `setns` constantly and re-execs runc through
-  `/proc/self/exe` (which shows up as `exe`); without that list the rule is unreadable.
-- The `/etc` rule matches a named list of files that buy persistence or a privilege change,
-  not all of `/etc`. A sandbox that builds images rewrites half of `/etc` on every
-  `apt-get install`.
-- The terminal-shell rule requires a tty, which is what separates `kubectl exec -it` from the
-  agent running a build step.
-
 The one expected to need tuning is the binary-directory rule, since `make install` looks like a
 dropped binary. Its tuning point is `sandbox_package_mgmt_binaries`, and the runbook says what
 not to add to it.
+
+## What the container-start rules cannot see
+
+`container.privileged` and `container.mounts` come from the host's containerd socket, so a
+process inside a container that the *sandbox* started carries the sandbox pod's metadata
+rather than its own. In `agent-sandbox-docker` that means `docker run --privileged` reads as
+`container.privileged=false` and `docker run -v /:/host` adds nothing to `container.mounts`.
+The privileged-container and sensitive-mount rules are therefore coverage of
+`agent-sandbox-k8s` and `olya` only, where the kubelet starts every container and Pod Security
+rejects both shapes before one starts: a match there means admission was bypassed.
+
+Two rules cover the nested case instead, by reading things nesting does not launder:
+
+- `elevated capabilities` reads the capability set the kernel gave the new process.
+  Docker's default set for an unprivileged container holds none of `CAP_SYS_ADMIN`,
+  `CAP_SYS_MODULE`, `CAP_SYS_RAWIO` or `CAP_NET_ADMIN`; `--privileged` and
+  `--cap-add=NET_ADMIN` hold them. `--cap-add=NET_ADMIN` is the precondition for the
+  nf_tables privilege escalations in #347's review, and those go over netlink, so no escape
+  rule would see them.
+- `nested container mounted a sensitive path` reads `mount(2)` directly, where the source is
+  the path as the dockerd pod sees it.
+
+The second has a limit worth knowing before trusting it: runc 1.2 and later can do bind
+mounts through `open_tree`/`move_mount`, which this kernel supports and which the driver
+reports with no arguments, so a nested `-v` may take a path this rule cannot read. The
+capability rule has no such dependency. Neither is a substitute for policy at the daemon: an
+`--authorization-plugin` on dockerd that refuses `HostConfig.Privileged`, `CapAdd` and
+non-allowlisted `Binds` is the control, and it belongs in #347.
+
+## What the exclusions cost
+
+`sandbox_runtime_exepaths` is the only exclusion the escape and capability rules have, and
+anything it matches is invisible to both. It holds two absolute paths from the dind image,
+plus a prefix match on runc's memfd self-copy, which runc re-execs before every container
+start and which the kernel reports as `/memfd:runc_cloned:/proc/self/exe (deleted)`.
+
+Process names are not usable here and this is worth stating, because the obvious version of
+this list was written that way first. `proc.name` is matched by `cp exploit /tmp/runc-x`,
+`proc.cmdline` by `exec -a containerd ./exploit`, and excluding `proc.pname` excluded every
+container's PID 1, because the parent of an entrypoint is `containerd-shim-runc-v2`: a pod
+whose `command` was `nsenter` matched nothing at all. `proc.exepath` is the kernel's resolved
+path, so matching it means being that binary.
+
+The memfd prefix is the weak one. A process that can already exec inside a nested container
+can name a memfd the same thing, so an attacker who wants their second stage unseen can have
+it. Their first exec in that container has already fired the capability rule if it held any
+of the four, which is the event that matters.
+
+Adding to that list is a security change, not tuning. Any addition should be an absolute path
+shipped in an image, and the PR should say which alert made the case.
+
+## How this stays quiet enough to page on
+
+Nothing here is tuned against observed traffic, because neither sandbox namespace exists yet.
+The claim is structural, and these are the four things doing the work:
+
+- The escape and capability rules key on an event no ordinary workload produces.
+  `setns`/`unshare`/`init_module` and a capability set the pod spec cannot ask for are not
+  what a build or a test does.
+- The terminal-shell rule is Olya's namespace only. Driving a sandbox by hand is what the
+  sandboxes are for: `kubectl exec -it` and `docker exec -it` are ordinary work, an agent
+  does them unprompted, and that rule is also the cheapest flood in the set (a pty in a loop
+  matches as fast as it can fork). In `olya` the agents run without a tty, so a pty shell is a
+  person or something wearing one.
+- The credential-read rule matches host-side material in `agent-sandbox-k8s`, not the service
+  account token. vcluster rewrites every virtual pod's projected token into a Secret-backed
+  volume at the standard path, so anything using in-cluster config reads that file on startup;
+  alerting on it would put a Critical on ordinary use. The token path stays matched in
+  `agent-sandbox-docker`, which has no service account at all.
+- The `/etc` rule matches a named list of files that buy persistence or a privilege change,
+  not all of `/etc`. A sandbox that builds images rewrites half of `/etc` on every
+  `apt-get install`.
+
+The one rule with a known innocent match is the git-config rule: a test that runs `git init`
+or `git clone` in a scratch directory writes the same files as the attack. It sits at Error
+for that reason, and the runbook says how to tell them apart.
+
+The residual risk is the other direction. If the Docker sandbox turns out to produce escape
+matches through a runtime path not in the exclusion list, the rule will be noisy at Critical
+on ordinary `docker run`. First thing to do when #345 lands is a `docker run` loop against the
+sandbox and a count of what matched.
 
 ## Alerting
 
@@ -125,28 +197,55 @@ bitten this repo before and are written up in `apps/production/monitoring/README
 `kube_daemonset_status_number_unavailable`, so it fires whether Falco crashed or the
 HelmRelease never produced a DaemonSet at all.
 
+The other way to go quiet is to flood the ring buffer until the event that mattered is
+dropped. `syscall_event_drops` is pinned in `helmrelease.yaml` with `alert` in its actions, so
+a drop emits `Falco internal: syscall event drop` at Critical and the same selector counts it:
+the attempt raises `FalcoSandboxCritical` itself, once every 30 seconds, and arrives with an
+empty `falco_ns`, which is how it is recognised. Rule output is deliberately not throttled;
+the comment in `helmrelease.yaml` says why a single token bucket across all rules would be a
+way to hide a Critical behind a flood of Warnings.
+
+What neither covers is the container plugin failing while Falco stays up. Every rule here is
+scoped by `k8s.ns.name`, so without the plugin they all quietly match nothing. The runbook has
+the query.
+
 ## Verifying it works
 
 Both of these are harmless and both should page within a couple of minutes.
 
-A terminal shell in a sandbox pod, which is the cheapest end-to-end test of the whole path
+A terminal shell in Olya's pod, which is the cheapest end-to-end test of the whole path
 (rule, Falco, Alloy counter, Prometheus rule, Telegram):
 
 ```bash
-kubectl --context nas -n agent-sandbox-k8s exec -it <pod> -- /bin/sh -c 'echo falco-test'
+kubectl --context nas -n olya exec -it olya-0 -c olya -- /bin/sh -c 'echo falco-test'
 ```
 
-Expect `FalcoSandboxWarning` with `falco_rule="Terminal shell in agent sandbox container"`.
+Expect `FalcoSandboxWarning` with `falco_rule="Terminal shell in Olya's namespace"`.
 
-A credential read, which exercises the Critical tier:
+A nested privileged container, which exercises the Critical tier and, more to the point, the
+one case the container metadata cannot see. From a pod that holds the client certificate for
+the sandbox daemon:
 
 ```bash
-kubectl --context nas -n agent-sandbox-k8s exec <pod> -- \
-  cat /var/run/secrets/kubernetes.io/serviceaccount/token
+docker --tlsverify -H tcp://dockerd.agent-sandbox-docker:2376 run --rm --privileged alpine true
 ```
 
-Expect `FalcoSandboxCritical`. If the sandbox pod has no token mounted, which is what it should
-look like, this returns nothing and does not alert, and that is the right answer.
+Expect `FalcoSandboxCritical` with
+`falco_rule="Agent sandbox container started with elevated capabilities"` and a `caps` field
+listing the full set. If that alert does not arrive but the same command without
+`--privileged` also produces nothing, the rule is working; if neither produces anything and
+Falco is up, read the exclusion list before assuming the daemon is at fault.
+
+The rules file itself is checked with Falco's own validator rather than by watching the pod
+crash-loop:
+
+```bash
+yq -r '.spec.values.customRules."agent-sandbox-rules.yaml"' helmrelease.yaml > /tmp/rules.yaml
+falco --validate /tmp/rules.yaml
+```
+
+It needs the container plugin loaded, otherwise every `container.*` and `k8s.*` field in the
+file is an unknown field and the result is a page of errors that say nothing about the rules.
 
 If neither produces a Telegram message, check in this order: the log line in Loki
 (`{namespace="falco"} | json`), then the counter in Prometheus

@@ -93,6 +93,34 @@ spec:
       json_include_tags_property: false
       buffered_outputs: false
 
+      # Blinding by flooding is the obvious move against a syscall-level
+      # alert: saturate the ring buffer and the one event that mattered is
+      # dropped. Pinned here rather than left to the chart's default so it
+      # cannot change underneath us on a chart bump. `alert` is what makes the
+      # attempt self-defeating: a drop emits "Falco internal: syscall event
+      # drop" at Critical, the Alloy selector counts it like any other line,
+      # and FalcoSandboxCritical fires (with an empty falco_ns, which is how
+      # you recognise it).
+      #
+      # The rate and burst are Falco's own defaults, restated so that all four
+      # values live in one place: one drop notification every 30 seconds.
+      syscall_event_drops:
+        threshold: 0.1
+        actions:
+          - log
+          - alert
+        rate: 0.03333
+        max_burst: 1
+
+      # Nothing throttles rule output, and that is the right way round. A
+      # single token bucket across every rule (which is what Falco used to
+      # offer here) would let a flood of Warnings consume the budget and drop
+      # the Critical queued behind it, so the control against flooding would
+      # itself be a way to go blind. Volume is handled where it costs nothing
+      # instead: Loki absorbs the lines, and AlertManager dedups by
+      # (falco_rule, falco_ns), so a flood is one Telegram message per rule and
+      # namespace however long it runs.
+
     customRules:
       agent-sandbox-rules.yaml: |-
         # Falco rules for the agent sandboxes and Olya's namespace.
@@ -174,24 +202,41 @@ spec:
                       not container.mount.dest[/etc/kubernetes/manifests] in ("<NA>","N/A") or
                       not container.mount.dest[/root*] in ("<NA>","N/A"))
 
-        # ── Tuning points ────────────────────────────────────────────────────
-        # A sandbox that runs a real Docker daemon or a k3s/vcluster control
-        # plane spends its whole life doing things that look like an escape
-        # from the outside: runc re-execs itself through /proc/self/exe (so it
-        # appears as "exe"), the shim calls setns for every container it
-        # starts. Excluding the runtime binaries by name is what keeps the
-        # escape rule quiet enough to page on.
+        # ── The exclusion, which is a bypass surface ──────────────────────────
+        # A sandbox that runs a real Docker daemon spends its life doing things
+        # that look like an escape from the outside: runc unshares and setns
+        # for every container it starts. Something has to be excluded or the
+        # escape rule is unreadable. The question for every entry is therefore
+        # "can a process in a sandbox arrange to match this?", and three kinds
+        # of answer failed it here:
+        #
+        #   proc.name      `cp exploit /tmp/runc-x && /tmp/runc-x`
+        #   proc.cmdline   `exec -a containerd ./exploit`
+        #   proc.pname     excluded every container's PID 1, because the parent
+        #                  of an entrypoint is containerd-shim-runc-v2. A pod
+        #                  whose command was `nsenter` matched nothing at all.
+        #
+        # proc.exepath is the kernel's resolved path for the running binary, so
+        # matching it means being that binary rather than claiming to be.
+        #
+        # Only paths that exist inside a sandbox container belong here: these
+        # two are the dind image's. The host's runc and shim are not container
+        # events, so `container` already excludes them and they need no entry.
+        # Anything added here must be an absolute path shipped in an image, and
+        # the PR that adds it has to say which alert made the case.
+        - list: sandbox_runtime_exepaths
+          items: [/usr/local/bin/runc, /usr/local/bin/containerd-shim-runc-v2]
 
-        - list: sandbox_runtime_binaries
-          items: [dockerd, containerd, containerd-shim, containerd-shim-runc-v2, runc, exe,
-                  buildkitd, buildkit-runc, crun, tini, docker-init, pause,
-                  k3s, k3s-server, k3s-agent, kubelet, vcluster, syncer]
-
+        # runc copies itself into a memfd and re-execs the copy before every
+        # container start (its CVE-2019-5736 defence), and the kernel reports
+        # the copy, not the file: /memfd:runc_cloned:/proc/self/exe (deleted).
+        # The name is runc's rather than the caller's, but a caller that can
+        # already exec inside a nested container could mint the same one, which
+        # is why the match is anchored at the start of the path and why
+        # README.md counts it as part of the bypass surface.
         - macro: sandbox_runtime_proc
-          condition: (proc.name in (sandbox_runtime_binaries) or
-                      proc.pname in (sandbox_runtime_binaries) or
-                      proc.name startswith "runc" or
-                      proc.cmdline startswith "containerd")
+          condition: (proc.exepath in (sandbox_runtime_exepaths) or
+                      proc.exepath startswith "/memfd:runc_cloned:")
 
         # Overwrite this macro to silence a build step that legitimately
         # installs into /bin or /usr/bin. Left empty rather than pre-populated
@@ -217,8 +262,9 @@ spec:
           desc: >
             A process inside a sandbox or Olya container tried to leave its namespaces (setns,
             unshare, nsenter), load a kernel module, or write the cgroup release_agent file.
-            The container runtimes the sandboxes run do all of this legitimately and are
-            excluded by name, so what is left is a process that has no reason to be doing it.
+            The container runtime the Docker sandbox runs does the first of those legitimately
+            and is excluded by the path of its binary, so what is left is a process that has no
+            reason to be doing it.
           condition: >
             container_escape_attempt
             and container
@@ -233,6 +279,21 @@ spec:
           priority: CRITICAL
           tags: [agent_sandbox, container, process, mitre_privilege_escalation, T1611]
 
+        # ── The next two rules read container metadata, and cannot nest ──────
+        # container.privileged and container.mounts come from the host's
+        # containerd socket, so a process inside a container that the *sandbox*
+        # started carries the sandbox pod's metadata rather than its own: a
+        # nested `docker run --privileged` reads as container.privileged=false
+        # and a nested `-v /:/host` adds nothing to container.mounts. These two
+        # rules therefore only ever see pods the kubelet started, which in
+        # agent-sandbox-k8s is the coverage that matters (Pod Security rejects
+        # both before a container starts, so a match means admission was
+        # bypassed) and in agent-sandbox-docker is no coverage at all, because
+        # there "privileged" is a client flag any test can pass.
+        #
+        # The two rules after those are what cover the nested case, by reading
+        # what nesting does not launder: the capability set the kernel gave the
+        # process, and the mount syscall itself.
         - rule: Agent sandbox privileged container started
           desc: >
             A container in a sandbox or Olya namespace started with the privileged flag.
@@ -266,20 +327,141 @@ spec:
           priority: CRITICAL
           tags: [agent_sandbox, container, mitre_execution, T1610]
 
-        - rule: Terminal shell in agent sandbox container
+        # Docker's default capability set for an unprivileged container holds
+        # none of these four. --privileged holds all of them, and so does
+        # --cap-add=NET_ADMIN, which is the precondition for the nf_tables
+        # local privilege escalations named in #347's review: those exploits go
+        # over netlink and so do no setns, no unshare and no mount, which is
+        # why the escape rule cannot stand in for this one.
+        #
+        # Baseline Pod Security allows none of the four either, so in
+        # agent-sandbox-k8s and olya this rule is a second, independent reading
+        # of the same invariant the privileged-container rule covers.
+        - macro: elevated_capabilities
+          condition: (thread.cap_effective contains CAP_SYS_ADMIN or
+                      thread.cap_effective contains CAP_SYS_MODULE or
+                      thread.cap_effective contains CAP_SYS_RAWIO or
+                      thread.cap_effective contains CAP_NET_ADMIN)
+
+        - rule: Agent sandbox container started with elevated capabilities
           desc: >
-            A shell with an attached terminal was spawned in a sandbox or Olya container,
-            which is what `kubectl exec -it` and `docker exec -it` look like. The agents
-            themselves run commands without a tty, so this is a person (or something
-            impersonating one) reaching into a sandbox by hand.
+            The first process of a container started holding CAP_SYS_ADMIN, CAP_SYS_MODULE,
+            CAP_SYS_RAWIO or CAP_NET_ADMIN. This reads the capability set the kernel gave the
+            process rather than the runtime's metadata, so unlike the privileged-container rule
+            it sees a nested `docker run --privileged` or `--cap-add` inside the Docker sandbox.
+            runc's own init holds the daemon's capabilities on the way to dropping them and is
+            excluded by the path of its binary.
+          condition: >
+            container_started
+            and watched_ns
+            and elevated_capabilities
+            and not sandbox_runtime_proc
+          output: >
+            Container started with elevated capabilities in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name image=%container.image.repository
+            caps=%thread.cap_effective user=%user.name user_uid=%user.uid process=%proc.name
+            proc_exepath=%proc.exepath command=%proc.cmdline)
+          priority: CRITICAL
+          tags: [agent_sandbox, container, mitre_privilege_escalation, T1611]
+
+        # evt.arg.dev is the mount source as the dockerd pod sees it, which is
+        # where a nested `-v /:/host`, `-v /state/repos/x:/src` and
+        # `-v /certs:/c` become visible. Sources the daemon touches on its own
+        # are deliberately absent: RootlessKit copies up /etc and /run at
+        # startup and runc binds image layers under /home/rootless, so listing
+        # those would cost an alert per pod start or per container.
+        #
+        # Scoped to the Docker sandbox because it is the only namespace with a
+        # nested runtime; in the others the kubelet does the mounting and that
+        # is not a container event.
+        - macro: sandbox_sensitive_mount_source
+          condition: (evt.arg.dev = "/" or
+                      evt.arg.dev startswith /certs or
+                      evt.arg.dev startswith /state/repos or
+                      evt.arg.dev startswith /var/run/docker.sock or
+                      evt.arg.dev startswith /run/docker.sock or
+                      evt.arg.dev startswith /run/k3s or
+                      evt.arg.dev startswith /var/lib/kubelet)
+
+        - rule: Agent sandbox nested container mounted a sensitive path
+          desc: >
+            A mount inside the Docker sandbox took its source from the pod's root, the daemon's
+            TLS material, the repos volume, or a runtime socket. That is what `docker run -v`
+            looks like from the syscall side, and it is the only side that sees it: the nested
+            container's metadata is the dockerd pod's.
+          condition: >
+            evt.type = mount
+            and container
+            and k8s.ns.name = "agent-sandbox-docker"
+            and sandbox_sensitive_mount_source
+          output: >
+            Sensitive path mounted inside the Docker sandbox
+            (ns=%k8s.ns.name pod=%k8s.pod.name source=%evt.arg.dev target=%evt.arg.dir
+            fstype=%evt.arg.type flags=%evt.arg.flags user=%user.name user_uid=%user.uid
+            process=%proc.name proc_exepath=%proc.exepath command=%proc.cmdline)
+          priority: CRITICAL
+          tags: [agent_sandbox, container, filesystem, mitre_execution, T1610]
+
+        # The confused deputy in #347's review: a nested container writes as
+        # uid 1000 on the repos volume, git executes what core.fsmonitor,
+        # core.hooksPath, core.pager and friends name, and the next git command
+        # an agent runs in olya-0 runs it as her. Neither half looks unusual on
+        # its own, so this matches the file rather than the behaviour.
+        #
+        # The globs are unanchored on purpose. Paths in the output are relative
+        # to the writing process's mount namespace, so the same write is
+        # /state/repos/x/.git/config from the pod and /src/.git/config from
+        # inside a nested container, and only the tail is stable.
+        - macro: git_execution_config_file
+          condition: (fd.name glob "*/.git/config" or
+                      fd.name glob "*/.git/hooks/*" or
+                      fd.name glob "*/.git/modules/*/config" or
+                      fd.name glob "*/.husky/*")
+
+        - rule: Git configuration or hook written from the Docker sandbox
+          desc: >
+            A process in the Docker sandbox opened a git config file or a hook for writing.
+            Those files name programs git runs, and the repos volume is shared read-write with
+            olya-0, so this is the cheap path from a test container into her session. A test
+            that clones or inits a repository of its own writes the same files, which is what
+            keeps this at Error rather than Critical.
+          condition: >
+            open_write
+            and container
+            and k8s.ns.name = "agent-sandbox-docker"
+            and proc_name_exists
+            and git_execution_config_file
+          output: >
+            Git config or hook opened for writing in the Docker sandbox
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name
+            user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
+            command=%proc.cmdline)
+          priority: ERROR
+          tags: [agent_sandbox, container, filesystem, mitre_persistence, T1546]
+
+        # Olya's namespace only, and that restriction is most of the noise
+        # budget for this rule set. Driving a sandbox by hand is what the
+        # sandboxes are for: `kubectl exec -it` into a vcluster workload and
+        # `docker exec -it` into a nested container are both ordinary work, an
+        # agent does them unprompted, and a rule that fires on ordinary work
+        # gets muted. It is also the cheapest flood available, since a pty in a
+        # loop produces matches as fast as it can fork. In olya the opposite
+        # holds: the agents there run commands without a tty, so a pty shell is
+        # a person, or something wearing one.
+        - rule: Terminal shell in Olya's namespace
+          desc: >
+            A shell with an attached terminal was spawned in a container in Olya's namespace,
+            which is what `kubectl exec -it` looks like. The agents run commands without a tty,
+            so this is a person (or something impersonating one) reaching into her session by
+            hand.
           condition: >
             spawned_process
             and container
-            and watched_ns
+            and k8s.ns.name = "olya"
             and proc.name in (shell_binaries)
             and proc.tty != 0
           output: >
-            Shell with a terminal spawned in a watched namespace
+            Shell with a terminal spawned in Olya's namespace
             (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
             user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
             command=%proc.cmdline terminal=%proc.tty)
@@ -338,26 +520,49 @@ spec:
           priority: WARNING
           tags: [agent_sandbox, container, filesystem, mitre_persistence, T1543]
 
-        - macro: kube_credential_file
+        # Two lists, because the two sandboxes disagree about what a service
+        # account token means.
+        #
+        # The dockerd pod has none: automountServiceAccountToken is false and
+        # no Secret but its own server certificate is mounted, so a read of a
+        # token path there is a misconfigured pod spec or the credential reach
+        # #345 rules out.
+        #
+        # Every vcluster pod has one. vcluster rewrites each virtual pod's
+        # projected token into a Secret-backed volume at the standard path
+        # (pkg/controllers/resources/pods/translate/translator.go), so the file
+        # exists in every pod it syncs and anything using in-cluster config
+        # (kubectl, client-go, a Helm hook, an operator under test) reads it on
+        # startup. It is a virtual-cluster token that the host API server does
+        # not accept. Alerting on it would put a Critical on ordinary use, and
+        # a Critical that fires on ordinary use gets muted, which costs more
+        # than it buys. What is left for that namespace is the host-side
+        # material a virtual pod has no legitimate way to hold.
+        - macro: host_kube_credential_file
+          condition: >
+            (fd.name startswith /var/lib/kubelet/pki/
+             or fd.name startswith /etc/rancher/k3s/
+             or fd.name startswith /run/k3s/
+             or fd.name startswith /var/lib/rancher/k3s/)
+
+        - macro: pod_kube_credential_file
           condition: >
             (fd.name startswith /run/secrets/kubernetes.io/serviceaccount/
              or fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/
-             or fd.name contains /volumes/kubernetes.io~secret/
-             or fd.name startswith /var/lib/kubelet/pki/
-             or fd.name startswith /etc/rancher/k3s/)
+             or fd.name contains /volumes/kubernetes.io~secret/)
+
         - rule: Kubernetes credential read in agent sandbox container
           desc: >
-            A process in a sandbox container read a service account token, a mounted Secret,
-            or a k3s/kubelet credential. Scoped to the sandboxes and not to Olya, who reads
-            her own token as a matter of course. The sandboxes should have no service account
-            token mounted at all, so any read is either a misconfigured pod spec or the
-            credential reach #345 rules out.
+            A process in a sandbox container read kubelet's or k3s's own credentials, or (in
+            the Docker sandbox, which has no service account) a service account token or a
+            mounted Secret. Scoped to the sandboxes and not to Olya, who reads her own token as
+            a matter of course.
           condition: >
             open_read
             and container
-            and sandbox_ns
             and proc_name_exists
-            and kube_credential_file
+            and ((sandbox_ns and host_kube_credential_file)
+                 or (k8s.ns.name = "agent-sandbox-docker" and pod_kube_credential_file))
           output: >
             Kubernetes credential read in a sandbox namespace
             (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name

@@ -1118,6 +1118,41 @@ spec:
               }
             }
 
+            // A Service with spec.externalIPs is the CVE-2020-8554 shape, and
+            // #346's review found the path open: vcluster copies externalIPs
+            // from the virtual Service to the host one, the sandbox
+            // ResourceQuota blocks only NodePort and LoadBalancer, and
+            // DenyServiceExternalIPs is not enabled on this node. kube-proxy
+            // then installs a node-wide DNAT for that address and port, in
+            // PREROUTING and OUTPUT both. The admission policy that rejects it
+            // belongs in #346; this is the detective half.
+            //
+            // Not the obvious "add services to the selector above": vcluster
+            // syncs every virtual Service into this namespace, so a counter on
+            // services-written would increment through ordinary use and the
+            // alert would be muted within a week. externalIPs and
+            // loadBalancerIP are omitempty in the serialised Service, so the
+            // words appear in the audit line only when they are set, and the
+            // counter stays at zero through every legitimate sync.
+            //
+            // It needs the request body, which means the audit policy has to
+            // record services at RequestResponse rather than Metadata. The
+            // policy in ../README.md does; if that is edited, this goes quiet
+            // and looks healthy.
+            stage.match {
+              selector = "{app=\"kube-apiserver-audit\"} |~ \"\\\"resource\\\":\\\"services\\\"\" |~ \"\\\"verb\\\":\\\"(create|update|patch)\\\"\" |~ \"\\\"namespace\\\":\\\"agent-sandbox-\" |~ \"(externalIPs|loadBalancerIP)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "k8s_audit_sandbox_service_external_ip_total"
+                  description = "Services written with externalIPs or loadBalancerIP in the agent sandbox namespaces"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 

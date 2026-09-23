@@ -279,8 +279,8 @@ activescott/activeassistant#348 is wired but not yet fed.
 
 Everything downstream of the file is in place and reconciled by Flux: Alloy mounts
 `/var/log/kubernetes/audit` (`DirectoryOrCreate`, so it is harmless while empty), tails
-`*.log` there, and mints two counters that the `agent-sandbox-security` alert group reads.
-Until the flags below are set, those counters stay at zero and the two audit alerts cannot
+`*.log` there, and mints three counters that the `agent-sandbox-security` alert group reads.
+Until the flags below are set, those counters stay at zero and the three audit alerts cannot
 fire. **Their silence is not coverage.**
 
 What remains is a node-level change, and k3s server flags on TrueNAS are Scott's to set.
@@ -309,6 +309,16 @@ rules:
         resources: ["roles", "rolebindings"]
       - group: "networking.k8s.io"
         resources: ["networkpolicies"]
+  # Services, also RequestResponse, and the level is the point rather than a
+  # detail: SandboxServiceExternalIP looks for the word externalIPs in
+  # the request body, and at Metadata the body is not there. Dropping this rule
+  # to Metadata leaves an alert that can never fire and looks healthy.
+  - level: RequestResponse
+    verbs: ["create", "update", "patch"]
+    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
+    resources:
+      - group: ""
+        resources: ["services"]
   # Everything else in the sandbox namespaces at Metadata, which is enough:
   # a Pod Security denial puts its reason in responseStatus.message, and
   # Metadata records responseStatus.

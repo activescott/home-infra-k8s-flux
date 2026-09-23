@@ -1695,7 +1695,7 @@ spec:
                   query: '{namespace="falco"} |= "Runtime error"'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falconotrunning
                   repo: activescott/home-infra-k8s-flux
-              # The two below read counters that stay at zero until k3s is
+              # The three below read counters that stay at zero until k3s is
               # started with audit logging, which is a node-level change on
               # TrueNAS. Until then they cannot fire, and their silence means
               # nothing. See ../README.md, "Kubernetes audit log".
@@ -1727,6 +1727,21 @@ spec:
                     sandbox is editing the walls around itself.
                   query: '{app="kube-apiserver-audit"} |~ "\"resource\":\"(roles|rolebindings|networkpolicies)\"" |~ "\"namespace\":\"agent-sandbox-" | json'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxauthzchanged
+                  repo: activescott/home-infra-k8s-flux
+              - alert: SandboxServiceExternalIP
+                expr: 'sum(increase(loki_process_custom_k8s_audit_sandbox_service_external_ip_total[15m])) > 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'A Service with externalIPs was written in an agent sandbox namespace.'
+                  description: >-
+                    A Service carrying spec.externalIPs or spec.loadBalancerIP was created or
+                    updated in a sandbox namespace, and vcluster copies externalIPs from the
+                    virtual Service to the host one. kube-proxy installs a node-wide DNAT for
+                    that address and port, which hijacks traffic to it for every pod on nas1 and
+                    for the node itself. Nothing in the sandbox legitimately sets either field.
+                  query: '{app="kube-apiserver-audit"} |~ "\"resource\":\"services\"" |~ "\"namespace\":\"agent-sandbox-" |~ "(externalIPs|loadBalancerIP)" | json'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxserviceexternalip
                   repo: activescott/home-infra-k8s-flux
 
     # --- Extra Scrape Configs ---
