@@ -1624,6 +1624,111 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
                   repo: activescott/home-infra-k8s-flux
 
+          # Runtime security for the agent sandboxes (activescott/activeassistant#348,
+          # part of #345). Two independent feeds: Falco watching syscalls, and
+          # kube-apiserver's audit log watching the control plane. Both mint their
+          # counters in Alloy's loki.process; see alloy/helmrelease.yaml.
+          #
+          # These fire on a single event rather than on a rate. A sandbox that
+          # tried once to read a service account token has already told us what
+          # we needed to know, and the volume is expected to be zero, so there is
+          # no baseline to exceed. `for` is therefore omitted throughout.
+          #
+          # sum() is not optional here, for the reason spelled out in the
+          # tinkerbell-log-health group above: these counters carry every stream
+          # label Alloy had at that point in the pipeline, so an unaggregated
+          # expression evaluates per pod and per node.
+          - name: agent-sandbox-security
+            rules:
+              # Split by priority so a container escape and a shell someone
+              # opened by hand do not arrive with the same severity. The rules
+              # file assigns the priorities; see falco/helmrelease.yaml.
+              - alert: FalcoSandboxCritical
+                expr: 'sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}[5m])) > 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Falco: {{ $labels.falco_rule }} in {{ $labels.falco_ns }}.'
+                  description: >-
+                    Falco matched a rule it only raises at Critical: a namespace escape, a
+                    privileged container, a sensitive host mount, or a read of a Kubernetes
+                    credential. In the sandbox namespaces these are all things the sandbox
+                    design says cannot happen, so this is either a real escape or the sandbox
+                    manifests do not say what we think they say. It is not a tuning problem.
+                  query: '{namespace="falco", falco_priority=~"Critical|Alert|Emergency"} | json'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcosandboxcritical
+                  repo: activescott/home-infra-k8s-flux
+              - alert: FalcoSandboxWarning
+                expr: 'sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}[5m])) > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Falco: {{ $labels.falco_rule }} in {{ $labels.falco_ns }}.'
+                  description: >-
+                    Falco matched a rule at Warning or Error: a terminal shell, a write to a
+                    sensitive /etc file or a binary directory, or a connection to an address
+                    the sandbox should not reach. Unlike the Critical tier these have a
+                    plausible innocent explanation (someone exec-ing in to look at something,
+                    a build installing a binary), so the first question is which.
+                  query: '{namespace="falco", falco_priority=~"Warning|Error"} | json'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcosandboxwarning
+                  repo: activescott/home-infra-k8s-flux
+              # Falco is the only thing watching these namespaces at syscall
+              # level, so it going away is itself the incident. The `absent`
+              # arm covers the DaemonSet not existing at all, which is what a
+              # failed HelmRelease looks like from here.
+              - alert: FalcoNotRunning
+                expr: >-
+                  kube_daemonset_status_number_unavailable{namespace="falco",daemonset="falco"} > 0
+                  or absent(kube_daemonset_status_number_ready{namespace="falco",daemonset="falco"})
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Falco has not been running on nas1 for 10 minutes.'
+                  description: >-
+                    The Falco DaemonSet has an unavailable pod or has disappeared. Every rule
+                    in the agent-sandbox-security group is blind while this is true, and the
+                    other alerts here cannot tell that apart from a quiet cluster. Most likely
+                    causes are a rules file Falco refused to load and a kernel that stopped
+                    satisfying the modern eBPF probe after a TrueNAS update.
+                  query: '{namespace="falco"} |= "Runtime error"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falconotrunning
+                  repo: activescott/home-infra-k8s-flux
+              # The two below read counters that stay at zero until k3s is
+              # started with audit logging, which is a node-level change on
+              # TrueNAS. Until then they cannot fire, and their silence means
+              # nothing. See ../README.md, "Kubernetes audit log".
+              - alert: SandboxPodSecurityDenied
+                expr: 'sum(increase(loki_process_custom_k8s_audit_sandbox_podsecurity_denied_total[15m])) > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Pod Security admission refused a pod in an agent sandbox namespace.'
+                  description: >-
+                    Something tried to create a pod the sandbox namespace's Pod Security level
+                    forbids, most often a privileged one or one asking for host namespaces. The
+                    request was refused, so this is an attempt rather than a breach, but the
+                    sandbox workload is either broken or trying to escalate.
+                  query: '{app="kube-apiserver-audit"} |= "violates PodSecurity" |~ "\"namespace\":\"agent-sandbox-"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxpodsecuritydenied
+                  repo: activescott/home-infra-k8s-flux
+              - alert: SandboxAuthzChanged
+                expr: 'sum(increase(loki_process_custom_k8s_audit_sandbox_authz_changed_total[15m])) > 0'
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'RBAC or NetworkPolicy changed inside an agent sandbox namespace.'
+                  description: >-
+                    A Role, RoleBinding or NetworkPolicy in a sandbox namespace was created,
+                    updated, patched or deleted. Those are declared in this repo and reconciled
+                    by Flux, so a legitimate change shows up here as Flux's own service account
+                    shortly after a merge. Any other identity, or no matching commit, means the
+                    sandbox is editing the walls around itself.
+                  query: '{app="kube-apiserver-audit"} |~ "\"resource\":\"(roles|rolebindings|networkpolicies)\"" |~ "\"namespace\":\"agent-sandbox-" | json'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxauthzchanged
+                  repo: activescott/home-infra-k8s-flux
+
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |
       # WAN reachability/latency probed from inside the LAN via

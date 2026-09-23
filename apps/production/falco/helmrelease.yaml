@@ -1,0 +1,403 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: falco
+  namespace: falco
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: falco
+      version: "9.2.0"
+      sourceRef:
+        kind: HelmRepository
+        name: falcosecurity
+        namespace: falco
+      interval: 24h
+  values:
+    controller:
+      kind: daemonset
+
+    # modern_ebpf, not kmod and not the legacy ebpf probe. The node runs
+    # 5.15.131+truenas and exposes /sys/kernel/btf/vmlinux (3.7 MB, BTF magic
+    # 0xeb9f), so it is built with CONFIG_DEBUG_INFO_BTF=y and satisfies the
+    # >= 5.8 CO-RE requirement. That matters here beyond taste: TrueNAS SCALE
+    # ships no kernel headers and no compiler, so kmod and the legacy probe
+    # would both need a prebuilt driver matching a vendor kernel string that
+    # falcosecurity does not publish, and every TrueNAS update would break it.
+    # modern_ebpf carries its own CO-RE object inside the Falco image.
+    #
+    # leastPrivileged swaps the privileged container for four capabilities
+    # (CAP_BPF, CAP_SYS_RESOURCE, CAP_PERFMON, CAP_SYS_PTRACE), all of which
+    # need >= 5.8 as well. Falco still runs in the host PID and network
+    # namespaces and reads the container runtime socket; see README.md.
+    driver:
+      enabled: true
+      kind: modern_ebpf
+      modernEbpf:
+        leastPrivileged: true
+
+    collectors:
+      enabled: true
+      # The container plugin supplies container.*, k8s.ns.name and k8s.pod.name
+      # by reading the runtime socket. The chart's default CRI socket list
+      # already includes k3s's /run/k3s/containerd/containerd.sock.
+      containerEngine:
+        enabled: true
+      # k8s-metacollector adds pod labels, owner references and the rest of the
+      # pod spec. The rules below only need the namespace and pod name, which
+      # the container plugin already provides, so this stays off rather than
+      # adding a Deployment and a gRPC hop.
+      kubernetes:
+        enabled: false
+
+    falcoctl:
+      artifact:
+        # Still needed: this is what fetches the container plugin referenced
+        # above. It also fetches falco-rules, which falco.rules_files below
+        # deliberately does not load.
+        install:
+          enabled: true
+        # Off. `follow` re-downloads rule artifacts on a timer, which is a
+        # behaviour change arriving from outside git.
+        follow:
+          enabled: false
+
+    # Falco line-buffers stdout when it is not a tty, which delays an alert
+    # reaching Loki until the buffer fills. Alert latency is the whole point
+    # here, so give it a tty.
+    tty: true
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+    falco:
+      # Only our rules. The upstream falco_rules.yaml is fetched by falcoctl
+      # into /rulesfiles but never listed here: its ~100 rules are written for
+      # a general fleet and would page on ordinary container startup, and this
+      # change is scoped to the sandbox namespaces. Everything the custom rules
+      # need (macros, lists) is therefore repeated in the file below rather
+      # than inherited.
+      rules_files:
+        - /etc/falco/rules.d
+      # Belt and braces with the priorities in the rules file: nothing below
+      # warning is loaded, so nothing below warning can reach the log.
+      priority: warning
+      json_output: true
+      json_include_output_property: true
+      json_include_tags_property: false
+      buffered_outputs: false
+
+    customRules:
+      agent-sandbox-rules.yaml: |-
+        # Falco rules for the agent sandboxes and Olya's namespace.
+        # activescott/activeassistant#348, part of #345.
+        #
+        # Self-contained on purpose: falco.rules_files loads only this
+        # directory, so the macros and lists below are copies of the upstream
+        # definitions rather than references to falco_rules.yaml.
+
+        - required_engine_version: 0.57.0
+
+        - required_plugin_versions:
+            - name: container
+              version: 0.4.0
+
+        # ── Scope ────────────────────────────────────────────────────────────
+        # Neither sandbox namespace exists yet; they arrive with #345. Until
+        # then every rule below matches nothing, which is why the PR that adds
+        # them has to force one alert rather than read silence as success.
+
+        - list: agent_sandbox_namespaces
+          items: [agent-sandbox-k8s, agent-sandbox-docker]
+
+        - list: watched_namespaces
+          items: [agent-sandbox-k8s, agent-sandbox-docker, olya]
+
+        - macro: sandbox_ns
+          condition: (k8s.ns.name in (agent_sandbox_namespaces))
+
+        - macro: watched_ns
+          condition: (k8s.ns.name in (watched_namespaces))
+
+        # ── Upstream macros, copied ──────────────────────────────────────────
+
+        - macro: container
+          condition: (container.id != host)
+
+        - macro: spawned_process
+          condition: (evt.type in (execve, execveat))
+
+        - macro: container_started
+          condition: (spawned_process and proc.vpid=1 and container)
+
+        - macro: open_write
+          condition: (evt.type in (open,openat,openat2) and evt.is_open_write=true and fd.typechar='f' and fd.num>=0)
+
+        - macro: open_read
+          condition: (evt.type in (open,openat,openat2) and evt.is_open_read=true and fd.typechar='f' and fd.num>=0)
+
+        - macro: proc_name_exists
+          condition: (not proc.name in ("<NA>","N/A"))
+
+        - macro: outbound
+          condition: >
+            ((evt.type = connect or
+              (evt.type in (sendto,sendmsg) and
+               fd.l4proto != tcp and fd.connected=false and fd.name_changed=true)) and
+             (fd.typechar = 4 or fd.typechar = 6) and
+             (fd.ip != "0.0.0.0" and fd.net != "127.0.0.0/8") and
+             (evt.rawres >= 0 or evt.res = EINPROGRESS))
+
+        - macro: bin_dir
+          condition: (fd.directory in (/bin, /sbin, /usr/bin, /usr/sbin))
+
+        - list: shell_binaries
+          items: [ash, bash, csh, ksh, sh, tcsh, zsh, dash]
+
+        - macro: sensitive_mount
+          condition: (not container.mount.dest[/proc*] in ("<NA>","N/A") or
+                      not container.mount.dest[/var/run/docker.sock] in ("<NA>","N/A") or
+                      not container.mount.dest[/var/run/crio/crio.sock] in ("<NA>","N/A") or
+                      not container.mount.dest[/run/containerd/containerd.sock] in ("<NA>","N/A") or
+                      not container.mount.dest[/run/k3s/containerd/containerd.sock] in ("<NA>","N/A") or
+                      not container.mount.dest[/var/lib/kubelet] in ("<NA>","N/A") or
+                      not container.mount.dest[/var/lib/kubelet/pki] in ("<NA>","N/A") or
+                      not container.mount.dest[/] in ("<NA>","N/A") or
+                      not container.mount.dest[/etc] in ("<NA>","N/A") or
+                      not container.mount.dest[/etc/kubernetes] in ("<NA>","N/A") or
+                      not container.mount.dest[/etc/kubernetes/manifests] in ("<NA>","N/A") or
+                      not container.mount.dest[/root*] in ("<NA>","N/A"))
+
+        # ── Tuning points ────────────────────────────────────────────────────
+        # A sandbox that runs a real Docker daemon or a k3s/vcluster control
+        # plane spends its whole life doing things that look like an escape
+        # from the outside: runc re-execs itself through /proc/self/exe (so it
+        # appears as "exe"), the shim calls setns for every container it
+        # starts. Excluding the runtime binaries by name is what keeps the
+        # escape rule quiet enough to page on.
+
+        - list: sandbox_runtime_binaries
+          items: [dockerd, containerd, containerd-shim, containerd-shim-runc-v2, runc, exe,
+                  buildkitd, buildkit-runc, crun, tini, docker-init, pause,
+                  k3s, k3s-server, k3s-agent, kubelet, vcluster, syncer]
+
+        - macro: sandbox_runtime_proc
+          condition: (proc.name in (sandbox_runtime_binaries) or
+                      proc.pname in (sandbox_runtime_binaries) or
+                      proc.name startswith "runc" or
+                      proc.cmdline startswith "containerd")
+
+        # Overwrite this macro to silence a build step that legitimately
+        # installs into /bin or /usr/bin. Left empty rather than pre-populated
+        # with guesses: nobody has run a build in these namespaces yet.
+        - list: sandbox_package_mgmt_binaries
+          items: [dpkg, dpkg-preconfigu, dpkg-deb, rpm, rpmkey, yum, dnf, microdnf, apt, apt-get,
+                  apt-config, apk, ldconfig, ldconfig.real, update-alternat]
+
+        # ── Rules ────────────────────────────────────────────────────────────
+
+        # Every branch carries an evt.type restriction on purpose, including
+        # the nsenter one, which would otherwise read as a bare proc.name.
+        # Without it Falco warns LOAD_NO_EVTTYPE and evaluates this rule
+        # against every syscall on the node.
+        - macro: container_escape_attempt
+          condition: >
+            (evt.type in (setns, unshare)
+             or (spawned_process and proc.name = nsenter)
+             or evt.type in (init_module, finit_module)
+             or (open_write and fd.name endswith release_agent))
+
+        - rule: Agent sandbox container escape attempt
+          desc: >
+            A process inside a sandbox or Olya container tried to leave its namespaces (setns,
+            unshare, nsenter), load a kernel module, or write the cgroup release_agent file.
+            The container runtimes the sandboxes run do all of this legitimately and are
+            excluded by name, so what is left is a process that has no reason to be doing it.
+          condition: >
+            container_escape_attempt
+            and container
+            and watched_ns
+            and proc_name_exists
+            and not sandbox_runtime_proc
+          output: >
+            Container escape attempt in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name image=%container.image.repository
+            evt_type=%evt.type user=%user.name user_uid=%user.uid process=%proc.name
+            proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline)
+          priority: CRITICAL
+          tags: [agent_sandbox, container, process, mitre_privilege_escalation, T1611]
+
+        - rule: Agent sandbox privileged container started
+          desc: >
+            A container in a sandbox or Olya namespace started with the privileged flag.
+            #345 says the sandboxes may not put privilege in olya-0 or reach its credentials,
+            so a privileged container anywhere in these namespaces is a design violation
+            rather than a workload event.
+          condition: >
+            container_started
+            and watched_ns
+            and container.privileged = true
+          output: >
+            Privileged container started in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name image=%container.image.repository
+            user=%user.name user_uid=%user.uid process=%proc.name command=%proc.cmdline)
+          priority: CRITICAL
+          tags: [agent_sandbox, container, mitre_execution, T1610]
+
+        - rule: Agent sandbox container started with a sensitive host mount
+          desc: >
+            A container in a sandbox or Olya namespace started with a host path mounted that
+            gives it the host filesystem, the container runtime socket, or kubelet's
+            credentials. Any one of those is an escape without needing an exploit.
+          condition: >
+            container_started
+            and watched_ns
+            and sensitive_mount
+          output: >
+            Container with a sensitive host mount started in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name image=%container.image.repository
+            mounts=%container.mounts process=%proc.name command=%proc.cmdline)
+          priority: CRITICAL
+          tags: [agent_sandbox, container, mitre_execution, T1610]
+
+        - rule: Terminal shell in agent sandbox container
+          desc: >
+            A shell with an attached terminal was spawned in a sandbox or Olya container,
+            which is what `kubectl exec -it` and `docker exec -it` look like. The agents
+            themselves run commands without a tty, so this is a person (or something
+            impersonating one) reaching into a sandbox by hand.
+          condition: >
+            spawned_process
+            and container
+            and watched_ns
+            and proc.name in (shell_binaries)
+            and proc.tty != 0
+          output: >
+            Shell with a terminal spawned in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+            user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
+            command=%proc.cmdline terminal=%proc.tty)
+          priority: WARNING
+          tags: [agent_sandbox, container, shell, mitre_execution, T1059]
+
+        # Deliberately a named list rather than all of /etc: a sandbox that
+        # builds images writes half of /etc on every `apt-get install`, and an
+        # alert that fires on every build is an alert nobody reads. These are
+        # the files that buy persistence or a privilege change.
+        - list: sandbox_sensitive_config_files
+          items: [/etc/passwd, /etc/shadow, /etc/sudoers, /etc/ld.so.preload, /etc/crontab,
+                  /etc/nsswitch.conf, /etc/pam.conf]
+
+        - macro: sandbox_sensitive_config_dirs
+          condition: (fd.directory in (/etc/sudoers.d, /etc/pam.d, /etc/cron.d, /etc/ssh, /etc/profile.d))
+
+        - rule: Sensitive config file written in agent sandbox container
+          desc: >
+            A process in a sandbox or Olya container opened one of the /etc files that grants
+            persistence or a privilege change (accounts, sudo, PAM, cron, sshd, ld.so.preload)
+            for writing.
+          condition: >
+            open_write
+            and container
+            and watched_ns
+            and proc_name_exists
+            and (fd.name in (sandbox_sensitive_config_files) or sandbox_sensitive_config_dirs)
+            and not proc.name in (sandbox_package_mgmt_binaries)
+          output: >
+            Sensitive config file opened for writing in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name
+            user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
+            command=%proc.cmdline)
+          priority: ERROR
+          tags: [agent_sandbox, container, filesystem, mitre_persistence, T1098]
+
+        - rule: Binary directory written in agent sandbox container
+          desc: >
+            A process in a sandbox or Olya container opened a file under /bin, /sbin,
+            /usr/bin or /usr/sbin for writing. Package managers are excluded. Expect this
+            one to need tuning through sandbox_package_mgmt_binaries once the sandboxes run
+            real builds, since `make install` and `go install` land here too.
+          condition: >
+            open_write
+            and container
+            and watched_ns
+            and bin_dir
+            and proc_name_exists
+            and not proc.name in (sandbox_package_mgmt_binaries)
+          output: >
+            File below a binary directory opened for writing in a watched namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name
+            user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
+            command=%proc.cmdline)
+          priority: WARNING
+          tags: [agent_sandbox, container, filesystem, mitre_persistence, T1543]
+
+        - macro: kube_credential_file
+          condition: >
+            (fd.name startswith /run/secrets/kubernetes.io/serviceaccount/
+             or fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/
+             or fd.name contains /volumes/kubernetes.io~secret/
+             or fd.name startswith /var/lib/kubelet/pki/
+             or fd.name startswith /etc/rancher/k3s/)
+        - rule: Kubernetes credential read in agent sandbox container
+          desc: >
+            A process in a sandbox container read a service account token, a mounted Secret,
+            or a k3s/kubelet credential. Scoped to the sandboxes and not to Olya, who reads
+            her own token as a matter of course. The sandboxes should have no service account
+            token mounted at all, so any read is either a misconfigured pod spec or the
+            credential reach #345 rules out.
+          condition: >
+            open_read
+            and container
+            and sandbox_ns
+            and proc_name_exists
+            and kube_credential_file
+          output: >
+            Kubernetes credential read in a sandbox namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name
+            user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
+            command=%proc.cmdline)
+          priority: CRITICAL
+          tags: [agent_sandbox, container, filesystem, mitre_credential_access, T1552.001]
+
+        - list: rfc_1918_addresses
+          items: ['"10.0.0.0/8"', '"172.16.0.0/12"', '"192.168.0.0/16"']
+
+        # nas1's k3s: pod CIDR 172.16.0.0/16, service CIDR 172.17.0.0/16.
+        # 172.17.0.0/16 also happens to be Docker's default bridge range, which
+        # is convenient here: traffic inside a dind sandbox is excluded too.
+        - list: nas1_cluster_networks
+          items: ['"172.16.0.0/16"', '"172.17.0.0/16"']
+
+        # The `kubernetes` Service in the default namespace. In the exclusion
+        # above by subnet, so it needs naming explicitly to stay alertable.
+        - list: nas1_kubernetes_api_addresses
+          items: ['"172.17.0.1"']
+
+        - rule: Agent sandbox container made an unexpected private network connection
+          desc: >
+            A sandbox container connected to an RFC1918 address that is neither the pod nor
+            the service network, or to the cluster's own API server. That covers the node
+            itself, the LAN, the firewall, and kube-apiserver: everything the sandboxes are
+            supposed to be unable to reach. Public internet egress is not matched here, it is
+            the sandbox NetworkPolicy's job.
+          condition: >
+            outbound
+            and container
+            and sandbox_ns
+            and fd.snet in (rfc_1918_addresses)
+            and (fd.sip in (nas1_kubernetes_api_addresses)
+                 or not fd.snet in (nas1_cluster_networks))
+          output: >
+            Unexpected private network connection from a sandbox namespace
+            (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name connection=%fd.name
+            rport=%fd.rport proto=%fd.l4proto user=%user.name process=%proc.name
+            command=%proc.cmdline)
+          priority: ERROR
+          tags: [agent_sandbox, container, network, mitre_discovery, T1046]
