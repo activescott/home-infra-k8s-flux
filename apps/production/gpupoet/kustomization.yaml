@@ -5,6 +5,10 @@ resources:
   - db-backup/
   - ../../base/gpupoet/
   - app-ingress-certificate.yaml
+  # /ops/* denied at the ingress except /ops/metrics; the CronJobs reach the
+  # app through the Service instead.
+  - app-ops-middleware.yaml
+  - app-ops-ingress.yaml
   - www-redirect-middleware.yaml
   - www-redirect-ingress.yaml
   - indexnow-pv.yaml
