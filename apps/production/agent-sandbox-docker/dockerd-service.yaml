@@ -1,0 +1,17 @@
+# DOCKER_HOST on the olya side becomes
+# tcp://dockerd.agent-sandbox-docker.svc.cluster.local:2376. ClusterIP only: there is no Ingress
+# and there should not be one, since the daemon API is root inside the sandbox and its only
+# authentication is the client certificate in certificates.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dockerd
+  namespace: agent-sandbox-docker
+spec:
+  selector:
+    app: dockerd
+  ports:
+    - name: docker
+      port: 2376
+      targetPort: docker
+      protocol: TCP

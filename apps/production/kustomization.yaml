@@ -71,3 +71,7 @@ resources:
   # browser-chaperone: the approval app, its database, the browser service, and the browser's
   # egress proxy and NetworkPolicies (activescott/activeassistant#196, #229).
   - ./browser-chaperone
+  # Rootless dockerd for agent tests, in its own namespace so nothing here can reach olya-0's
+  # credentials and so deploying it does not restart her (activescott/activeassistant#347).
+  # Accepts a shared-kernel boundary on purpose; see its README.md.
+  - ./agent-sandbox-docker

@@ -1,0 +1,109 @@
+# mTLS for the daemon's TCP listener, and the only authentication it has. dockerd exposes no
+# login of its own, so `--tlsverify` (a client certificate signed by this CA) is what separates
+# "can reach port 2376" from "is root inside the sandbox". The NetworkPolicy is the other half.
+#
+# cert-manager mints all of it in the cluster. No key material is in git, and none should be:
+# the CA private key exists only in the agent-sandbox-docker-ca Secret.
+#
+# A private CA rather than the letsencrypt-production ClusterIssuer the rest of this repo uses.
+# Let's Encrypt issues server certificates for public names over HTTP-01; it cannot issue the
+# client certificate, which is the half that matters here.
+#
+# RENEWAL NEEDS A POD RESTART. dockerd reads the three files once at startup and has no reload
+# path, so when cert-manager rewrites dockerd-tls-server the running daemon keeps serving the
+# old certificate. It fails loudly when the old one expires rather than silently, but nothing
+# restarts the pod for you. The durations below are set so that happens once a year, not
+# quarterly.
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+  namespace: agent-sandbox-docker
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: agent-sandbox-docker-ca
+  namespace: agent-sandbox-docker
+spec:
+  isCA: true
+  commonName: agent-sandbox-docker CA
+  secretName: agent-sandbox-docker-ca
+  # Five years, so the CA outlives several rounds of leaf renewal. Rotating it is a bigger
+  # operation than rotating a leaf: cert-manager does not re-issue existing leaves when their
+  # issuer's key changes, so both Certificates below have to be deleted and re-issued by hand
+  # afterwards, and the olya-side client secret redeployed with them.
+  duration: 43800h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: sandbox-ca
+  namespace: agent-sandbox-docker
+spec:
+  ca:
+    secretName: agent-sandbox-docker-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dockerd-tls-server
+  namespace: agent-sandbox-docker
+spec:
+  secretName: dockerd-tls-server
+  duration: 8760h
+  renewBefore: 720h
+  commonName: dockerd.agent-sandbox-docker.svc.cluster.local
+  # The Docker client verifies the name it dialled. All four spellings of the Service are here
+  # so DOCKER_HOST can be written either way on the olya side.
+  dnsNames:
+    - dockerd.agent-sandbox-docker.svc.cluster.local
+    - dockerd.agent-sandbox-docker.svc
+    - dockerd.agent-sandbox-docker
+    - dockerd
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: sandbox-ca
+    kind: Issuer
+---
+# The client half. Issued here rather than in the olya namespace because a cert-manager Issuer
+# is namespaced and the olya namespace has no access to this CA's key. The follow-up that wires
+# DOCKER_HOST into olya-0 decides how it gets there: either a CA ClusterIssuer added at that
+# point so the Certificate can be declared in `olya` directly, or the same CA re-declared there.
+# Until then this Secret is what a debug pod in this namespace uses to prove the daemon works.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dockerd-tls-client
+  namespace: agent-sandbox-docker
+spec:
+  secretName: dockerd-tls-client
+  duration: 8760h
+  renewBefore: 720h
+  commonName: olya
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: sandbox-ca
+    kind: Issuer
