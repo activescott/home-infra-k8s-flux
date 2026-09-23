@@ -717,23 +717,24 @@ spec:
             // OpenRouter budget/key-limit refusals (activescott/home-infra-k8s-flux#220).
             // OpenRouter answers 403 specifically for a workspace or key budget cap
             // ("Workspace monthly budget of $50.00 exceeded" or a key-limit equivalent),
-            // distinct from 401 (bad key) and 429 (rate limit). Every caller puts both
-            // words in the line: Olya's own narrated reports quote the "OpenRouter"/"403"
-            // text verbatim, and Job Accelerator's tasks.queue logger records the
-            // openrouter client's thrown message verbatim
-            // ("OpenRouter answered 403 for <purpose>") -- its `openrouter` module itself
-            // only logs on success, never the refusal, since the client never reads the
-            // response body on a non-2xx (job-accelerator
-            // packages/web-app/app/lib/openrouter/client.server.ts). Matching on
-            // "openrouter" + "403" rather than "budget" alone also keeps this clear of the
-            // unrelated CloudflareAPIBudget* alerts above.
+            // distinct from 401 (bad key) and 429 (rate limit). Each selector matches the
+            // line the calling code writes when OpenRouter refuses it, and nothing else:
+            // a looser "openrouter" + "403" match also counted Olya's chat and narration
+            // about the refusal, which is not a call.
             //
-            // namespace!="monitoring" excludes Loki's own query-log lines: Loki logs every
-            // LogQL query it runs, so without the exclusion, querying Loki about this exact
-            // alert (in Explore, or re-running the verification query from #220) makes the
-            // counter increment on itself.
+            // Job Accelerator: the openrouter client throws "OpenRouter answered <status>
+            // for <purpose>" on any non-2xx (packages/web-app/app/lib/openrouter/
+            // client.server.ts), and the worker's task queue logs the thrown message as a
+            // pino error line with "module":"tasks.queue" (tasks/queue.server.ts, failTask).
+            // One line per attempt, so a refused task counts up to MAX_ATTEMPTS times.
+            //
+            // OpenClaw (olya): the gateway's provider-transport-fetch subsystem logs
+            // "[model-fetch] response provider=<p> ... status=<code>" for every model call.
+            // Anchored at the start of the line on the unescaped JSON keys, so the same
+            // text quoted inside another log line's message (escaped quotes) or pasted into
+            // tool output does not match.
             stage.match {
-              selector = "{namespace=~\".+\", namespace!=\"monitoring\"} |~ \"(?i)openrouter\" |~ \"(?i)403\""
+              selector = "{namespace=\"job-accelerator-prod\", app=\"worker\"} |= \"\\\"module\\\":\\\"tasks.queue\\\"\" |~ \"\\\"msg\\\":\\\"OpenRouter answered 403 for \""
 
               stage.metrics {
                 metric.counter {
@@ -742,9 +743,25 @@ spec:
                   match_all   = true
                   action      = "inc"
 
-                  // Default 5m would delete the series between refusals -- rare by
-                  // design, since a budget cap doesn't reset for weeks -- leaving
+                  // Default 5m would delete the series between refusals (rare by
+                  // design, since a budget cap doesn't reset for weeks), leaving
                   // increase() nothing to measure.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Same counter name as above on purpose: one series family, told apart by
+            // the namespace and app labels.
+            stage.match {
+              selector = "{namespace=\"olya\", app=\"olya\"} |~ \"^\\\\{\\\"time\\\":\\\"[^\\\"]+\\\",\\\"level\\\":\\\"[a-z]+\\\",\\\"subsystem\\\":\\\"provider-transport-fetch\\\",\\\"message\\\":\\\"\\\\[model-fetch\\\\] response provider=openrouter [^\\\"]* status=403 \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "openrouter_budget_refused_total"
+                  description = "OpenRouter calls refused with 403 (workspace or key budget exceeded)"
+                  match_all   = true
+                  action      = "inc"
                   max_idle_duration = "168h"
                 }
               }

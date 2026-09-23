@@ -794,7 +794,7 @@ spec:
               # namespaces, and both refuse with 403 the same way when its budget is spent.
               # Fed by loki_process_custom_openrouter_budget_refused_total, see the
               # stage.match comment in alloy/helmrelease.yaml for why 403 means budget and
-              # why namespace="monitoring" is excluded from the counter.
+              # which log line each app writes on a refusal.
               - alert: OpenRouterBudgetExceeded
                 expr: 'sum by (namespace, pod, app) (increase(loki_process_custom_openrouter_budget_refused_total[15m])) > 0'
                 for: 1m
@@ -802,7 +802,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'OpenRouter budget exhausted for {{ $labels.app }} in {{ $labels.namespace }}, model calls are failing.'
-                  description: '{{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15 minutes: that namespace''s workspace or key budget is spent and every call on it fails until the cap is raised or the month resets. Check Loki for the exact message: {namespace="{{ $labels.namespace }}"} |~ "(?i)openrouter" |~ "(?i)403".'
+                  description: '{{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15 minutes: that namespace''s workspace or key budget is spent and every call on it fails until the cap is raised or the month resets. Check Loki for the exact message: {namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403".'
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
