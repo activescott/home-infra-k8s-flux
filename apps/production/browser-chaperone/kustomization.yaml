@@ -8,6 +8,10 @@ resources:
   - db-pv.yaml
   - ../../base/browser-chaperone/
   - app-ingress-certificate.yaml
+  # /ops/* (kubelet probes) denied at the ingress; the probes reach the pod
+  # directly instead.
+  - app-ops-middleware.yaml
+  - app-ops-ingress.yaml
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 patches:
   # ghcr.io/activescott/browser-chaperone is private, so both Deployments need
