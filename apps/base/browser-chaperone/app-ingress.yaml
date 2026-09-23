@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+spec:
+  rules:
+    - host: browser-chaperone.local
+      http:
+        paths:
+          # Block external access to internal ops endpoints
+          - path: /ops
+            pathType: Prefix
+            backend:
+              service:
+                name: nonexistent-service
+                port:
+                  number: 80
+
+          # Allow all other traffic to the app
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 3400
