@@ -1,10 +1,11 @@
 #!/usr/bin/env npx tsx
 
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { Octokit } from '@octokit/rest';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 interface ImageRepository {
   name: string;
@@ -91,12 +92,23 @@ async function promptForToken(prompt: string): Promise<string> {
   });
 }
 
-function loadTokenFromFile(filePath: string): string | null {
-  if (!fs.existsSync(filePath)) {
+// `show` decrypts to stdout and writes nothing to disk; its diagnostics go to stderr,
+// which is passed through so a failed 1Password sign-in is visible.
+function loadTokenFromSecret(showScript: string, secret: string, cwd: string): string | null {
+  if (!fs.existsSync(showScript)) {
     return null;
   }
 
-  for (const line of fs.readFileSync(filePath, 'utf8').split('\n')) {
+  const result = spawnSync(showScript, ['show', secret], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['inherit', 'pipe', 'inherit'],
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+
+  for (const line of result.stdout.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) {
       continue;
@@ -133,6 +145,8 @@ function loadTokenFromFile(filePath: string): string | null {
 //    GitHub to route any package events to the repo's webhooks at all.
 const WEBHOOK_EVENTS = ['package', 'registry_package'];
 
+const TOKEN_SECRET = 'scripts/.env.secret.flux-bootstrap';
+
 class UpdateFluxImageScanningWebhooks {
   private octokit: Octokit;
   private webhookUrl: string = '';
@@ -149,16 +163,19 @@ class UpdateFluxImageScanningWebhooks {
     let githubToken = process.env.GITHUB_TOKEN;
 
     if (!githubToken) {
-      const tokenFile = path.resolve(process.cwd(), 'scripts', '.env.secret.github.flux-bootstrap');
-      const fileToken = loadTokenFromFile(tokenFile);
-      if (fileToken) {
-        console.log(`GITHUB_TOKEN loaded from ${tokenFile}`);
-        githubToken = fileToken;
+      const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+      const showScript = path.resolve(repoRoot, 'scripts', 'onepassword-secrets.mts');
+      const secretToken = loadTokenFromSecret(showScript, TOKEN_SECRET, repoRoot);
+      if (secretToken) {
+        console.log(`GITHUB_TOKEN loaded from ${TOKEN_SECRET}.encrypted`);
+        githubToken = secretToken;
       }
     }
 
     if (!githubToken) {
-      console.log('GITHUB_TOKEN not found in environment or scripts/.env.secret.github.flux-bootstrap.');
+      console.log(
+        `GITHUB_TOKEN not found in environment or via repo root's ./scripts/onepassword-secrets.mts show ${TOKEN_SECRET}.`
+      );
       githubToken = await promptForToken('Enter GITHUB_TOKEN: ');
 
       if (!githubToken) {
