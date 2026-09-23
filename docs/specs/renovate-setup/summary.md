@@ -87,7 +87,7 @@ Merged + verified healthy, in order:
   merge commits), the merge triggered a build, tag v202609032019 published,
   fluxcdbot committed 4febd2f, CronJob image updated in-cluster. Manual
   rebuilds now possible:
-  `gh workflow run build-indexnow.yaml -R activescott/gpu-agent`.
+  `gh workflow run build-indexnow.yaml -R activescott/gpu-poet`.
 
 ## Remaining / future
 
@@ -100,7 +100,7 @@ Merged + verified healthy, in order:
 - Grafana dashboard sidecar hot-reload 401 — bounce the grafana pod after
   dashboard ConfigMap changes until the sidecar admin creds are wired.
 - HA config: template-under-cover-platform deprecation error (Scott).
-- gpu-agent repo: 108 open Dependabot vulnerabilities (4 critical) —
+- gpu-poet repo: 108 open Dependabot vulnerabilities (4 critical) —
   candidate for its own triage session.
 
 ## Gotchas / operational notes
@@ -116,9 +116,9 @@ Merged + verified healthy, in order:
   releases everything at once (including majors) — used once, wouldn't again.
 - Renovate rebases conflicted PRs automatically (tick rebase checkbox or wait
   a run); after pins merged, update PRs became digest→digest diffs.
-- gpu-agent CI last pushed a timestamp tag Jan 2026 (`v202601041830`); if CI
+- gpu-poet CI last pushed a timestamp tag Jan 2026 (`v202601041830`); if CI
   now only tags `latest`, the new indexnow automation will never see an update
-  — check gpu-agent's release workflow.
+  — check gpu-poet's release workflow.
 
 ## Quick commands
 
