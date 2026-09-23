@@ -1550,6 +1550,27 @@ spec:
                   description: >-
                     The {{ $labels.controller }} controller in flux-system has been producing
                     reconciliation errors for 15 minutes. Check its logs.
+          - name: job-accelerator
+            rules:
+              # Every notification send failed for a week in #178 (no APP_URL
+              # on the worker) and nothing noticed. One failure is enough to
+              # fire, whether it threw before the relay or at it
+              # (activescott/job-accelerator#180). A failed send retries on a
+              # backoff that gives up after about 15 minutes, and 1h keeps the
+              # alert up across those retries rather than resolving between
+              # them.
+              - alert: JobAcceleratorEmailSendFailed
+                expr: 'sum by (kind) (increase(job_accelerator_emails_sent_total{job="job_accelerator_worker",outcome="failure"}[1h])) > 0'
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "Job Accelerator failed to send a {{ $labels.kind }} email"
+                  description: >-
+                    {{ $value | printf "%.0f" }} {{ $labels.kind }} notification send
+                    attempt(s) failed in the last hour. Check
+                    `kubectl -n job-accelerator-prod logs deploy/worker` for the
+                    notifications.send error.
+                  repo: activescott/job-accelerator
           - name: olya
             rules:
               # olya-0 is the assistant that triages every other alert in this file (see the
@@ -1730,6 +1751,15 @@ spec:
         metrics_path: "/ops/metrics"
         static_configs:
           - targets: ["worker.fernfiles-prod.svc.cluster.local:3401"]
+      # Job Accelerator worker metrics: notification email sends by outcome,
+      # which the JobAcceleratorEmailSendFailed alert reads. Metrics-only port
+      # with no ingress, same shape as fernfiles_worker.
+      - job_name: "job_accelerator_worker"
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        metrics_path: "/ops/metrics"
+        static_configs:
+          - targets: ["worker.job-accelerator-prod.svc.cluster.local:3301"]
       - job_name: "tinkerbell_app"
         scrape_interval: 30s
         scrape_timeout: 10s
