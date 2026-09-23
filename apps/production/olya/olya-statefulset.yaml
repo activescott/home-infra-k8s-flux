@@ -453,18 +453,27 @@ spec:
               value: /state/home
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config
+            # For reconcile-automations.mts, which calls the gateway on loopback as an operator.
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: openclaw_gateway_token
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          # 768Mi for the automation reconcile, which runs the openclaw CLI once per job file. The
+          # git loop alone fits in 256Mi; the reconcile peaked at 365MiB RSS across its process
+          # tree (OpenClaw 2026.9.5, one job file).
           resources:
             requests:
               cpu: "50m"
               memory: 64Mi
             limits:
               cpu: "500m"
-              memory: 256Mi
+              memory: 768Mi
           volumeMounts:
             - name: state
               mountPath: /state

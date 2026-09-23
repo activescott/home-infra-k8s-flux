@@ -32,6 +32,7 @@ configMapGenerator:
       - scripts/memory-sync.mts
       - scripts/install-plugins.mts
       - scripts/check-memory-mounts.mts
+      - scripts/reconcile-automations.mts
       # Imported by the three above. Not a program, but it ships in the same ConfigMap because
       # all three resolve it as ./volume-layout.mts from /scripts.
       - scripts/volume-layout.mts
