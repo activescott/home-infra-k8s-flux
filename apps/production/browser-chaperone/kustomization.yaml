@@ -6,6 +6,7 @@ resources:
   - egress-proxy-service.yaml
   - olya-egress-proxy-deployment.yaml
   - olya-egress-proxy-service.yaml
+  - olya-egress-proxy-pdb.yaml
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/

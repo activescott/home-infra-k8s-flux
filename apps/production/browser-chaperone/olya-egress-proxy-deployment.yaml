@@ -6,7 +6,12 @@ metadata:
   name: olya-egress-proxy
   namespace: browser-chaperone-prod
 spec:
-  replicas: 1
+  # Two replicas so a restart or a rollout leaves the other one serving; nas1 is a single-node
+  # cluster, so this is not node-loss protection.
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: olya-egress-proxy
@@ -17,6 +22,15 @@ spec:
         # {namespace="browser-chaperone-prod", app="olya-egress-proxy"}.
         app: olya-egress-proxy
     spec:
+      # ScheduleAnyway, not DoNotSchedule: on this single-node cluster a hard requirement would
+      # leave the second replica Pending forever. If a second node ever joins, this spreads them.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: olya-egress-proxy
       enableServiceLinks: false
       automountServiceAccountToken: false
       securityContext:
