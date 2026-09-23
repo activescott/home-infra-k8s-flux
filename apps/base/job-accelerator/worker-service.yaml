@@ -1,0 +1,14 @@
+# Metrics only, for the job_accelerator_worker scrape job in the monitoring
+# HelmRelease. No ingress: its absence is the access control.
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker
+spec:
+  selector:
+    app: worker
+  ports:
+    - name: metrics
+      port: 3301
+      targetPort: 3301
+  type: ClusterIP

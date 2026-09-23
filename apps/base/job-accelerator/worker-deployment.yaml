@@ -4,8 +4,9 @@
 # release. Setting `command` bypasses docker-entrypoint.sh, so the worker
 # never runs migrations; the app pod does.
 #
-# No ports, no ingress, no probes: the process listens on nothing, and
-# Kubernetes restarting it when it exits is the whole liveness story.
+# No ingress and no probes: Kubernetes restarting it when it exits is the
+# whole liveness story. Its one port serves Prometheus metrics only
+# (worker-service.yaml, activescott/job-accelerator#180).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,6 +40,9 @@ spec:
         - name: worker
           image: job-accelerator-image-app
           command: ["node", "--enable-source-maps", "build/worker/worker.js"]
+          ports:
+            - name: metrics
+              containerPort: 3301
           # Same uid as the app, which writes the key files 0600: this has to read
           # them. See app-deployment.yaml for why that is still root. It never runs
           # the entrypoint, so nothing here writes to the image; /tmp is there in
