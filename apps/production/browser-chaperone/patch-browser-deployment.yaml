@@ -3,7 +3,7 @@
   value:
     - name: github-container-registry-secret
 - op: add
-  path: /spec/template/spec/containers/0/env/-
+  path: /spec/template/spec/containers/0/envFrom/-
   value:
-    name: APP_URL
-    value: https://job-accelerator.pingpoet.com
+    secretRef:
+      name: internal-api-token

@@ -1,0 +1,13 @@
+# Certificate for chaperone.pingpoet.com
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: chaperone-pingpoet-com-tls
+  namespace: browser-chaperone-prod
+spec:
+  secretName: chaperone-pingpoet-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - chaperone.pingpoet.com

@@ -108,6 +108,12 @@ spec:
       ttl: 1
       proxied: true
       content: activescott.github.io
+    - key: chaperone-cname
+      name: chaperone.pingpoet.com
+      type: CNAME
+      ttl: 1
+      comment: browser-chaperone app in kubernetes (apps/production/browser-chaperone)
+      content: k8s.activescott.com
     # Predates this zone's Email Sending onboarding, which is why it survived: onboarding
     # writes Cloudflare's own _dmarc record only if none exists, confirmed on productpoet.com.
     - key: dmarc-txt

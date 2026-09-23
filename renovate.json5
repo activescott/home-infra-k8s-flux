@@ -131,6 +131,8 @@
       description: "Images owned by Flux image-update automation",
       matchDatasources: ["docker"],
       matchPackageNames: [
+        "ghcr.io/activescott/browser-chaperone/app",
+        "ghcr.io/activescott/browser-chaperone/browser",
         "ghcr.io/activescott/fernfiles/app",
         "ghcr.io/activescott/fernfiles/worker",
         "ghcr.io/activescott/fernfiles/inference-service",

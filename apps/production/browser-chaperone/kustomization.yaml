@@ -5,9 +5,69 @@ resources:
   - egress-proxy-deployment.yaml
   - egress-proxy-service.yaml
   - networkpolicy.yaml
+  - db-pv.yaml
+  - ../../base/browser-chaperone/
+  - app-ingress-certificate.yaml
+  # /ops/* (kubelet probes) denied at the ingress; the probes reach the pod
+  # directly instead.
+  - app-ops-middleware.yaml
+  - app-ops-ingress.yaml
+  - ../../../infrastructure/prod/configs/ghcr-pull-secret/
+patches:
+  # ghcr.io/activescott/browser-chaperone is private, so both Deployments need
+  # the pull secret.
+  - path: patch-app-deployment.yaml
+    target:
+      kind: Deployment
+      name: app
+  - path: patch-app-ingress.yaml
+    target:
+      kind: Ingress
+      name: app-ingress
+  - path: patch-browser-deployment.yaml
+    target:
+      kind: Deployment
+      name: browser
+  - path: patch-db-statefulset.yaml
+    target:
+      kind: StatefulSet
+      name: db
 namespace: browser-chaperone-prod
 configMapGenerator:
   # Generated, so the name carries a content hash and a change to squid.conf rolls the pod.
   - name: egress-proxy-config
     files:
       - squid.conf
+  # Where the browser service finds the approval app and the proxy. Both are
+  # Services in this namespace, and networkpolicy.yaml allows the browser pod
+  # to reach nothing else.
+  - name: browser-config
+    literals:
+      - CHAPERONE_URL=http://app:3400
+      - EGRESS_PROXY_URL=http://egress-proxy:3128
+      - AGENT_IDENTITY=olya
+      - NODE_ENV=production
+secretGenerator:
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
+  - name: app-creds
+    envs:
+      - .env.secret.app.encrypted
+  # JWT_SECRET, ALLOWED_EMAILS and the email-relay login. SMTP_PASS must match the
+  # browserchaperone@relay.local entry in email-relay's SMTPD_SASL_USERS.
+  - name: app-signin
+    envs:
+      - .env.secret.app-signin.encrypted
+  # One Secret for both Deployments: the browser sends this token on every /internal/* call
+  # and the app refuses any call without it.
+  - name: internal-api-token
+    envs:
+      - .env.secret.internal-api-token.encrypted
+images:
+  - name: browser-chaperone-image-app
+    newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
+    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+  - name: browser-chaperone-image-browser
+    newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
+    newTag: v0.3.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}

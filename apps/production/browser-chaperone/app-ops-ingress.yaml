@@ -1,0 +1,31 @@
+# A second Ingress for the same host, carrying only /ops, so the deny
+# middleware applies to that prefix alone. Traefik merges rules by host and
+# prefers the longer path match. Same shape as fernfiles' app-ops-ingress.yaml.
+#
+# This replaces a /ops rule that pointed at a nonexistent-service. Traefik
+# drops a rule whose backend is missing, so /ops fell through to / and was
+# public (activescott/activeassistant#296).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ops-ingress
+  namespace: browser-chaperone-prod
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: browser-chaperone-prod-browser-chaperone-ops-deny@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - chaperone.pingpoet.com
+      secretName: chaperone-pingpoet-com-tls
+  rules:
+    - host: chaperone.pingpoet.com
+      http:
+        paths:
+          - path: /ops
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 3400

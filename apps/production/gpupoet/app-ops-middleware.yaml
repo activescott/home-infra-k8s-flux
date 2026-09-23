@@ -1,0 +1,16 @@
+# Blocks the app's job-triggering /ops endpoints (revalidate-ebay,
+# revalidate-amazon, cleanup-listings) at the ingress, copied from
+# apps/production/fernfiles/app-ops-middleware.yaml, which has the full
+# reasoning. The CronJobs that call them go to http://app:3000 through the
+# Service and never traverse Traefik; everything arriving through gpupoet.com
+# gets a 403.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: gpupoet-ops-deny
+  namespace: gpupoet-prod
+spec:
+  # Traefik 3.x. (2.x called this ipWhiteList; the cluster runs 3.3.6.)
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32

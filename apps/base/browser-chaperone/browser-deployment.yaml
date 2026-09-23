@@ -1,0 +1,62 @@
+# The headless browser, in its own pod rather than the app's or the agent's
+# (activescott/activeassistant#191). No Ingress: the drive API is reached over
+# the in-cluster Service and nothing else.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: browser
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: browser
+  template:
+    metadata:
+      labels:
+        app: browser
+        app.activescott.com/component: browser
+    spec:
+      securityContext:
+        # The service launches Chromium with its sandbox on (chromiumSandbox:
+        # true in src/index.ts). That sandbox is built on user namespaces,
+        # which RuntimeDefault blocks, so this is Unconfined; the node must
+        # also allow unprivileged user namespaces. Without either, Chromium
+        # will not start and the pod crash-loops rather than run unsandboxed.
+        # CI's `browser` job runs the same image and user with this profile.
+        seccompProfile:
+          type: Unconfined
+      containers:
+        - name: browser
+          image: browser-chaperone-image-browser
+          ports:
+            - containerPort: 3500
+          envFrom:
+            - configMapRef:
+                name: browser-config
+          volumeMounts:
+            # Chromium puts its shared buffers here and the default 64Mi is
+            # not enough for a real page.
+            - name: dshm
+              mountPath: /dev/shm
+          resources:
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+            requests:
+              cpu: "0.2"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3500
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/health/liveness
+              port: 3500
+            periodSeconds: 10
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
