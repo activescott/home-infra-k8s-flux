@@ -4,12 +4,16 @@ this_script=$(basename $0)
 
 # THIS SCRIPT PER https://fluxcd.io/flux/installation/bootstrap/github/#github-pat
 
-# get the GITHUB_TOKEN:
-token_file="$this_dir/.env.secret.github.flux-bootstrap"
-source "$token_file"
+# get the GITHUB_TOKEN from the environment, else decrypt it from git (nothing written to disk):
+token_secret="scripts/.env.secret.flux-bootstrap"
+if [ -z "$GITHUB_TOKEN" ]; then
+  GITHUB_TOKEN=$("$this_dir/onepassword-secrets.mts" show "$token_secret" \
+    | sed -E -n "s/^GITHUB_TOKEN=[\"']?([^\"']*)[\"']?[[:space:]]*\$/\1/p" | head -n 1)
+fi
 
 if [ -z "$GITHUB_TOKEN" ]; then
-  echo "ERROR: GITHUB_TOKEN is not set in $token_file"
+  echo "ERROR: GITHUB_TOKEN is not set in the environment and no GITHUB_TOKEN= line came from"
+  echo "  ./scripts/onepassword-secrets.mts show $token_secret (see its errors above)"
   exit 1
 fi
 
