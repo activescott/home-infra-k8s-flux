@@ -1,0 +1,33 @@
+# A second Ingress for the same host, carrying only /ops, so the deny
+# middleware applies to that prefix alone. Traefik merges rules by host and
+# prefers the longer path match. Same shape as fernfiles' app-ops-ingress.yaml.
+# /ops/metrics is carved out in the base gpupoet-app-ingress.
+#
+# This replaces three Exact rules that pointed at a nonexistent-service.
+# Traefik drops a rule whose backend is missing, so those paths fell through
+# to / and were public (activescott/activeassistant#296). www.gpupoet.com
+# redirects everything to the apex, so only gpupoet.com needs the rule.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ops-ingress
+  namespace: gpupoet-prod
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: gpupoet-prod-gpupoet-ops-deny@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - gpupoet.com
+      secretName: gpupoet-com-tls
+  rules:
+    - host: gpupoet.com
+      http:
+        paths:
+          - path: /ops
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  name: web-ui

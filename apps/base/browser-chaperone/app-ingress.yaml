@@ -7,16 +7,7 @@ spec:
     - host: browser-chaperone.local
       http:
         paths:
-          # Block external access to internal ops endpoints
-          - path: /ops
-            pathType: Prefix
-            backend:
-              service:
-                name: nonexistent-service
-                port:
-                  number: 80
-
-          # Allow all other traffic to the app
+          # /ops is denied in production by app-ops-ingress.yaml in the overlay
           - path: /
             pathType: Prefix
             backend:
