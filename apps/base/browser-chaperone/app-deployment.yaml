@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        app.activescott.com/component: app
+    spec:
+      containers:
+        - name: app
+          image: browser-chaperone-image-app
+          ports:
+            - containerPort: 3400
+          envFrom:
+            - secretRef:
+                name: app-creds
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "0.1"
+              memory: "128Mi"
+          # Boot runs prisma migrate deploy before binding :3400, which can
+          # outlast a liveness budget. The startupProbe gives boot its own
+          # 30 x 5s and holds off liveness/readiness until it passes.
+          startupProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3400
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3400
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/health/liveness
+              port: 3400
+            periodSeconds: 10

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: browser
+spec:
+  selector:
+    app: browser
+  ports:
+    - port: 3500
+      targetPort: 3500
+  type: ClusterIP
