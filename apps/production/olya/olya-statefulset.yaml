@@ -464,16 +464,16 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          # 768Mi for the automation reconcile, which runs the openclaw CLI once per job file. The
-          # git loop alone fits in 256Mi; the reconcile peaked at 365MiB RSS across its process
-          # tree (OpenClaw 2026.9.5, one job file).
+          # The automation reconcile runs the openclaw CLI once per job file. The git loop alone
+          # fits in 256Mi; the reconcile peaked at 365MiB RSS across its process tree (OpenClaw
+          # 2026.9.5, one job file). 1Gi leaves headroom above that measured peak.
           resources:
             requests:
               cpu: "50m"
               memory: 64Mi
             limits:
               cpu: "500m"
-              memory: 768Mi
+              memory: 1Gi
           volumeMounts:
             - name: state
               mountPath: /state

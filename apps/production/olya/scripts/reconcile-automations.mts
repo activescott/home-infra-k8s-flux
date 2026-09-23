@@ -1,12 +1,15 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Applies the job files in the checkout's automations/ directory to the gateway's job store, and
 // removes jobs that were declared there and no longer are. Called by instruction-sync.mts once
-// after boot and again after every pull that changes main; runnable by hand the same way.
+// after boot, and again from its 15-minute loop whenever a fetch brings new commits to main;
+// runnable by hand the same way.
 //
 // Each file is the params object for the gateway's cron.add. With a declarationKey, cron.add
 // converges instead of creating: an existing job with that key is updated in place and keeps its
 // id and run history, and an unchanged declaration is a no-op. That is what makes it safe to run
-// this on every pull. Files that omit `enabled` leave a job someone disabled by hand disabled.
+// this on every pull. A job disabled by hand with `openclaw automations disable <id>` or the
+// Control UI, or disabled by OpenClaw itself after repeated failures, stays disabled: a file
+// that omits `enabled` leaves it that way, and `enabled: true` turns it back on.
 //
 // Removal only ever considers jobs whose key starts with DECLARATION_PREFIX. Everything else in
 // the store (hand-made reminders, the heartbeat and other plugin-owned jobs) was not created from
