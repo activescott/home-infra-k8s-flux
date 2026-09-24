@@ -1,0 +1,101 @@
+# Slack's Web API as Olya reaches it: her SLACK_API_URL points at this Service, and this pod
+# is the only one in the cluster holding the workspace's real Slack tokens
+# (activescott/activeassistant#315, and docs/slack-relay.md in activescott/browser-chaperone
+# for what it passes, checks and refuses).
+#
+# It decides nothing on its own, the same way the browser service does not: every gated
+# method is a question to the approval app on app:3400, nothing is cached, so a revocation
+# lands on the next call. Not in the base: browser-chaperone's k8s/base has no manifest for
+# this package, same as the egress proxy.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slack-relay
+  namespace: browser-chaperone-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slack-relay
+  template:
+    metadata:
+      labels:
+        # Alloy promotes this to the Loki `app` label, so the audit records are
+        # {namespace="browser-chaperone-prod", app="slack-relay"}.
+        app: slack-relay
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: github-container-registry-secret
+      securityContext:
+        # The image's own unprivileged user, `node`.
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: slack-relay
+          image: browser-chaperone-image-slack-relay
+          ports:
+            - name: http
+              containerPort: 3600
+          env:
+            - name: NODE_ENV
+              value: production
+            # The approval app in this namespace, which holds the grants and the request
+            # queue. An app that does not answer is a refusal, not a pass.
+            - name: CHAPERONE_URL
+              value: http://app:3400
+            # MUST be the same origin as olya-0's SLACK_API_URL. The relay rewrites the
+            # `upload_url` from files.getUploadURLExternal to point at itself, and the plugin
+            # refuses an upload URL whose origin differs from the API URL's.
+            - name: PUBLIC_BASE_URL
+              value: http://slack-relay.browser-chaperone-prod.svc:3600
+            # AUDIT_URL is deliberately unset: the approval app has nowhere to put audit
+            # records yet, so the log is the only sink and Loki is where they are read.
+          envFrom:
+            # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, RELAY_BOT_TOKEN, RELAY_APP_TOKEN. The service
+            # refuses to start if a relay credential equals one of the real tokens.
+            - secretRef:
+                name: slack-relay-creds
+            # INTERNAL_API_TOKEN, the same Secret the app and the browser service read: the
+            # app refuses an /internal/* call without it.
+            - secretRef:
+                name: internal-api-token
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 20m
+            limits:
+              # An upload is buffered in memory up to UPLOAD_MAX_BYTES, 20Mi by default.
+              memory: 256Mi
+              cpu: 500m
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            # Nothing in the service writes to disk, so the root filesystem is read-only. The
+            # image's CMD starts it through npm, which wants $HOME writable.
+            - name: home
+              mountPath: /home/node
+          readinessProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/health/liveness
+              port: http
+            periodSeconds: 10
+      volumes:
+        - name: home
+          emptyDir: {}
