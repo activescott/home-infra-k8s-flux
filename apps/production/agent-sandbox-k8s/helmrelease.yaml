@@ -73,31 +73,247 @@ spec:
       #
       # The rest is what vcluster 0.37.1 generates for these values (pkg/coredns/template.go).
       # Re-read that template when the chart moves, since this replaces it whole.
+      #
+      # WHY THE MANIFESTS AND NOT JUST THE COREFILE. vcluster applies these inside the virtual
+      # cluster every time the syncer starts, and a changed Corefile always arrives with a start.
+      # Its ConfigMap syncer keeps the last-seen copy of each object in memory and seeds that copy
+      # from the virtual object on its first reconcile after a restart, so an edit made during
+      # startup looks like no change and never reaches the host copy the pod actually mounts
+      # (pkg/syncer/syncer.go, pkg/controllers/resources/configmaps/to_host_syncer.go). That is
+      # how overwriteConfig left the old forwarder running on 2026-09-24: the virtual ConfigMap
+      # said 172.17.0.10, the host one still said /etc/resolv.conf, and `reload` had nothing to
+      # reload. Restarting the pod would not have helped either; it mounts the same host copy.
+      #
+      # So the Corefile lives in its own ConfigMap named after the first ten hex digits of its
+      # sha256. A changed Corefile is a new name, which the syncer creates on the host from the
+      # current data, and a new name in the pod template, which rolls the pod. The validate
+      # workflow recomputes the hash and fails the PR if the name is stale, so edit the Corefile
+      # and then run the command it prints. NodeHosts stays in `coredns`, the ConfigMap vcluster's
+      # node controller patches by name, and is projected alongside.
+      #
+      # The image is the one vcluster 0.37.1 picks for a v1.33 API server
+      # (pkg/constants/coredns.go). Written out here it no longer follows the chart, so move it
+      # with the distro tag above.
       coredns:
-        overwriteConfig: |-
-          .:1053 {
-              errors
-              health
-              ready
-              rewrite name regex .*\.nodes\.vcluster\.com kubernetes.default.svc.cluster.local
-              kubernetes cluster.local in-addr.arpa ip6.arpa {
-                  pods insecure
-                  fallthrough in-addr.arpa ip6.arpa
+        overwriteManifests: |-
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: coredns
+            namespace: kube-system
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            labels:
+              kubernetes.io/bootstrapping: rbac-defaults
+            name: system:coredns
+          rules:
+            - apiGroups:
+                - ""
+              resources:
+                - endpoints
+                - services
+                - pods
+                - namespaces
+              verbs:
+                - list
+                - watch
+            - apiGroups:
+                - discovery.k8s.io
+              resources:
+                - endpointslices
+              verbs:
+                - list
+                - watch
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            annotations:
+              rbac.authorization.kubernetes.io/autoupdate: "true"
+            labels:
+              kubernetes.io/bootstrapping: rbac-defaults
+            name: system:coredns
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: system:coredns
+          subjects:
+            - kind: ServiceAccount
+              name: coredns
+              namespace: kube-system
+          ---
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: coredns
+            namespace: kube-system
+          data:
+            NodeHosts: ""
+          ---
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: coredns-corefile-36679dc1d5
+            namespace: kube-system
+          data:
+            Corefile: |-
+              .:1053 {
+                  errors
+                  health
+                  ready
+                  rewrite name regex .*\.nodes\.vcluster\.com kubernetes.default.svc.cluster.local
+                  kubernetes cluster.local in-addr.arpa ip6.arpa {
+                      pods insecure
+                      fallthrough in-addr.arpa ip6.arpa
+                  }
+                  hosts /etc/coredns/NodeHosts {
+                      ttl 60
+                      reload 15s
+                      fallthrough
+                  }
+                  prometheus :9153
+                  forward . 172.17.0.10
+                  cache 30
+                  loop
+                  reload
+                  loadbalance
               }
-              hosts /etc/coredns/NodeHosts {
-                  ttl 60
-                  reload 15s
-                  fallthrough
-              }
-              prometheus :9153
-              forward . 172.17.0.10
-              cache 30
-              loop
-              reload
-              loadbalance
-          }
 
-          import /etc/coredns/custom/*.server
+              import /etc/coredns/custom/*.server
+          ---
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: coredns
+            namespace: kube-system
+            labels:
+              k8s-app: vcluster-kube-dns
+              kubernetes.io/name: "CoreDNS"
+          spec:
+            replicas: 1
+            strategy:
+              type: RollingUpdate
+              rollingUpdate:
+                maxUnavailable: 1
+            selector:
+              matchLabels:
+                k8s-app: vcluster-kube-dns
+            template:
+              metadata:
+                labels:
+                  k8s-app: vcluster-kube-dns
+              spec:
+                priorityClassName: ""
+                serviceAccountName: coredns
+                nodeSelector:
+                  kubernetes.io/os: linux
+                topologySpreadConstraints:
+                  - labelSelector:
+                      matchLabels:
+                        k8s-app: vcluster-kube-dns
+                    maxSkew: 1
+                    topologyKey: kubernetes.io/hostname
+                    whenUnsatisfiable: DoNotSchedule
+                containers:
+                  - name: coredns
+                    image: docker.io/coredns/coredns:1.12.0
+                    imagePullPolicy: IfNotPresent
+                    resources:
+                      limits:
+                        cpu: 1000m
+                        memory: 170Mi
+                      requests:
+                        cpu: 20m
+                        memory: 64Mi
+                    args: [ "-conf", "/etc/coredns/Corefile" ]
+                    volumeMounts:
+                      - name: config-volume
+                        mountPath: /etc/coredns
+                        readOnly: true
+                      - name: custom-config-volume
+                        mountPath: /etc/coredns/custom
+                        readOnly: true
+                    securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 1001
+                      runAsGroup: 1001
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        add:
+                          - NET_BIND_SERVICE
+                        drop:
+                          - ALL
+                      readOnlyRootFilesystem: true
+                    livenessProbe:
+                      httpGet:
+                        path: /health
+                        port: 8080
+                        scheme: HTTP
+                      initialDelaySeconds: 60
+                      periodSeconds: 10
+                      timeoutSeconds: 1
+                      successThreshold: 1
+                      failureThreshold: 3
+                    readinessProbe:
+                      httpGet:
+                        path: /ready
+                        port: 8181
+                        scheme: HTTP
+                      initialDelaySeconds: 0
+                      periodSeconds: 2
+                      timeoutSeconds: 1
+                      successThreshold: 1
+                      failureThreshold: 3
+                dnsPolicy: Default
+                volumes:
+                  - name: config-volume
+                    projected:
+                      sources:
+                        - configMap:
+                            name: coredns-corefile-36679dc1d5
+                            items:
+                              - key: Corefile
+                                path: Corefile
+                        - configMap:
+                            name: coredns
+                            items:
+                              - key: NodeHosts
+                                path: NodeHosts
+                  - name: custom-config-volume
+                    configMap:
+                      name: coredns-custom
+                      optional: true
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: kube-dns
+            namespace: kube-system
+            annotations:
+              prometheus.io/port: "9153"
+              prometheus.io/scrape: "true"
+            labels:
+              k8s-app: vcluster-kube-dns
+              kubernetes.io/cluster-service: "true"
+              kubernetes.io/name: "CoreDNS"
+          spec:
+            type: ClusterIP
+            selector:
+              k8s-app: vcluster-kube-dns
+            ports:
+              - name: dns
+                port: 53
+                targetPort: 1053
+                protocol: UDP
+              - name: dns-tcp
+                port: 53
+                targetPort: 1053
+                protocol: TCP
+              - name: metrics
+                port: 9153
+                protocol: TCP
 
     # Where olya-0's agents get their credentials. vcluster writes a kubeconfig to the Secret
     # `vc-agent-sandbox` in this namespace, holding a client certificate that is cluster-admin
