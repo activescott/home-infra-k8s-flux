@@ -188,19 +188,64 @@ spec:
         - list: shell_binaries
           items: [ash, bash, csh, ksh, sh, tcsh, zsh, dash]
 
+        # Indexed by mount source: container.mount.dest[^/etc] is the
+        # destination of the first mount whose source starts with /etc. The
+        # index is a regular expression, not a glob, and the container plugin
+        # searches the source for it anywhere (reflex find() in
+        # container_info::mount_by_source), so every index here is anchored.
+        # Unanchored, upstream's [/] matched every source there is, and
+        # [/mnt/fast-scratch/k3s-kubelet] and [/etc] matched each pod's own
+        # kubelet volumes (.../pods/<uid>/etc-hosts among them). That kept
+        # olya-memory-sync paging hourly after the fix below.
+        #
+        # The source is the hostPath exactly as the pod spec wrote it: kubelet
+        # passes it through and containerd cleans it only when it mounts. So
+        # each separator is `/+(\./+)*` rather than `/`, and an exact path ends
+        # in `(/+\.?)*$`, to match every spelling the API accepts for the same
+        # directory.
+        #
+        # The test is `startswith /` rather than upstream's
+        # `not ... in ("<NA>","N/A")` because the container plugin returns no
+        # value when no mount matches the index, and `not <no value> in (...)`
+        # is true, so every clause held for every container and the rule fired
+        # once per container start rather than once per sensitive mount. The
+        # vcluster rollout on 2026-09-24 raised seven of those, four of them
+        # from olya-memory-sync, whose only sources are
+        # /mnt/thedatapool/app-data/olya and /mnt/fast-scratch/k3s-kubelet/
+        # pods/<uid>/... A real match returns a destination, and a destination
+        # is always an absolute path.
+        #
+        # kubelet's root on nas1 is /mnt/fast-scratch/k3s-kubelet, not
+        # /var/lib/kubelet, so the upstream indexes for kubelet match nothing
+        # here and this node's own paths are listed beside them. k3s keeps the
+        # server and agent credentials the /etc/kubernetes indexes stand for
+        # under /etc/rancher/k3s and /var/lib/rancher/k3s.
+        #
+        # Directories that are dangerous as a whole are anchored at the start
+        # only, so anything beneath them matches too. The kubelet roots are
+        # anchored at both ends, because every configMap, Secret and emptyDir
+        # volume is a source under <root>/pods/<uid>/ and a pod's own volumes
+        # are not an escape. A hostPath to another pod's directory under
+        # pods/<uid>/ is the one case that reads the same as a pod's own
+        # volume here; the whole pods directory does not.
         - macro: sensitive_mount
-          condition: (not container.mount.dest[/proc*] in ("<NA>","N/A") or
-                      not container.mount.dest[/var/run/docker.sock] in ("<NA>","N/A") or
-                      not container.mount.dest[/var/run/crio/crio.sock] in ("<NA>","N/A") or
-                      not container.mount.dest[/run/containerd/containerd.sock] in ("<NA>","N/A") or
-                      not container.mount.dest[/run/k3s/containerd/containerd.sock] in ("<NA>","N/A") or
-                      not container.mount.dest[/var/lib/kubelet] in ("<NA>","N/A") or
-                      not container.mount.dest[/var/lib/kubelet/pki] in ("<NA>","N/A") or
-                      not container.mount.dest[/] in ("<NA>","N/A") or
-                      not container.mount.dest[/etc] in ("<NA>","N/A") or
-                      not container.mount.dest[/etc/kubernetes] in ("<NA>","N/A") or
-                      not container.mount.dest[/etc/kubernetes/manifests] in ("<NA>","N/A") or
-                      not container.mount.dest[/root*] in ("<NA>","N/A"))
+          condition: (container.mount.dest[^/+(\./+)*proc] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*run/+(\./+)*docker\.sock] startswith / or
+                      container.mount.dest[^/+(\./+)*run/+(\./+)*docker\.sock] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*run/+(\./+)*crio] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*run/+(\./+)*containerd] startswith / or
+                      container.mount.dest[^/+(\./+)*run/+(\./+)*containerd] startswith / or
+                      container.mount.dest[^/+(\./+)*run/+(\./+)*k3s] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*kubelet(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*kubelet/+(\./+)*pki] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*kubelet/+(\./+)*pods(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*mnt/+(\./+)*fast-scratch/+(\./+)*k3s-kubelet(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*mnt/+(\./+)*fast-scratch/+(\./+)*k3s-kubelet/+(\./+)*pki] startswith / or
+                      container.mount.dest[^/+(\./+)*mnt/+(\./+)*fast-scratch/+(\./+)*k3s-kubelet/+(\./+)*pods(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*\.?$] startswith / or
+                      container.mount.dest[^/+(\./+)*etc] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*rancher/+(\./+)*k3s] startswith / or
+                      container.mount.dest[^/+(\./+)*root] startswith /)
 
         # ── The exclusion, which is a bypass surface ──────────────────────────
         # A sandbox that runs a real Docker daemon spends its life doing things
@@ -219,11 +264,9 @@ spec:
         # proc.exepath is the kernel's resolved path for the running binary, so
         # matching it means being that binary rather than claiming to be.
         #
-        # Only paths that exist inside a sandbox container belong here: these
-        # two are the dind image's. The host's runc and shim are not container
-        # events, so `container` already excludes them and they need no entry.
-        # Anything added here must be an absolute path shipped in an image, and
-        # the PR that adds it has to say which alert made the case.
+        # These two are the dind image's. Anything added here must be an
+        # absolute path shipped in an image, and the PR that adds it has to say
+        # which alert made the case.
         - list: sandbox_runtime_exepaths
           items: [/usr/local/bin/runc, /usr/local/bin/containerd-shim-runc-v2]
 
@@ -234,9 +277,28 @@ spec:
         # already exec inside a nested container could mint the same one, which
         # is why the match is anchored at the start of the path and why
         # README.md counts it as part of the bypass surface.
+        #
+        # The host's runc needs an entry too, which this file previously said
+        # it did not ("the host's runc and shim are not container events, so
+        # `container` already excludes them"). They are container events:
+        # containerd puts runc in the starting container's cgroup before it
+        # runs, so the container plugin attributes runc's setns, unshare and
+        # rootfs setup to the container being built. The vcluster rollout on
+        # 2026-09-24 raised twelve Critical escape matches that way, in
+        # agent-sandbox-k8s and in olya, every one of them
+        # proc.exepath=/var/lib/rancher/k3s/data/<hash>/bin/runc. The hash is
+        # k3s's unpacked data directory and changes with the k3s version, so
+        # the match globs that one segment.
+        #
+        # This entry costs more than the other two, because it is a path an
+        # agent-supplied image can carry and in agent-sandbox-k8s the agent
+        # writes the pod spec. What it buys is the events runc produces before
+        # the container's entrypoint exists, which is the whole of the noise a
+        # rollout makes.
         - macro: sandbox_runtime_proc
           condition: (proc.exepath in (sandbox_runtime_exepaths) or
-                      proc.exepath startswith "/memfd:runc_cloned:")
+                      proc.exepath startswith "/memfd:runc_cloned:" or
+                      proc.exepath glob "/var/lib/rancher/k3s/data/*/bin/runc")
 
         # Overwrite this macro to silence a build step that legitimately
         # installs into /bin or /usr/bin. Left empty rather than pre-populated
@@ -520,30 +582,24 @@ spec:
           priority: WARNING
           tags: [agent_sandbox, container, filesystem, mitre_persistence, T1543]
 
-        # Two lists, because the two sandboxes disagree about what a service
-        # account token means.
+        # The host's own material, by the directories that hold it. /run/k3s/
+        # used to be matched whole and is not any more: k3s keeps every
+        # container's rootfs under it while runc assembles it, at
+        # /run/k3s/containerd/io.containerd.runtime.v2.task/k8s.io/<id>/rootfs/,
+        # so the prefix matched /rootfs/dev, /rootfs/etc/resolv.conf and every
+        # other mount target of a starting container. That was 172 of the 191
+        # Critical matches the vcluster rollout made on 2026-09-24, inside
+        # twenty seconds.
         #
-        # The dockerd pod has none: automountServiceAccountToken is false and
-        # no Secret but its own server certificate is mounted, so a read of a
-        # token path there is a misconfigured pod spec or the credential reach
-        # #345 rules out.
-        #
-        # Every vcluster pod has one. vcluster rewrites each virtual pod's
-        # projected token into a Secret-backed volume at the standard path
-        # (pkg/controllers/resources/pods/translate/translator.go), so the file
-        # exists in every pod it syncs and anything using in-cluster config
-        # (kubectl, client-go, a Helm hook, an operator under test) reads it on
-        # startup. It is a virtual-cluster token that the host API server does
-        # not accept. Alerting on it would put a Critical on ordinary use, and
-        # a Critical that fires on ordinary use gets muted, which costs more
-        # than it buys. What is left for that namespace is the host-side
-        # material a virtual pod has no legitimate way to hold.
+        # kubelet's root on nas1 is /mnt/fast-scratch/k3s-kubelet, so its pki
+        # directory is named alongside the upstream one.
         - macro: host_kube_credential_file
           condition: >
             (fd.name startswith /var/lib/kubelet/pki/
+             or fd.name startswith /mnt/fast-scratch/k3s-kubelet/pki/
              or fd.name startswith /etc/rancher/k3s/
-             or fd.name startswith /run/k3s/
-             or fd.name startswith /var/lib/rancher/k3s/)
+             or fd.name startswith /var/lib/rancher/k3s/server/
+             or fd.name startswith /var/lib/rancher/k3s/agent/)
 
         - macro: pod_kube_credential_file
           condition: >
@@ -551,23 +607,72 @@ spec:
              or fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/
              or fd.name contains /volumes/kubernetes.io~secret/)
 
+        # What narrowing /run/k3s/ would otherwise have dropped: another
+        # container's token or Secret, read out of containerd's state directory
+        # instead of through a mount. runc reaches these paths too while it
+        # binds a pod's own token into place, which is why the rule also
+        # excludes the runtime by the path of its binary.
+        - macro: host_container_rootfs_credential
+          condition: >
+            (fd.name startswith /run/k3s/containerd/
+             and (fd.name contains /secrets/kubernetes.io/serviceaccount
+                  or fd.name contains /kubernetes.io~secret/
+                  or fd.name contains /kubernetes.io~projected/))
+
+        # The dockerd pod has no service account: automountServiceAccountToken
+        # is false and no Secret but its own server certificate is mounted, so
+        # a read of a token path there is a misconfigured pod spec or the
+        # credential reach #345 rules out.
+        #
+        # agent-sandbox-k8s has exactly one process that has to read one. The
+        # syncer authenticates to nas1 as agent-sandbox-0's service account, so
+        # it reads the token projected into its own pod on startup and on every
+        # rotation. That is the control plane, not a workload, and the claim
+        # this rule now carries is the narrower one in
+        # apps/production/agent-sandbox-k8s/README.md: no workload in the
+        # sandbox can read a credential. Everything else that opens a token
+        # there alerts, including a pod an agent wrote.
+        #
+        # /vcluster is where ghcr.io/loft-sh/vcluster-oss puts the binary
+        # (entrypoint ["/vcluster","start"]). It is a path an agent-supplied
+        # image can carry as well, the same trade as the runtime exclusion
+        # above, and it is why the exclusion is also pinned to the namespace,
+        # the syncer's pod and the token path rather than to the binary alone.
+        # No workload can take the pod name: the syncer gives every pod it
+        # creates a -x-<ns>-x-agent-sandbox suffix.
+        - list: vcluster_control_plane_exepaths
+          items: [/vcluster]
+
+        - macro: vcluster_control_plane_own_token
+          condition: >
+            (k8s.ns.name = "agent-sandbox-k8s"
+             and k8s.pod.name = "agent-sandbox-0"
+             and proc.exepath in (vcluster_control_plane_exepaths)
+             and fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/)
+
         - rule: Kubernetes credential read in agent sandbox container
           desc: >
-            A process in a sandbox container read kubelet's or k3s's own credentials, or (in
-            the Docker sandbox, which has no service account) a service account token or a
-            mounted Secret. Scoped to the sandboxes and not to Olya, who reads her own token as
-            a matter of course.
+            A process in a sandbox container read kubelet's or k3s's own credentials, another
+            container's credentials out of containerd's state directory, or a service account
+            token or mounted Secret of its own. The vcluster control plane is the one reader
+            that has to do the last of those and is excluded by the path of its binary, so what
+            is left is a workload reading a credential. Scoped to the sandboxes and not to
+            Olya, who reads her own token as a matter of course.
           condition: >
             open_read
             and container
+            and sandbox_ns
             and proc_name_exists
-            and ((sandbox_ns and host_kube_credential_file)
-                 or (k8s.ns.name = "agent-sandbox-docker" and pod_kube_credential_file))
+            and (host_kube_credential_file
+                 or host_container_rootfs_credential
+                 or pod_kube_credential_file)
+            and not sandbox_runtime_proc
+            and not vcluster_control_plane_own_token
           output: >
             Kubernetes credential read in a sandbox namespace
             (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name
-            user=%user.name user_uid=%user.uid process=%proc.name parent=%proc.pname
-            command=%proc.cmdline)
+            user=%user.name user_uid=%user.uid process=%proc.name proc_exepath=%proc.exepath
+            parent=%proc.pname command=%proc.cmdline)
           priority: CRITICAL
           tags: [agent_sandbox, container, filesystem, mitre_credential_access, T1552.001]
 
