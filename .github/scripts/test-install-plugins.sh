@@ -11,6 +11,10 @@ olya=$PWD/apps/production/olya
 # its work volume but not its /tmp.
 work=$(mktemp -d -p "${RUNNER_TEMP:-/tmp}")
 failures=0
+# The pod's hostname. OpenClaw only reclaims a SIGKILLed process's startup-migration lease when
+# the hostname matches, and otherwise waits out its 5-minute TTL. Docker's random hostnames
+# would make every run after a killed one fail where the pod would not.
+host=olya-0
 
 # The pod mounts these from the olya-scripts ConfigMap with defaultMode 0555; git keeps them 0644.
 cp -r "$olya/scripts" "$work/scripts"
@@ -59,7 +63,7 @@ run_install() {
   docker run --rm -u 0 -v "$tmpvol:/tmp" --entrypoint chmod "$image" 1777 /tmp
   local start=$SECONDS
   set +e
-  docker run --name "$name" \
+  docker run --name "$name" --hostname "$host" \
     --memory "$limit" --memory-swap "$limit" --cpus 1 \
     --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges \
     -e HOME=/state/home \
@@ -81,7 +85,7 @@ run_install() {
 }
 
 installed_version() {
-  docker run --rm --user 1000:1000 \
+  docker run --rm --hostname "$host" --user 1000:1000 \
     -e HOME=/state/home \
     -e OPENCLAW_STATE_DIR=/state/openclaw \
     -e OPENCLAW_CONFIG_PATH=/state/config/openclaw.json \
