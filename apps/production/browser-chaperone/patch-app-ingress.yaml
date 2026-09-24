@@ -1,0 +1,10 @@
+# The base sets no ingressClassName, so Traefik (k3s default) handles it.
+- op: replace
+  path: /spec/rules/0/host
+  value: chaperone.pingpoet.com
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - chaperone.pingpoet.com
+      secretName: chaperone-pingpoet-com-tls

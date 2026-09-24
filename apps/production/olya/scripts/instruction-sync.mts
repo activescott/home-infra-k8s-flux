@@ -12,9 +12,15 @@
 // via pathspec and moves the branch ref without touching the worktree; see
 // syncCheckoutToOrigin. Nothing to preserve and nothing to rebuild afterwards.
 //
+// It also applies automations/ to the gateway's job store, once after boot and again after
+// every pull that moves main; see reconcile-automations.mts. It runs here because this is the
+// only process that knows when main moved, and it has to wait for the gateway to be up, which
+// no initContainer can.
+//
 // TypeScript run through Node's native type stripping, same as memory-sync.mts.
 // No build step and no transpiler; the image ships Node 24.
 import { execFileSync } from "node:child_process"
+import { reconcileAutomations } from "./reconcile-automations.mts"
 import { WORKSPACE, installSubagentFiles, publishConfig, syncCheckoutToOrigin } from "./volume-layout.mts"
 
 function log(msg: string): void {
@@ -28,6 +34,10 @@ function git(args: string[]): string {
     encoding: "utf8",
   }).trim()
 }
+
+// Stays set until a reconcile succeeds, so a gateway that is still starting or a failed apply is
+// retried on the next interval.
+let automationsPending = true
 
 function syncOnce(): void {
   git(["fetch", "origin", "main"])
@@ -49,6 +59,7 @@ function syncOnce(): void {
   // The same two steps seed-workspace.mts runs after its own reset, in the same order.
   publishConfig()
   installSubagentFiles()
+  automationsPending = true
 
   log(`synced workspace instructions to activescott/activeassistant @ ${origin}`)
 }
@@ -63,6 +74,15 @@ while (true) {
     // A failed fetch must not kill the sidecar. Log and retry on the next interval.
     const e = err as { message?: string }
     log(`sync failed, will retry: ${e.message ?? err}`)
+  }
+  if (automationsPending) {
+    try {
+      reconcileAutomations()
+      automationsPending = false
+    } catch (err) {
+      const e = err as { message?: string }
+      log(`automation reconcile failed, will retry: ${e.message ?? err}`)
+    }
   }
   await new Promise(resolve => setTimeout(resolve, 900_000))
 }

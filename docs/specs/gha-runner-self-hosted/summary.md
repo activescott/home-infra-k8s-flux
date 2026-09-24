@@ -180,7 +180,7 @@ rm apps/production/github-runners/runners/<repo>/.env.secret.github-token
    committed at limit). Watch node pressure during the first ci.yaml
    run.
 4. **Adding more repos** (`serverless-aws-static-file-handler`,
-   `gpu-agent`, `serverless-http-invoker`): copy
+   `gpu-poet`, `serverless-http-invoker`): copy
    `apps/production/github-runners/runners/tinkerbell/` to a new dir,
    change the four name strings (HelmRelease name, githubConfigUrl,
    githubConfigSecret, runnerScaleSetName), add the encrypted PAT,

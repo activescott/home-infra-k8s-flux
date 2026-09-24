@@ -1,0 +1,28 @@
+# The host namespace for the sandbox virtual cluster. Every pod an agent creates inside the
+# vcluster is synced out as a real pod HERE, so this namespace's admission is what actually
+# constrains the agent -- not anything configured inside the virtual cluster, where the agent
+# holds cluster-admin and can delete whatever it likes.
+#
+# `enforce: baseline` is the line: no privileged containers, no hostPath, no hostNetwork/hostPID/
+# hostIPC, no host ports, no adding capabilities beyond the baseline set. A virtual pod that asks
+# for any of those is rejected when the syncer creates it, and shows up as a pod stuck Pending in
+# the virtual cluster with the admission error on the syncer's events -- not as a pod that quietly
+# got what it asked for.
+#
+# `restricted` is warn/audit rather than enforce because vcluster's own control plane container
+# runs as UID 0 (`controlPlane.statefulSet.security.containerSecurityContext.runAsUser: 0` in the
+# chart), and most test images an agent will reach for do not set runAsNonRoot or a seccomp
+# profile either. Enforcing restricted would reject the control plane itself. The warn/audit pair
+# keeps the gap measurable: every violation is a warning on the apply and an entry in the API
+# server audit log, so "what would restricted cost us" stays answerable without breaking anything.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-sandbox-k8s
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest

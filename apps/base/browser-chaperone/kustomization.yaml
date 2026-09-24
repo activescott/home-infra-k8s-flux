@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Copied from activescott/browser-chaperone k8s/base at b1168d77. The Ingress
+# fronts the app only; the browser and db have none.
+resources:
+  - app-deployment.yaml
+  - app-service.yaml
+  - app-ingress.yaml
+  - browser-deployment.yaml
+  - browser-service.yaml
+  - db-statefulset.yaml
+  - db-service.yaml

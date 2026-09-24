@@ -6,6 +6,11 @@
 # lands in an agent's context, where a prompt injection can get it repeated back out. Removing
 # them keeps that class of data out of reach entirely rather than relying on her not to look.
 #
+# One Secret is granted to her outside this file, and it is the only one:
+# apps/production/agent-sandbox-k8s/olya-kubeconfig-rbac.yaml gives her `get` on
+# `vc-agent-sandbox`, the sandbox vcluster's kubeconfig. It lives there so that deleting the
+# sandbox deletes the grant.
+#
 # RBAC has no deny rules, so "`view` minus ConfigMaps" cannot be expressed as a modification of
 # `view`. It has to be built by re-doing what `view` does.
 #

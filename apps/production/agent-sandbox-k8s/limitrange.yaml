@@ -1,0 +1,39 @@
+# The ResourceQuota next door constrains requests.cpu, limits.cpu, memory and ephemeral-storage,
+# and a quota on a resource makes that resource MANDATORY on every container in the namespace. An
+# agent writing a test manifest will not set any of them, and vcluster's own control plane
+# container sets no CPU limit either, so without these defaults every pod in the sandbox is
+# rejected at admission. That is the main job of this file; the caps are the second job.
+#
+# The defaults are deliberately small and the caps deliberately generous: a pod that needs more
+# than the default says so, and one pod is allowed to be big (4 cores, 8Gi) as long as the
+# namespace total stays inside the quota. `max.memory` is 8Gi rather than something rounder
+# because the vcluster control plane container asks for exactly 4Gi and `max.ephemeral-storage`
+# is 10Gi because it asks for exactly 10Gi -- lower either and the control plane stops starting.
+#
+# ephemeral-storage is the one to keep an eye on. It is the container writable layer and emptyDir
+# on the node's disk, which is the same disk everything else on nas1 writes to, and it is the
+# resource a test that untars something enormous will actually exhaust. A container over its
+# limit is evicted by the kubelet rather than allowed to fill the pool.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agent-sandbox-k8s
+  namespace: agent-sandbox-k8s
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "1"
+        memory: 512Mi
+        ephemeral-storage: 2Gi
+      defaultRequest:
+        cpu: 50m
+        memory: 128Mi
+        ephemeral-storage: 64Mi
+      max:
+        cpu: "4"
+        memory: 8Gi
+        ephemeral-storage: 10Gi
+    - type: PersistentVolumeClaim
+      max:
+        storage: 10Gi

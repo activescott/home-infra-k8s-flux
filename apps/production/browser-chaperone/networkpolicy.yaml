@@ -1,9 +1,7 @@
 # Who may talk to what in browser-chaperone (activescott/activeassistant#191, #196).
 #
-# Only the egress proxy is deployed here so far. The browser service, the approval app and its
-# database are not, and these policies are written against the labels in browser-chaperone's
-# k8s/base (`app: browser`, `app: app`, `app: db`), so they are in force from the moment those
-# land rather than added afterwards.
+# Written against the labels in browser-chaperone's k8s/base (`app: browser`, `app: app`,
+# `app: db`), which apps/base/browser-chaperone copies.
 #
 # The assistant's pod (namespace olya) is the one to keep out. Its own egress policy already
 # denies all of 172.16.0.0/12, so today it cannot reach anything in this namespace at all, and
@@ -107,6 +105,54 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16 # link-local, including cloud metadata endpoints
               - 127.0.0.0/8
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The assistant's proxy (olya-egress-squid.conf): reachable from olya-0 only, and out to the
+# internet but no private network. Same egress as the browser's proxy above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: olya-egress-proxy
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: olya-egress-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 3128
+          protocol: TCP
+
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+    # DNS, for the destinations and for the reverse lookup that puts the pod name in the log.
     - to:
         - namespaceSelector:
             matchLabels:

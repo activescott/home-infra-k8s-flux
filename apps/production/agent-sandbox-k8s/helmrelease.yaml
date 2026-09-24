@@ -1,0 +1,108 @@
+# A throwaway Kubernetes API for coding agents to run tests against
+# (activescott/activeassistant#346). Nothing in here is production: the virtual cluster can be
+# deleted and re-created by removing and re-adding this file.
+#
+# THE DISTRO IS NOT K3S. #346 asked for the k3s distro; vcluster deprecated it through 0.32 and
+# removed it in 0.33, so no currently-supported chart can start one. `k8s` is the only distro
+# left, and it is upstream Kubernetes rather than k3s. A distro cannot be changed after a vcluster
+# is deployed, so pinning a 0.32.x chart to keep the word "k3s" would have meant starting on a
+# version with no upgrade path and deleting the cluster later to leave it. See README.md.
+#
+# The distro image is pinned to the host's minor. The host is k3s v1.33.5+k3s1, and its kubelet is
+# what ends up running every pod the syncer creates, so a virtual API server far ahead of it
+# accepts pod fields the host then prunes. Same reasoning as the alpine/kubectl skew cap in
+# renovate.json5: raise this when the cluster's k3s minor moves. The chart would otherwise default
+# to v1.36.0.
+#
+# vcluster-oss, not the chart's default vcluster-pro image: the pro build ships the same OSS
+# features with the paid ones switched off, and this repo is public. Nothing here needs a
+# platform login.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agent-sandbox
+  namespace: agent-sandbox-k8s
+spec:
+  interval: 10m
+  # Longer than helm-controller's 5m default because the first install pulls two images before the
+  # control plane answers /readyz. The `apps` Kustomization is `wait: true`, so a release that
+  # fails on a slow pull does not just retry quietly -- it makes the whole Kustomization unhealthy.
+  timeout: 10m
+  chart:
+    spec:
+      chart: vcluster
+      # 0.37.2 shipped the morning this was written; 0.37.1 is the newest release older than the
+      # 7-day minimumReleaseAge this repo applies to every other dependency (renovate.json5).
+      version: "0.37.1"
+      sourceRef:
+        kind: HelmRepository
+        name: loft
+        namespace: agent-sandbox-k8s
+      interval: 24h
+  values:
+    controlPlane:
+      distro:
+        k8s:
+          enabled: true
+          image:
+            tag: v1.33.13
+      statefulSet:
+        image:
+          repository: loft-sh/vcluster-oss
+        persistence:
+          volumeClaim:
+            enabled: true
+            size: 5Gi
+            # The only StorageClass on nas1: rancher.io/local-path, reclaim Delete. Right choice
+            # here -- deleting the vcluster should take its state with it.
+            storageClass: local-path
+      proxy:
+        # The kubeconfig below points at the Service FQDN, so the serving certificate has to be
+        # signed for it. vcluster adds the Service's own names, but naming them is cheap and the
+        # failure mode (x509 name mismatch on every call from olya-0) is not obvious.
+        extraSANs:
+          - agent-sandbox.agent-sandbox-k8s.svc.cluster.local
+          - agent-sandbox.agent-sandbox-k8s.svc
+
+    # Where olya-0's agents get their credentials. vcluster writes a kubeconfig to the Secret
+    # `vc-agent-sandbox` in this namespace, holding a client certificate that is cluster-admin
+    # INSIDE the virtual cluster and nothing at all outside it. The default server address is
+    # https://localhost:8443, which only works through `vcluster connect`; overriding it with the
+    # in-cluster Service FQDN is what makes the Secret usable as-is from another pod.
+    #
+    # Reading that Secret and reaching that address are both denied to olya today. See "Getting
+    # the kubeconfig into olya-0" in README.md for the follow-up that grants them.
+    exportKubeConfig:
+      context: agent-sandbox
+      server: https://agent-sandbox.agent-sandbox-k8s.svc.cluster.local
+
+    # No cluster-scoped rights for the syncer. The chart's `auto` default hands it a ClusterRole
+    # with cluster-wide `persistentvolumes` read and `volumesnapshotcontents` create/delete/patch/
+    # update, purely because volume-snapshot rules default on -- none of which this sandbox uses:
+    # `sync.toHost.persistentVolumes` and `sync.toHost.volumeSnapshotContents` are both off, so the
+    # syncer never touches either. PVCs still work; vcluster fabricates the virtual PV from the
+    # virtual PVC and never reads a host PV (pkg/controllers/resources/persistentvolumes/
+    # fake_syncer.go). What is left is a Role in this namespace and nothing outside it.
+    #
+    # Turning a sync option back on that needs cluster scope will now fail loudly instead of
+    # quietly granting itself the rights. That is the intended trade.
+    rbac:
+      clusterRole:
+        enabled: false
+      enableVolumeSnapshotRules:
+        enabled: false
+
+    policies:
+      # The chart can deploy its own ResourceQuota, LimitRange and NetworkPolicy into this
+      # namespace. Ours are in git next to this file, sized for this node and commented; two
+      # quotas on one namespace would both be enforced and the tighter one would win invisibly.
+      resourceQuota:
+        enabled: false
+      limitRange:
+        enabled: false
+      networkPolicy:
+        enabled: false
+
+    # A home cluster does not need to report its usage to a vendor.
+    telemetry:
+      enabled: false

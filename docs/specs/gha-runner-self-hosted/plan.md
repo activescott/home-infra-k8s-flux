@@ -297,4 +297,4 @@ Order of operations per repo:
 - Custom runner image with minikube/skaffold/Playwright baked in (optimization for later if cold-start install is too slow).
 - Org-level scale set (would require moving repos under a GitHub org).
 - Persistent runner cache (PVC for `~/.npm`, Docker layer cache) — would speed builds but adds complexity.
-- Adding the remaining lower-burn repos (`serverless-aws-static-file-handler`, `gpu-agent`, `serverless-http-invoker`) — same pattern: copy a `runners/<repo>/` directory and add its PAT.
+- Adding the remaining lower-burn repos (`serverless-aws-static-file-handler`, `gpu-poet`, `serverless-http-invoker`) — same pattern: copy a `runners/<repo>/` directory and add its PAT.

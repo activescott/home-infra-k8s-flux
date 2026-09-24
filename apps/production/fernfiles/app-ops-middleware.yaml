@@ -13,14 +13,15 @@
 # ingress, so the safe rule is "deny everything" — see
 # activescott/fernfiles docs/specs/027-active-user-metrics/plan.md.
 #
-# gpupoet blocks its own /ops endpoints differently (apps/base/gpupoet/
-# app-ingress.yaml routes three Exact paths to a nonexistent-service so they
-# black-hole). Two reasons this one does not copy that: it is a prod-only
-# overlay, which keeps /ops reachable in dev and e2e where the app's own e2e
-# suite scrapes /ops/metrics through the ingress; and a Prefix rule covers
-# every operator route added later instead of needing one entry each. Note
-# gpupoet's /ops/metrics is NOT blocked at all today — Prometheus scrapes it
-# over the public hostname.
+# gpupoet once blocked its /ops endpoints differently, routing three Exact
+# paths to a nonexistent-service. Traefik drops such a rule and the paths stayed
+# public (activescott/activeassistant#296), so gpupoet now copies this file.
+# Two reasons this one was never that shape: it is a prod-only overlay, which
+# keeps /ops reachable in dev and e2e where the app's own e2e suite scrapes
+# /ops/metrics through the ingress; and a Prefix rule covers every operator
+# route added later instead of needing one entry each. gpupoet's /ops/metrics
+# is carved out and still public, because Prometheus scrapes it over the
+# public hostname.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

@@ -18,7 +18,7 @@ spec:
         namespace: arc-systems
       interval: 24h
   values:
-    githubConfigUrl: https://github.com/activescott/gpu-agent
+    githubConfigUrl: https://github.com/activescott/gpu-poet
     githubConfigSecret: gpu-agent-github-token
     runnerScaleSetName: gpu-agent-runners
     minRunners: 0

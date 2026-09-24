@@ -65,8 +65,12 @@ spec:
             # address and is what makes any local part work: `privacy@fernfiles.com` and
             # `noreply@fernfiles.com` both resolve to the same owner. A bare `fernfiles.com`
             # key is NOT a form postfix looks up and would reject every message.
+            #
+            # browser-chaperone shares pingpoet.com with job-accelerator, so it owns one full
+            # address instead. A full-address key is looked up before `@domain`, so neither
+            # login can send as the other.
             - name: POSTFIX_smtpd_sender_login_maps
-              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, @productpoet.com=test@relay.local}"
+              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, browser-chaperone-noreply@pingpoet.com=browserchaperone@relay.local, @productpoet.com=test@relay.local}"
             - name: POSTFIX_smtpd_sender_restrictions
               value: reject_sender_login_mismatch,reject_unknown_sender_domain
             - name: SMTPD_SASL_USERS

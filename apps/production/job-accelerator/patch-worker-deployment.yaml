@@ -2,3 +2,8 @@
   path: /spec/template/spec/imagePullSecrets
   value:
     - name: github-container-registry-secret
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: APP_URL
+    value: https://job-accelerator.pingpoet.com

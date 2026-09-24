@@ -13,8 +13,8 @@ applications.
 
 Three independent layers, because each one alone has a hole:
 
-1. **NetworkPolicy** — only `fernfiles-prod`, `ramblefeed-prod`, `tinkerbell-prod` and
-   `job-accelerator-prod` can open the port.
+1. **NetworkPolicy** — only `fernfiles-prod`, `ramblefeed-prod`, `tinkerbell-prod`,
+   `job-accelerator-prod` and `browser-chaperone-prod` can open the port.
 2. **SASL** — `mynetworks` is narrowed to loopback and `smtpd_relay_restrictions` is
    `permit_sasl_authenticated,reject`. Left at the image's default, `mynetworks` would cover
    `172.16.0.0/12`, which contains this cluster's entire pod CIDR — every pod could relay.
