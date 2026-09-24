@@ -201,3 +201,19 @@ spec:
           protocol: TCP
         - port: 443
           protocol: TCP
+
+    # Her egress proxy (activescott/activeassistant#316), which logs every outbound host. The
+    # path opens here first; the HTTP_PROXY and HTTPS_PROXY that actually send her traffic
+    # through it come with the statefulset change, so nothing routes differently yet. The
+    # internet rule above still lets anything that ignores them connect directly; #317 removes
+    # it.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: browser-chaperone-prod
+          podSelector:
+            matchLabels:
+              app: olya-egress-proxy
+      ports:
+        - port: 3128
+          protocol: TCP

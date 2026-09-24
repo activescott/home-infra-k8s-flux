@@ -115,6 +115,54 @@ spec:
         - port: 53
           protocol: TCP
 ---
+# The assistant's proxy (olya-egress-squid.conf): reachable from olya-0 only, and out to the
+# internet but no private network. Same egress as the browser's proxy above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: olya-egress-proxy
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: olya-egress-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 3128
+          protocol: TCP
+
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+    # DNS, for the destinations and for the reverse lookup that puts the pod name in the log.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
 # The approval app holds every write route to the allowlist. In-cluster, only the browser
 # service calls it; people reach the UI through Traefik. Ingress only: what the app itself
 # needs to reach is decided when it is deployed.
