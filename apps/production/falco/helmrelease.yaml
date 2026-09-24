@@ -624,7 +624,7 @@ spec:
         # a read of a token path there is a misconfigured pod spec or the
         # credential reach #345 rules out.
         #
-        # agent-sandbox-k8s has exactly one process that has to read one. The
+        # agent-sandbox-k8s has two processes that have to read one. The
         # syncer authenticates to nas1 as agent-sandbox-0's service account, so
         # it reads the token projected into its own pod on startup and on every
         # rotation. That is the control plane, not a workload, and the claim
@@ -650,13 +650,42 @@ spec:
              and proc.exepath in (vcluster_control_plane_exepaths)
              and fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/)
 
+        # vcluster's CoreDNS is the second: its kubernetes plugin reads its own
+        # token on startup and every time client-go refreshes it. The syncer
+        # names the host pod <virtual name>-x-<virtual namespace>-x-agent-sandbox,
+        # so this pattern means a pod in the vcluster's kube-system whose name
+        # starts coredns-.
+        #
+        # Unlike agent-sandbox-0, this one is not unforgeable. An agent is
+        # cluster-admin inside the vcluster and can create pods in its
+        # kube-system or edit the CoreDNS Deployment itself, and every field
+        # below (name, container, image, binary path) is something that pod
+        # spec decides. What the exception can hide is therefore bounded by the
+        # token path rather than by the pod: a synced pod's service account
+        # token is issued by the vcluster's own API server and delivered
+        # through a pod annotation (the syncer turns automount off on the host
+        # pod), so it grants nothing the agent does not already hold. Host
+        # credentials and other containers' tokens are the other two macros in
+        # the rule and are not excepted here.
+        - list: vcluster_coredns_exepaths
+          items: [/coredns]
+
+        - macro: vcluster_coredns_own_token
+          condition: >
+            (k8s.ns.name = "agent-sandbox-k8s"
+             and k8s.pod.name glob "coredns-*-x-kube-system-x-agent-sandbox"
+             and container.name = "coredns"
+             and container.image.repository = "docker.io/coredns/coredns"
+             and proc.exepath in (vcluster_coredns_exepaths)
+             and fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/)
+
         - rule: Kubernetes credential read in agent sandbox container
           desc: >
             A process in a sandbox container read kubelet's or k3s's own credentials, another
             container's credentials out of containerd's state directory, or a service account
-            token or mounted Secret of its own. The vcluster control plane is the one reader
-            that has to do the last of those and is excluded by the path of its binary, so what
-            is left is a workload reading a credential. Scoped to the sandboxes and not to
+            token or mounted Secret of its own. The vcluster control plane and its CoreDNS have
+            to do the last of those and are excluded by pod and binary path, so what is left is
+            a workload reading a credential. Scoped to the sandboxes and not to
             Olya, who reads her own token as a matter of course.
           condition: >
             open_read
@@ -668,6 +697,7 @@ spec:
                  or pod_kube_credential_file)
             and not sandbox_runtime_proc
             and not vcluster_control_plane_own_token
+            and not vcluster_coredns_own_token
           output: >
             Kubernetes credential read in a sandbox namespace
             (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name file=%fd.name
