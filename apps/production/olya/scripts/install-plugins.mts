@@ -22,10 +22,16 @@ if (!existsSync(pluginsFile)) {
 // finish at 2Gi, short enough that a hung npm doesn't hold the pod in Init indefinitely.
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
 
+// Trust reasons that mean the loaded copy is the one openKeyedStore accepts. Anything else, e.g.
+// record-missing for a copy loaded from a plugins.load.paths entry, needs a managed install.
+const TRUSTED = new Set(["trusted-official", "bundled"])
+
 // failure is set when inspect could not say what is installed: it was killed (a starved
-// container OOMKills it before any install starts), or printed something other than a result.
+// container OOMKills it before any install starts), or exited non-zero without a result.
+// Output from a successful inspect that doesn't parse is treated as nothing installed.
 type Inspection = {
-  missingRecord: boolean
+  loadedVersion?: string
+  trustReason?: string
   installedVersion?: string
   installPath?: string
   failure?: string
@@ -45,20 +51,19 @@ function inspect(id: string): Inspection {
     failure = e.signal ? `killed by ${e.signal}` : `exit ${e.status}`
   }
 
-  const missingRecord = output.includes('"reason":"record-missing"')
-  if (missingRecord) return { missingRecord }
   let result
   try {
     result = JSON.parse(output)
   } catch {
-    return { missingRecord, failure: failure ?? "no JSON on stdout" }
+    return failure !== undefined ? { failure } : {}
   }
   // What inspect prints for a plugin with nothing installed, e.g. an empty $OPENCLAW_STATE_DIR.
-  if (result?.error?.message?.startsWith("Plugin not found")) return { missingRecord }
-  const install = result?.install
-  if (install === undefined && failure !== undefined) return { missingRecord, failure }
+  if (result?.error?.message?.startsWith("Plugin not found")) return {}
+  const { plugin, install } = result ?? {}
+  if (plugin === undefined && failure !== undefined) return { failure }
   return {
-    missingRecord,
+    loadedVersion: plugin?.version,
+    trustReason: plugin?.trust?.reason,
     installedVersion: install?.resolvedVersion,
     installPath: install?.installPath?.replace(/^~(?=$|\/)/, homedir()),
   }
@@ -67,12 +72,14 @@ function inspect(id: string): Inspection {
 // openclaw stages the npm install in a sibling directory and only swaps it in once it
 // succeeds, so a failed or killed install normally leaves the old copy in place. The swap
 // itself is two renames, and a kill between them would leave a record pointing at nothing,
-// so after a failure this re-inspects and checks the files are still there.
+// so after a failure this re-inspects and checks the files are still there. A copy loaded from
+// a config path has no install record but still loads, untrusted, so it counts too.
 function usableVersion(id: string): string | undefined {
-  const { installedVersion, installPath } = inspect(id)
-  if (installedVersion === undefined) return undefined
+  const { loadedVersion, installedVersion, installPath } = inspect(id)
+  const version = installedVersion ?? loadedVersion
+  if (version === undefined) return undefined
   if (installPath !== undefined && !existsSync(join(installPath, "package.json"))) return undefined
-  return installedVersion
+  return version
 }
 
 let failed = false
@@ -90,7 +97,9 @@ for (const line of lines) {
   // A present record only proves *some* version was installed. bumping the pin in
   // managed-plugins.txt doesn't invalidate the old record, so without comparing
   // versions this install skips forever and the plugin never actually upgrades.
-  const { missingRecord, installedVersion, failure } = inspect(id)
+  const { loadedVersion, trustReason, installedVersion, failure } = inspect(id)
+  const trusted = trustReason !== undefined && TRUSTED.has(trustReason)
+  const version = installedVersion ?? loadedVersion
 
   if (failure !== undefined) {
     // Installing blind could only make this worse: if the install fails too, there is no way to
@@ -98,12 +107,13 @@ for (const line of lines) {
     console.log(
       `install-plugins: WARNING ${id} inspect failed (${failure}); keeping whatever is installed`,
     )
-  } else if (installedVersion !== pinnedVersion) {
-    const reason = missingRecord
-      ? "trust record missing"
-      : installedVersion === undefined
+  } else if (version === undefined || !trusted || version !== pinnedVersion) {
+    const reason =
+      version === undefined
         ? "not installed"
-        : `installed version ${installedVersion} != pinned ${pinnedVersion}`
+        : !trusted
+          ? `trust ${trustReason ?? "unknown"} at ${version}`
+          : `installed version ${version} != pinned ${pinnedVersion}`
     console.log(`install-plugins: ${id} ${reason}; installing ${spec}`)
     try {
       execFileSync("openclaw", ["plugins", "install", spec, "--accept-capabilities", "--force"], {
@@ -126,7 +136,7 @@ for (const line of lines) {
       }
     }
   } else {
-    console.log(`install-plugins: ${id} trust record present at ${installedVersion}; skipping`)
+    console.log(`install-plugins: ${id} trust record present at ${version}; skipping`)
   }
 }
 

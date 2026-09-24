@@ -30,17 +30,18 @@ fail() {
   failures=$((failures + 1))
 }
 
+default_config='{"plugins":{"allow":["acpx"],"entries":{"acpx":{"enabled":true}}}}'
+
 new_volume() {
-  local vol=ip-test-$1-$RANDOM
+  local vol=ip-test-$1-$RANDOM config=${2:-$default_config}
   docker volume create "$vol" >/dev/null
   # The PVC is chowned to 1000 on the NAS and seed-workspace has published openclaw.json by
-  # the time install-plugins runs. The real one lives in the private activeassistant repo; this
-  # keeps the part of its plugins block that names acpx. acpx is deliberately not in its
+  # the time install-plugins runs. The real one lives in the private activeassistant repo; the
+  # default keeps the part of its plugins block that names acpx. acpx is deliberately not in its
   # load.paths, so the baked copy under /opt/olya/plugins is invisible to inspect there too.
-  docker run --rm -u 0 -v "$vol:/state" --entrypoint sh "$image" -c '
+  docker run --rm -u 0 -v "$vol:/state" -e "CONFIG=$config" --entrypoint sh "$image" -c '
     mkdir -p /state/home /state/openclaw /state/config &&
-    echo "{\"plugins\":{\"allow\":[\"acpx\"],\"entries\":{\"acpx\":{\"enabled\":true}}}}" \
-      > /state/config/openclaw.json &&
+    printf "%s\n" "$CONFIG" > /state/config/openclaw.json &&
     chown -R 1000:1000 /state' >/dev/null
   echo "$vol"
 }
@@ -164,7 +165,21 @@ run_install "$older_copy" 256m "$olya/managed-plugins.txt" "$work/fallback.log"
 check fallback "$older_copy" "$work/fallback.log" 0 "install-plugins: WARNING .* failed .*; keeping" "$older_cfg"
 echo "::endgroup::"
 
-docker volume rm "$fresh" "$older" "$older_copy" >/dev/null
+# How slack was on olya-0 after #241: loaded from a plugins.load.paths entry, so inspect reports
+# origin config and trust record-missing with no npm project behind it. That must not pass for
+# installed. The install fails here because the config copy overrides the managed one, and the
+# pod must still boot with the copy it has.
+echo "::group::untrusted copy (acpx loaded from a config path)"
+untrusted=$(new_volume untrusted \
+  '{"plugins":{"allow":["acpx"],"load":{"paths":["/opt/olya/plugins/acpx/node_modules/@openclaw/acpx"]},"entries":{"acpx":{"enabled":true}}}}')
+run_install "$untrusted" "$mem" "$olya/managed-plugins.txt" "$work/untrusted.log"
+[ "$RUN_EXIT" = 0 ] || fail "untrusted: exit $RUN_EXIT, expected 0"
+grep -qE "acpx trust record-missing at .*; installing" "$work/untrusted.log" ||
+  fail "untrusted: no log line saying the record-missing copy is being installed"
+grep -q "acpx trust record present" "$work/untrusted.log" && fail "untrusted: skipped an untrusted copy"
+echo "::endgroup::"
+
+docker volume rm "$fresh" "$older" "$older_copy" "$untrusted" >/dev/null
 if [ "$failures" -gt 0 ]; then
   echo "$failures check(s) failed"
   exit 1
