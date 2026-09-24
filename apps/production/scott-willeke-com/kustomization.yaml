@@ -20,4 +20,4 @@ namespace: scott-willeke-com-prod
 images:
   - name: scott-willeke-com-image
     newName: ghcr.io/activescott/www # {"$imagepolicy": "flux-system:policy-scott-willeke-com:name"}
-    newTag: "v202609242229" # {"$imagepolicy": "flux-system:policy-scott-willeke-com:tag"}
+    newTag: "v202609242310" # {"$imagepolicy": "flux-system:policy-scott-willeke-com:tag"}
