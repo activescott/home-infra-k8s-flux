@@ -38,7 +38,10 @@ configMapGenerator:
       - scripts/volume-layout.mts
 secretGenerator:
   # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
-  # openclaw_gateway_token, anthropic_api_key, openrouter_api_key.
+  # openclaw_gateway_token, anthropic_api_key, openrouter_api_key, and relay_bot_token and
+  # relay_app_token, which are the Slack relay's credentials and not Slack tokens
+  # (activescott/activeassistant#315). Both must match the relay's Secret, in
+  # ../browser-chaperone/.env.secret.slack-relay.encrypted.
   # The statefulset names the ones openclaw.json substitutes individually; see the comment there.
   - name: olya-env
     envs:
@@ -69,4 +72,4 @@ secretGenerator:
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790195922 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1790275431 # {"$imagepolicy": "flux-system:policy-olya:tag"}

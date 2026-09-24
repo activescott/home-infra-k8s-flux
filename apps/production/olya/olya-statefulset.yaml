@@ -93,7 +93,10 @@ spec:
         # Installs managed plugins from /cfg/managed-plugins.txt via
         # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
         # exists. See managed-plugins.txt for the plugin list and pinning notes. Runs after
-        # seed-workspace because plugin commands need the seeded config in place.
+        # seed-workspace because plugin commands need the seeded config in place. A failed
+        # upgrade keeps the installed version and logs "install-plugins: WARNING" instead of
+        # failing this container; .github/workflows/install-plugins.yml runs each path at the
+        # memory limit below.
         - name: install-plugins
           image: olya-image
           command: ["/scripts/install-plugins.mts"]
@@ -269,6 +272,33 @@ spec:
                 secretKeyRef:
                   name: olya-hooks
                   key: openclaw_hooks_token
+            # Every Slack Web API call goes to the relay in browser-chaperone-prod instead of
+            # slack.com, including apps.connections.open for Socket Mode
+            # (activescott/activeassistant#315). The relay is what gates outbound Slack, so
+            # this is a control, not a convenience: her policy in olya-networkpolicy.yaml
+            # admits no route to slack.com, and the two tokens below are good for nothing but
+            # the relay.
+            #
+            # The trailing slash is part of it: the plugin appends the method name to this
+            # value. The origin must equal the relay's PUBLIC_BASE_URL, or every file upload
+            # fails on the plugin's own origin check of the rewritten upload_url.
+            - name: SLACK_API_URL
+              value: http://slack-relay.browser-chaperone-prod.svc:3600/api/
+            # channels.slack in openclaw.json reads these two by name, and their VALUES are the
+            # relay's credentials rather than Slack's. Nothing here or in olya-env is a Slack
+            # token: the workspace's real ones exist only in the relay's Secret, so a shell
+            # command in this pod that reads the environment and calls slack.com directly has
+            # nothing Slack will accept.
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: relay_bot_token
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: relay_app_token
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and

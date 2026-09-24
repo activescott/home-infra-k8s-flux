@@ -124,9 +124,15 @@ spec:
 
   ingress:
     # Olya's agents, to use the virtual cluster at all. This is the sandbox half of that path; the
-    # other half is an egress rule in apps/production/olya, which does not exist yet -- see
-    # "Getting the kubeconfig into olya-0" in README.md. Until it does, this rule admits nobody,
-    # because her own policy denies all of 172.16.0.0/12 on the way out.
+    # other half is the rule to this namespace in apps/production/olya/olya-networkpolicy.yaml.
+    # See "Getting the kubeconfig into olya-0" in README.md for both.
+    #
+    # 8443, not the 443 the kubeconfig's server URL names. The `agent-sandbox` Service maps its
+    # 443 to 8443 on the control-plane pod, and kube-router's rules are in the filter table,
+    # which runs after nat, so what this rule is matched against is the port the pod listens on
+    # (note 1 at the top of this file, for the address half of the same point). 443 stays listed
+    # beside it so this does not rest on being right about that ordering; the pod does not serve
+    # it either way.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -135,6 +141,8 @@ spec:
             matchLabels:
               app: olya
       ports:
+        - port: 8443
+          protocol: TCP
         - port: 443
           protocol: TCP
 

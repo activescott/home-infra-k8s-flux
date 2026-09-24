@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: olya-egress-proxy
+  namespace: browser-chaperone-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: olya-egress-proxy
