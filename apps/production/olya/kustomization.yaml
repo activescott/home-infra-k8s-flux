@@ -33,9 +33,31 @@ configMapGenerator:
       - scripts/install-plugins.mts
       - scripts/check-memory-mounts.mts
       - scripts/reconcile-automations.mts
+      - scripts/ssh-proxy-connect.mts
       # Imported by the three above. Not a program, but it ships in the same ConfigMap because
       # all three resolve it as ./volume-layout.mts from /scripts.
       - scripts/volume-layout.mts
+  # Sends her HTTP(S) through the logging proxy in browser-chaperone-prod
+  # (activescott/activeassistant#316). Loaded with envFrom by every container that goes online.
+  #
+  # Both cases, because curl reads only the lower-case http_proxy and OpenClaw lets lower case
+  # shadow upper case. NODE_USE_ENV_PROXY makes Node's own fetch and http use them, which covers
+  # the gateway, the ACP adapters and the MCP servers it starts.
+  #
+  # NO_PROXY is everything reached inside the cluster or on loopback: the gateway on
+  # 127.0.0.1:18789, dev servers on *.localhost, every Service by its .svc or .svc.cluster.local
+  # name (Loki, Grafana, Prometheus, the browser, kubernetes.default), and the pod and Service
+  # ranges for anything addressed by IP (kubectl uses 172.17.0.1). The proxy refuses private
+  # addresses, so anything in-cluster missing from this list gets a 403 from Squid.
+  - name: olya-proxy-env
+    literals:
+      - HTTP_PROXY=http://olya-egress-proxy.browser-chaperone-prod.svc.cluster.local:3128
+      - HTTPS_PROXY=http://olya-egress-proxy.browser-chaperone-prod.svc.cluster.local:3128
+      - http_proxy=http://olya-egress-proxy.browser-chaperone-prod.svc.cluster.local:3128
+      - https_proxy=http://olya-egress-proxy.browser-chaperone-prod.svc.cluster.local:3128
+      - NO_PROXY=localhost,.localhost,127.0.0.1,::1,.svc,.cluster.local,172.16.0.0/12
+      - no_proxy=localhost,.localhost,127.0.0.1,::1,.svc,.cluster.local,172.16.0.0/12
+      - NODE_USE_ENV_PROXY=1
 secretGenerator:
   # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
   # openclaw_gateway_token, anthropic_api_key, openrouter_api_key, and relay_bot_token and

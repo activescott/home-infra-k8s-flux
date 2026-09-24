@@ -53,6 +53,10 @@ spec:
         - name: seed-workspace
           image: olya-image
           command: ["/scripts/seed-workspace.mts"]
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
           env:
             - name: HOME
               value: /state/home
@@ -100,6 +104,10 @@ spec:
         - name: install-plugins
           image: olya-image
           command: ["/scripts/install-plugins.mts"]
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
           env:
             - name: HOME
               value: /state/home
@@ -169,6 +177,10 @@ spec:
       containers:
         - name: olya
           image: olya-image
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
           env:
             # $HOME cannot stay at the image's /home/node because the root filesystem is
             # read-only. This is the per-user config tree, so it holds her credential set.
@@ -205,8 +217,12 @@ spec:
             # and known_hosts that seed-workspace wrote under $HOME and every clone fails with
             # "Host key verification failed". Inherited by the ACP adapters and by every shell
             # command they run, which is the point -- she clones work repos at runtime.
+            #
+            # The ProxyCommand sends it through the egress proxy as CONNECT host:22, so git over
+            # SSH is logged with everything else. Plain `ssh` without this variable still
+            # connects directly.
             - name: GIT_SSH_COMMAND
-              value: ssh -F $(HOME)/.ssh/config
+              value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
             # The two keys openclaw.json substitutes, plus provider API keys, named
             # individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
@@ -483,11 +499,15 @@ spec:
         - name: instruction-sync
           image: olya-image
           command: ["/scripts/instruction-sync.mts"]
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
           env:
             - name: HOME
               value: /state/home
             - name: GIT_SSH_COMMAND
-              value: ssh -F $(HOME)/.ssh/config
+              value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
             # For reconcile-automations.mts, which calls the gateway on loopback as an operator.
             - name: OPENCLAW_GATEWAY_TOKEN
               valueFrom:
