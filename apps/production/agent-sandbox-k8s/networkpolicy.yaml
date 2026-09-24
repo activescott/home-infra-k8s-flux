@@ -1,0 +1,162 @@
+# What the sandbox may reach. This is the only thing standing between a test workload an agent
+# wrote and the rest of the house, so it is default-deny in both directions with named exceptions.
+#
+# WHAT ENFORCES THIS: k3s's built-in kube-router policy controller (flannel is only the CNI). It
+# implements the upstream NetworkPolicy API -- podSelector, namespaceSelector, ipBlock, ports --
+# and nothing beyond it. There are no FQDN or DNS-name rules here because there is no
+# implementation to honour them; that is a Cilium feature. So "egress limited to image and
+# package registries" is, honestly, "the public internet on 80 and 443, plus the in-cluster
+# mirror, and nothing on any private network". The `except` list is what does the work: it is
+# the LAN, the node, and every other namespace that an agent cannot reach.
+#
+# TWO THINGS TO KNOW BEFORE EDITING, both learned in apps/production/olya/olya-networkpolicy.yaml:
+#
+#  1. Egress rules match the packet's DESTINATION address, not the next hop, and kube-router's
+#     rules sit in the filter table, which runs AFTER nat. A connection to a Service IP is
+#     evaluated against the endpoint it was DNAT'd to, not the Service address.
+#  2. A destination missing from this file fails as a CONNECTION TIMEOUT with nothing logged. If
+#     something in the sandbox hangs, suspect this file first.
+#
+# nas1 addressing, for reference: pods 172.16.0.0/16, services 172.17.0.0/16, node 10.1.111.20,
+# LAN 10.1.111.0/24.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agent-sandbox-k8s
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Everything in the namespace: the vcluster control plane, its CoreDNS, and every pod the syncer
+# creates on an agent's behalf.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox
+  namespace: agent-sandbox-k8s
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # The sandbox talking to itself. One trust domain: an agent already has cluster-admin inside
+    # the virtual cluster, so splitting its own workloads apart from each other would buy nothing.
+    - from:
+        - podSelector: {}
+
+  egress:
+    # The same rule seen from the other side, and this is also how a workload reaches the virtual
+    # cluster's API. `kubernetes.default` inside the vcluster resolves to the `agent-sandbox`
+    # Service, whose one endpoint is the control-plane pod in this namespace -- see note 1 above
+    # for why the Service address itself needs no rule.
+    - to:
+        - podSelector: {}
+
+    # Host DNS. The virtual cluster's own CoreDNS runs in this namespace and is covered above;
+    # this is what that CoreDNS and the control plane use to resolve anything else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # Registries and package indexes on the public internet: npm, PyPI, crates.io, Debian mirrors,
+    # ghcr.io, Helm chart repositories. Image pulls for the pods themselves do NOT come through
+    # here -- the node's kubelet pulls those, and NetworkPolicy does not apply to it -- so this is
+    # for what runs inside a container once it has started.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+
+    # The in-cluster pull-through mirrors, at their Service addresses. Their public hostnames
+    # (docker.oci-registry.activescott.com and friends) resolve to 10.1.111.20 on this LAN, which
+    # the except list above denies, so a client that wants the mirror has to be pointed at the
+    # Service.
+    #
+    # It buys nothing today: the mirrors want the `mirror` htpasswd user and zot's defaultPolicy
+    # is empty, so a sandbox with no credential gets 401 on every request. The follow-up that
+    # puts that credential in the sandbox is putting a read-only pull credential somewhere an
+    # agent's test workload can read it. Low value, but it is a credential, so decide it on
+    # purpose rather than by leaving this rule here.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: zot-oci-registry
+      ports:
+        - port: 5000
+          protocol: TCP
+---
+# The control plane, which is the only pod here with any business outside the sandbox.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vcluster-control-plane
+  namespace: agent-sandbox-k8s
+spec:
+  podSelector:
+    matchLabels:
+      app: vcluster
+      release: agent-sandbox
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Olya's agents, to use the virtual cluster at all. This is the sandbox half of that path; the
+    # other half is an egress rule in apps/production/olya, which does not exist yet -- see
+    # "Getting the kubeconfig into olya-0" in README.md. Until it does, this rule admits nobody,
+    # because her own policy denies all of 172.16.0.0/12 on the way out.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 443
+          protocol: TCP
+
+  egress:
+    # The HOST API server, which the syncer watches and writes to. Without this the vcluster never
+    # becomes ready and no pod it creates ever appears.
+    #
+    # Three addresses, for the reason worked out in apps/production/olya/olya-networkpolicy.yaml:
+    # the node answers on both 10.1.111.20 and 10.1.111.10, but the `kubernetes` Service has
+    # exactly one endpoint and it is .10, so .10 is the address actually evaluated. The Service
+    # address is listed too so this does not rest on being right about nat/filter ordering.
+    - to:
+        - ipBlock:
+            cidr: 172.17.0.1/32
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.10/32
+        - ipBlock:
+            cidr: 10.1.111.20/32
+      ports:
+        - port: 6443
+          protocol: TCP

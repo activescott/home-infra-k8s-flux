@@ -1,0 +1,145 @@
+# Two things a cluster-admin inside the virtual cluster can create that Pod Security and the
+# ResourceQuota both let through, and that act on the node rather than inside the sandbox. Both
+# are denied here, at host admission, which is the only layer the agent has no rights on.
+#
+# These four are cluster-scoped, and kustomize does not know it, which is why kustomization.yaml
+# has no `namespace:` transformer any more. The bindings scope them to this namespace; a policy is
+# inert until something binds it.
+---
+# A Service's spec.externalIPs is copied verbatim from the virtual Service to the host Service
+# (vcluster pkg/controllers/resources/services/syncer.go:140-157, along with loadBalancerIP), and
+# kube-proxy then installs a DNAT on the node for every packet to that address and port, in
+# PREROUTING and OUTPUT. externalIPs is not a Service type, so `services.nodeports: 0` and
+# `services.loadbalancers: 0` in resourcequota.yaml do not see it, and k3s does not run the
+# DenyServiceExternalIPs admission plugin (that would be a node-level change outside this repo).
+#
+# The result of leaving it open is CVE-2020-8554 on nas1: externalIPs [10.1.111.1] on port 53
+# blackholes upstream DNS for CoreDNS, [10.1.111.20] on 443 takes the Traefik ingress for every
+# app, [10.1.111.10] on 6443 takes the API server for anything dialling it directly. Worse than
+# blackholing, kube-router accepts host-originated connections into a pod ahead of any
+# NetworkPolicy rule (`--src-type LOCAL -j ACCEPT` is rule 1 of every pod chain), so traffic the
+# node itself sends is answered by the sandbox pod rather than dropped. That is interception of
+# exactly the destinations the `except` list in networkpolicy.yaml exists to make unreachable.
+#
+# Scoped to the namespace and not to synced Services: the chart's own `agent-sandbox` and
+# `agent-sandbox-headless` set neither field, so there is nothing here to exempt.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: agent-sandbox-k8s-service-external-ips
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["services"]
+  validations:
+    - expression: "!has(object.spec.externalIPs) || size(object.spec.externalIPs) == 0"
+      message: "spec.externalIPs is denied in agent-sandbox-k8s: it would install a DNAT on nas1 for that address."
+      reason: Forbidden
+    - expression: "!has(object.spec.loadBalancerIP) || object.spec.loadBalancerIP == ''"
+      message: "spec.loadBalancerIP is denied in agent-sandbox-k8s."
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: agent-sandbox-k8s-service-external-ips
+spec:
+  policyName: agent-sandbox-k8s-service-external-ips
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: agent-sandbox-k8s
+---
+# NET_RAW is in the default capability set, and baseline permits the default set, so a sandbox pod
+# gets raw sockets. Every pod on nas1 shares one flannel bridge and kube-router filters at L3, so
+# it never sees ARP: a pod with NET_RAW can answer for 172.16.0.1 (the gateway every pod routes
+# through, olya-0 included) or 172.16.0.5 (CoreDNS) and take their traffic. TLS bounds what is
+# readable; DNS is not TLS, and denial of service needs neither.
+#
+# `enforce: restricted` on the namespace would cover this and much else, but it rejects the
+# vcluster control plane, which runs as UID 0 -- see namespace.yaml. The chart has no lever
+# either: `policies.podSecurityStandard` is gone in 0.37.1 and centralAdmission is a paid feature.
+# So this is the one rule of restricted worth having on its own.
+#
+# Dropping NET_RAW is enough and cannot be undone by adding it back, because baseline's allowed
+# `add` list is NET_BIND_SERVICE and twelve others, and NET_RAW is not among them. ALL counts too,
+# which is what vcluster's own CoreDNS asks for.
+#
+# The cost is that a pod in the sandbox has to say so: `kubectl run` without a securityContext is
+# rejected. README.md has the snippet.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: agent-sandbox-k8s-drop-net-raw
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        # The subresource is how an ephemeral container arrives; a plain pod UPDATE cannot add one.
+        resources: ["pods", "pods/ephemeralcontainers"]
+  # Three expressions rather than one over a concatenated list: initContainers is a list of
+  # Container and ephemeralContainers a list of EphemeralContainer, and CEL will not join two
+  # list types.
+  validations:
+    - expression: |-
+        object.spec.containers.all(c,
+          has(c.securityContext) && has(c.securityContext.capabilities) &&
+          has(c.securityContext.capabilities.drop) &&
+          c.securityContext.capabilities.drop.exists(d,
+            d.upperAscii() == 'ALL' || d.upperAscii() == 'NET_RAW'))
+      message: "every container in agent-sandbox-k8s must set securityContext.capabilities.drop to include ALL or NET_RAW."
+      reason: Forbidden
+    - expression: |-
+        !has(object.spec.initContainers) ||
+        object.spec.initContainers.all(c,
+          has(c.securityContext) && has(c.securityContext.capabilities) &&
+          has(c.securityContext.capabilities.drop) &&
+          c.securityContext.capabilities.drop.exists(d,
+            d.upperAscii() == 'ALL' || d.upperAscii() == 'NET_RAW'))
+      message: "every init container in agent-sandbox-k8s must set securityContext.capabilities.drop to include ALL or NET_RAW."
+      reason: Forbidden
+    - expression: |-
+        !has(object.spec.ephemeralContainers) ||
+        object.spec.ephemeralContainers.all(c,
+          has(c.securityContext) && has(c.securityContext.capabilities) &&
+          has(c.securityContext.capabilities.drop) &&
+          c.securityContext.capabilities.drop.exists(d,
+            d.upperAscii() == 'ALL' || d.upperAscii() == 'NET_RAW'))
+      message: "every ephemeral container in agent-sandbox-k8s must set securityContext.capabilities.drop to include ALL or NET_RAW."
+      reason: Forbidden
+---
+# `vcluster.loft.sh/managed-by` is on every host pod the syncer creates and on nothing else here.
+# It cannot be set from inside the virtual cluster: it is in vcluster's LabelsToTranslate set
+# (pkg/util/translate/single_namespace.go:138), so a virtual pod that sets it has the key rewritten
+# to `vcluster.loft.sh/label-<hash>` and the syncer then writes the real one itself
+# (pkg/util/translate/labels.go:43-73). The same rewriting is why the `release` label in
+# networkpolicy.yaml's control-plane selector cannot be forged either.
+#
+# So this selector is "pods an agent asked for", and the one pod it leaves out is the control
+# plane, whose containers the chart gives no capability drops (verified with `helm template`).
+# Dropping capabilities on the control plane instead, and binding the policy to the whole
+# namespace, would be tighter; it is also a change that cannot be tested before it is merged, and
+# a control plane that will not start takes the `apps` Kustomization unhealthy with it.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: agent-sandbox-k8s-drop-net-raw
+spec:
+  policyName: agent-sandbox-k8s-drop-net-raw
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: agent-sandbox-k8s
+    objectSelector:
+      matchExpressions:
+        - key: vcluster.loft.sh/managed-by
+          operator: Exists
