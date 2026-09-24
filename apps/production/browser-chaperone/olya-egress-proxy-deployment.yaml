@@ -60,13 +60,13 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+          # No CPU limit: throttling adds latency to every call, and the proxy is on the path of all of them.
           resources:
             requests:
-              memory: 64Mi
-              cpu: 20m
-            limits:
               memory: 256Mi
-              cpu: 500m
+              cpu: 100m
+            limits:
+              memory: 1Gi
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
