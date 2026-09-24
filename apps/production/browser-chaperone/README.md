@@ -23,7 +23,8 @@ ssh nas 'sudo mkdir -p /mnt/thedatapool/app-data/browser-chaperone/prod/db-data 
 by the app, the browser service and the Slack relay.
 
 `.env.secret.slack-relay` (Secret `slack-relay-creds`): `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`,
-`RELAY_BOT_TOKEN`, `RELAY_APP_TOKEN`. The committed file holds placeholders; see below.
+`RELAY_BOT_TOKEN`, `RELAY_APP_TOKEN`. The committed file holds placeholders; see below. Also
+`RELAY_NOTIFY_TOKEN`, which the relay and the app both read; see "Slack request notice".
 
 ## Relay password
 
@@ -60,3 +61,16 @@ the whole point of the relay, so do not shortcut step 4 by copying a Slack token
    `SLACK_APP_TOKEN`. A value that does not match the relay's copy gets Slack's own
    `invalid_auth` on every call, with nothing else to say what went wrong.
 5. Commit both `.encrypted` files and merge. That rolls olya-0.
+
+## Slack request notice
+
+The app posts each waiting request to `SLACK_NOTIFY_CHANNEL` through the relay
+(browser-chaperone#23), presenting `RELAY_NOTIFY_TOKEN`. Both pods read it from the relay's
+Secret, so there is one copy; the app gets that key and no other. Until it exists the relay
+and the app each log a warning and nothing is posted.
+
+1. Generate it: `openssl rand -hex 32`. It must differ from the other four values in the file.
+2. Add `RELAY_NOTIFY_TOKEN=<value>`:
+   `./scripts/onepassword-secrets.mts edit apps/production/browser-chaperone/.env.secret.slack-relay`
+3. Commit the `.encrypted` file. Do not add it to olya's Secret.
+4. The bot has to be a member of #dream-on, or Slack answers `not_in_channel`.
