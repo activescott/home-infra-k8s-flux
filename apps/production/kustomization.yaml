@@ -71,3 +71,7 @@ resources:
   # browser-chaperone: the approval app, its database, the browser service, and the browser's
   # egress proxy and NetworkPolicies (activescott/activeassistant#196, #229).
   - ./browser-chaperone
+  # Falco, watching syscalls in the agent sandbox namespaces and Olya's
+  # (activescott/activeassistant#348). It needs kernel-level access; what that
+  # means and why it is the shape it is, is in apps/production/falco/README.md.
+  - ./falco

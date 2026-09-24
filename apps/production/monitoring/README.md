@@ -270,6 +270,117 @@ OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are availa
 
 Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
+## Kubernetes audit log
+
+**k3s on nas1 does not write one today.** Checked by looking for the stream in Loki: the only
+`job` values are `loki.source.kubernetes.pods` and `syslog`, and nothing in this repo passes
+the API server an audit flag. So the control-plane half of
+activescott/activeassistant#348 is wired but not yet fed.
+
+Everything downstream of the file is in place and reconciled by Flux: Alloy mounts
+`/var/log/kubernetes/audit` (`DirectoryOrCreate`, so it is harmless while empty), tails
+`*.log` there, and mints three counters that the `agent-sandbox-security` alert group reads.
+Until the flags below are set, those counters stay at zero and the three audit alerts cannot
+fire. **Their silence is not coverage.**
+
+What remains is a node-level change, and k3s server flags on TrueNAS are Scott's to set.
+
+### 1. Write the audit policy
+
+Keep it narrow. A default-everything policy on this cluster is tens of MB a day of Flux and
+kubelet chatter, and none of it is what #348 asks for. This one records the two things the
+alerts read and drops the rest:
+
+```bash
+sudo mkdir -p /var/lib/rancher/k3s/server
+sudo tee /var/lib/rancher/k3s/server/audit-policy.yaml >/dev/null <<'EOF'
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+rules:
+  # RBAC and NetworkPolicy writes in the sandbox namespaces. RequestResponse
+  # so the alert can say what changed, not only that something did.
+  - level: RequestResponse
+    verbs: ["create", "update", "patch", "delete"]
+    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings"]
+      - group: "networking.k8s.io"
+        resources: ["networkpolicies"]
+  # Services, also RequestResponse, and the level is the point rather than a
+  # detail: SandboxServiceExternalIP looks for the word externalIPs in
+  # the request body, and at Metadata the body is not there. Dropping this rule
+  # to Metadata leaves an alert that can never fire and looks healthy.
+  - level: RequestResponse
+    verbs: ["create", "update", "patch"]
+    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
+    resources:
+      - group: ""
+        resources: ["services"]
+  # Everything else in the sandbox namespaces at Metadata, which is enough:
+  # a Pod Security denial puts its reason in responseStatus.message, and
+  # Metadata records responseStatus.
+  - level: Metadata
+    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
+  - level: None
+EOF
+sudo chmod 600 /var/lib/rancher/k3s/server/audit-policy.yaml
+```
+
+### 2. Create the log directory
+
+```bash
+sudo mkdir -p /var/log/kubernetes/audit
+```
+
+The path is not arbitrary: it is what Alloy's hostPath in `alloy/helmrelease.yaml` mounts, and
+the two have to agree.
+
+### 3. Pass the flags to the API server
+
+```bash
+sudo tee -a /etc/rancher/k3s/config.yaml >/dev/null <<'EOF'
+kube-apiserver-arg:
+  - audit-policy-file=/var/lib/rancher/k3s/server/audit-policy.yaml
+  - audit-log-path=/var/log/kubernetes/audit/audit.log
+  - audit-log-maxage=7
+  - audit-log-maxbackup=3
+  - audit-log-maxsize=100
+EOF
+sudo systemctl restart k3s
+```
+
+If `/etc/rancher/k3s/config.yaml` already has a `kube-apiserver-arg` key, merge into it rather
+than appending a second one: k3s reads the last occurrence and silently drops the first.
+If k3s here is started from a systemd unit's `ExecStart` rather than a config file, the same
+five arguments go there as `--kube-apiserver-arg=...` instead.
+
+### 4. Confirm
+
+```bash
+sudo ls -l /var/log/kubernetes/audit/
+```
+
+then, after a minute, in Grafana:
+
+```logql
+{app="kube-apiserver-audit"}
+```
+
+Two things to check while confirming, both of which fail silently:
+
+- The file is created `0600 root:root`. Alloy's container runs as root (the chart sets no
+  `securityContext` on it) so it can read that, but if the chart ever gains one, the tail goes
+  quiet with no error anywhere.
+- TrueNAS updates have been known to rewrite k3s configuration. Re-check after each one; a
+  missing audit log looks exactly like a cluster where nothing happened.
+
+Then force one of the alerts rather than waiting: apply a pod manifest the namespace's Pod
+Security level forbids and watch `SandboxPodSecurityDenied`. The counters do not exist until
+the first matching line, so an unverified selector and a quiet cluster are indistinguishable.
+
 ## Alert Runbooks
 
 Runbooks live in `runbooks/`, one file per alert, added as alerts are diagnosed

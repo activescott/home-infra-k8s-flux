@@ -21,6 +21,11 @@ spec:
           - name: plex-logs
             mountPath: /mnt/plex-logs
             readOnly: true
+          # kube-apiserver's audit log, once k3s is started with the flags
+          # that write one. See ../README.md, "Kubernetes audit log".
+          - name: k8s-audit-logs
+            mountPath: /mnt/k8s-audit
+            readOnly: true
 
       # Syslog listener for the edge firewall.
       # Reached from the LAN via the separate `alloy-syslog` LoadBalancer
@@ -767,6 +772,54 @@ spec:
               }
             }
 
+            // Falco (activescott/activeassistant#348). Falco writes one JSON
+            // object per rule match to stdout, so it arrives here like any
+            // other pod's logs and needs no separate source.
+            //
+            // The selector matches on the priority field rather than on the
+            // rule names, so a rule added to falco/helmrelease.yaml is alerted
+            // on without touching this file. It still has to match something:
+            // falco.priority is already set to warning so nothing quieter is
+            // loaded, and this is the second half of that.
+            //
+            // The three promoted labels are what makes the alert legible --
+            // without falco_rule the page says "Falco fired" and triage starts
+            // by opening Loki anyway. Cardinality is bounded by the rules file
+            // (8 rules, 3 priorities, 3 namespaces).
+            stage.match {
+              selector = "{namespace=\"falco\", container=\"falco\"} |~ \"\\\"priority\\\":\\\"(Warning|Error|Critical|Alert|Emergency)\\\"\""
+
+              stage.json {
+                expressions = {
+                  falco_rule     = "rule",
+                  falco_priority = "priority",
+                  falco_ns       = "output_fields.\"k8s.ns.name\"",
+                }
+              }
+
+              stage.labels {
+                values = {
+                  falco_rule     = "",
+                  falco_priority = "",
+                  falco_ns       = "",
+                }
+              }
+
+              stage.metrics {
+                metric.counter {
+                  name        = "falco_sandbox_alerts_total"
+                  description = "Falco rule matches at priority Warning or above"
+                  match_all   = true
+                  action      = "inc"
+
+                  // A sandbox that is behaving produces none of these for
+                  // weeks. The 5m default would delete the series between
+                  // matches and leave increase() nothing to measure.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 
@@ -994,6 +1047,115 @@ spec:
             forward_to = [loki.write.default.receiver]
           }
 
+          // ── Kubernetes audit log ────────────────────────────────────────
+          // k3s does not write an audit log unless the API server is started
+          // with the flags for it, and on TrueNAS SCALE those are Scott's to
+          // set. This side of the pipe is wired up regardless: the hostPath is
+          // DirectoryOrCreate, so until the file exists local.file_match finds
+          // nothing and Alloy carries on. The exact node-level steps are in
+          // ../README.md under "Kubernetes audit log".
+          //
+          // Consequence worth stating plainly: until those flags are set, the
+          // two counters below stay at zero and the alerts reading them cannot
+          // fire. Absence of a Pod Security denial alert is not evidence that
+          // nothing was denied.
+          local.file_match "k8s_audit" {
+            path_targets = [{
+              __path__     = "/mnt/k8s-audit/*.log",
+              namespace    = "kube-system",
+              app          = "kube-apiserver-audit",
+              source       = "file",
+              service_name = "kube-system/kube-apiserver-audit",
+            }]
+          }
+
+          loki.source.file "k8s_audit" {
+            targets    = local.file_match.k8s_audit.targets
+            forward_to = [loki.process.k8s_audit.receiver]
+
+            tail_from_end = true
+          }
+
+          // Selectors are line filters over the raw audit JSON rather than
+          // promoted labels. objectRef.namespace, verb and resource would make
+          // a clean set of Loki labels, but they are attacker-influenced and
+          // unbounded (every namespace, every resource kind the policy
+          // records), and a stream per combination is how a Loki index gets
+          // wrecked. The alert annotations carry the LogQL to get the detail
+          // back at triage time.
+          loki.process "k8s_audit" {
+            // Pod Security admission refuses the request and puts the reason
+            // in responseStatus.message. Matching the message text rather than
+            // the 403 code keeps ordinary RBAC denials out of it.
+            stage.match {
+              selector = "{app=\"kube-apiserver-audit\"} |= \"violates PodSecurity\" |~ \"\\\"namespace\\\":\\\"agent-sandbox-\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "k8s_audit_sandbox_podsecurity_denied_total"
+                  description = "Pod Security admission denials in the agent sandbox namespaces"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // A sandbox that can rewrite its own Role, RoleBinding or
+            // NetworkPolicy is not a sandbox. Reads are not matched, only the
+            // four verbs that change something.
+            stage.match {
+              selector = "{app=\"kube-apiserver-audit\"} |~ \"\\\"resource\\\":\\\"(roles|rolebindings|networkpolicies)\\\"\" |~ \"\\\"verb\\\":\\\"(create|update|patch|delete)\\\"\" |~ \"\\\"namespace\\\":\\\"agent-sandbox-\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "k8s_audit_sandbox_authz_changed_total"
+                  description = "RBAC or NetworkPolicy writes in the agent sandbox namespaces"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // A Service with spec.externalIPs is the CVE-2020-8554 shape, and
+            // #346's review found the path open: vcluster copies externalIPs
+            // from the virtual Service to the host one, the sandbox
+            // ResourceQuota blocks only NodePort and LoadBalancer, and
+            // DenyServiceExternalIPs is not enabled on this node. kube-proxy
+            // then installs a node-wide DNAT for that address and port, in
+            // PREROUTING and OUTPUT both. The admission policy that rejects it
+            // belongs in #346; this is the detective half.
+            //
+            // Not the obvious "add services to the selector above": vcluster
+            // syncs every virtual Service into this namespace, so a counter on
+            // services-written would increment through ordinary use and the
+            // alert would be muted within a week. externalIPs and
+            // loadBalancerIP are omitempty in the serialised Service, so the
+            // words appear in the audit line only when they are set, and the
+            // counter stays at zero through every legitimate sync.
+            //
+            // It needs the request body, which means the audit policy has to
+            // record services at RequestResponse rather than Metadata. The
+            // policy in ../README.md does; if that is edited, this goes quiet
+            // and looks healthy.
+            stage.match {
+              selector = "{app=\"kube-apiserver-audit\"} |~ \"\\\"resource\\\":\\\"services\\\"\" |~ \"\\\"verb\\\":\\\"(create|update|patch)\\\"\" |~ \"\\\"namespace\\\":\\\"agent-sandbox-\" |~ \"(externalIPs|loadBalancerIP)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "k8s_audit_sandbox_service_external_ip_total"
+                  description = "Services written with externalIPs or loadBalancerIP in the agent sandbox namespaces"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            forward_to = [loki.write.default.receiver]
+          }
+
     controller:
       type: daemonset
 
@@ -1012,6 +1174,14 @@ spec:
           - name: plex-logs
             hostPath:
               path: "/mnt/thedatapool/app-data/plex/config/Library/Application Support/Plex Media Server/Logs"
+              type: DirectoryOrCreate
+          # DirectoryOrCreate, so this mount is harmless before k3s is
+          # configured to write here: an empty directory with nothing to tail.
+          # It must be this path and not another, because the k3s flag in
+          # ../README.md names it.
+          - name: k8s-audit-logs
+            hostPath:
+              path: "/var/log/kubernetes/audit"
               type: DirectoryOrCreate
 
     serviceAccount:
