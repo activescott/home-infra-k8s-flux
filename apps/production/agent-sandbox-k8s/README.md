@@ -72,17 +72,23 @@ certificate that is cluster-admin inside the virtual cluster and carries no righ
 `https://agent-sandbox.agent-sandbox-k8s.svc.cluster.local`, so it works as-is from another pod
 rather than only through `vcluster connect`.
 
-Two things are still missing, and both belong in `apps/production/olya/` rather than here, because
-changing her RBAC or her policy restarts olya-0.
+Both halves of that now exist, and neither restarts olya-0: an RBAC grant and a NetworkPolicy
+edit both take effect on the running pod, and nothing in either change touches her StatefulSet.
 
-She cannot read the Secret: her ServiceAccount is `view` minus ConfigMaps (`olya-rbac.yaml`), and
-`view` has never included Secrets. A `Role` in this namespace naming `vc-agent-sandbox` under
-`resourceNames`, bound to `system:serviceaccount:olya:olya`, is the whole grant. Keep it that
-narrow, since any Secret she can read is a Secret a prompt injection can get repeated back out.
+Reading the Secret: her ServiceAccount is `view` minus ConfigMaps (`olya-rbac.yaml`), and `view`
+has never included Secrets, so `olya-kubeconfig-rbac.yaml` here adds a `Role` naming
+`vc-agent-sandbox` under `resourceNames` with `get` and nothing else, bound to
+`system:serviceaccount:olya:olya`. Keep it that narrow, since any Secret she can read is a Secret
+a prompt injection can get repeated back out. It sits in this directory rather than under
+`apps/production/olya/`, where this file first expected it, because that Kustomization sets
+`namespace: olya` and would rewrite the Role out of the namespace the Secret is in, and because
+deleting the sandbox should delete the grant.
 
-She also cannot reach the API: `olya-networkpolicy.yaml` denies all of 172.16.0.0/12 on the way
-out and needs a rule to this namespace's control plane on 443. The matching ingress rule is
-already in `networkpolicy.yaml` here.
+Reaching the API: `olya-networkpolicy.yaml` denies all of 172.16.0.0/12 on the way out, so it
+carries a rule to this namespace's control-plane pod, matching the ingress rule in
+`networkpolicy.yaml` here. Both name port 8443 rather than the 443 in the kubeconfig's server
+URL, because the Service maps 443 to 8443 on the pod and kube-router matches the translated
+port.
 
 ## Verifying it after merge
 
@@ -93,8 +99,14 @@ flux --context nas get kustomization apps
 kubectl --context nas -n agent-sandbox-k8s get helmrelease,pods,pvc
 kubectl --context nas -n agent-sandbox-k8s get resourcequota agent-sandbox-k8s -o yaml   # used vs hard
 
-# The kubeconfig, from a machine with cluster access (not from olya-0 until the follow-up lands):
+# The kubeconfig, from a machine with cluster access:
 kubectl --context nas -n agent-sandbox-k8s get secret vc-agent-sandbox -o jsonpath='{.data.config}' \
+  | base64 -d > /tmp/agent-sandbox.kubeconfig
+kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig get ns
+
+# The same two commands are what an agent runs from olya-0, without --context: kubectl there
+# authenticates as her ServiceAccount, which the Role above lets read that one Secret.
+kubectl -n agent-sandbox-k8s get secret vc-agent-sandbox -o jsonpath='{.data.config}' \
   | base64 -d > /tmp/agent-sandbox.kubeconfig
 kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig get ns
 
@@ -124,8 +136,8 @@ kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig run egress --rm -it \
   --overrides='{"spec":{"containers":[{"name":"egress","image":"mirror.gcr.io/library/alpine:3.20","stdin":true,"tty":true,"securityContext":{"capabilities":{"drop":["ALL"]}},"command":["sh","-c","wget -qO- -T5 https://pypi.org/simple/ >/dev/null && echo internet-ok; wget -qO- -T5 http://10.1.111.20/ ; echo lan-exit=$?"]}]}}'
 ```
 
-The end-to-end proof #346 asks for (job-accelerator's Postgres plus the app, driven from olya-0)
-needs the olya-side follow-up above before it can run at all.
+The end-to-end proof #346 asks for is hypothesis 1 below: job-accelerator's Postgres plus the
+app, driven from olya-0.
 
 ## Hypotheses and how we test them
 
@@ -134,9 +146,8 @@ agent is root inside the thing they contain, and which a customer's security rev
 accept. Each claim below can fail. Results go on
 [activescott/activeassistant#346](https://github.com/activescott/activeassistant/issues/346).
 
-Only 6 can run today. The rest need the olya-side follow-up above (the `Role` over
-`vc-agent-sandbox` and the egress rule to this namespace's API), which restarts olya-0, so they
-want an attended window.
+Only 6 could run before the olya-side grant above existed. With it applied the rest run from
+olya-0.
 
 1. An agent holding only this kubeconfig can bring up a real app with its database and run its
    tests. Deploy job-accelerator's Postgres and its app into the vcluster from olya-0, with
