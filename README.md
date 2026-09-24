@@ -217,6 +217,23 @@ secretGenerator:
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
+#### Shared GitHub Actions secrets
+
+GitHub personal accounts have no organization secrets, so `scripts/actions-secrets.json` lists,
+per secret, where its value lives and which repos get it. `scripts/sync-actions-secrets.mts`
+reads each value from its source and runs `gh secret set` per repo, with the value on stdin.
+
+```bash
+./scripts/sync-actions-secrets.mts --dry-run          # list what would be set, read nothing
+./scripts/sync-actions-secrets.mts                    # set everything, one line per repo
+./scripts/sync-actions-secrets.mts --secret ZOT_MIRROR_PASSWORD --repo activescott/tinkerbell
+```
+
+To add a repo, add `owner/name` to that secret's `repos` and run the script. To add a secret,
+add an entry with a `source` (`{"sops": <encrypted dotenv file>, "key": <name>}` or
+`{"op": "op://vault/item/field"}`) and its `repos`. Rotating the underlying value means
+`edit`ing the encrypted file, then running the script again.
+
 #### Generated secrets
 
 Some secrets are machine-to-machine tokens that no person needs to know. Those are generated
