@@ -175,9 +175,38 @@ spec:
         - port: 3500
           protocol: TCP
 
-    # Her egress proxy (activescott/activeassistant#316), which logs every outbound host. HTTP_PROXY
-    # and HTTPS_PROXY in olya-statefulset.yaml point here. The internet rule above still lets
-    # anything that ignores them connect directly; #317 removes it.
+    # The sandbox vcluster's API, so an agent can run tests against a real Kubernetes API
+    # instead of against nas1 (activescott/activeassistant#346). The kubeconfig for it is the
+    # Secret `vc-agent-sandbox`, which apps/production/agent-sandbox-k8s/olya-kubeconfig-rbac.yaml
+    # grants her `get` on.
+    #
+    # The control-plane pod only. The pods the syncer creates in that namespace on an agent's
+    # behalf are workloads an agent wrote, and this policy exists to keep her off exactly that
+    # sort of thing; the API is the whole of what she needs to reach.
+    #
+    # Port 8443 rather than the 443 in the kubeconfig's server URL, for the same nat/filter
+    # reason worked out for the Kubernetes API above: the `agent-sandbox` Service maps 443 to
+    # 8443 on the pod, and the filter table sees the translated port. 443 is listed too so this
+    # does not rest on being right about that.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-sandbox-k8s
+          podSelector:
+            matchLabels:
+              app: vcluster
+              release: agent-sandbox
+      ports:
+        - port: 8443
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+
+    # Her egress proxy (activescott/activeassistant#316), which logs every outbound host. The
+    # path opens here first; the HTTP_PROXY and HTTPS_PROXY that actually send her traffic
+    # through it come with the statefulset change, so nothing routes differently yet. The
+    # internet rule above still lets anything that ignores them connect directly; #317 removes
+    # it.
     - to:
         - namespaceSelector:
             matchLabels:

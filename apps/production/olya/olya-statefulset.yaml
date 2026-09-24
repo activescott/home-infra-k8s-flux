@@ -203,6 +203,11 @@ spec:
             # that could change; the mount is not.
             - name: OPENCLAW_CONFIG_READONLY
               value: "1"
+            # Makes a gateway restart (e.g. a config reload) exit so Kubernetes restarts the
+            # container. An in-process restart leaves ACP's session manager stopped and cancels
+            # every ACP turn after it (activescott/activeassistant#330).
+            - name: OPENCLAW_SUPERVISOR_MODE
+              value: external
             # REQUIRED for any git-over-ssh, not a preference. OpenSSH finds ~/.ssh from the
             # passwd entry, not from $HOME: uid 1000 here is `node`, whose passwd home is
             # /home/node on the read-only root filesystem. Without -F, ssh ignores the config
@@ -473,18 +478,27 @@ spec:
               value: /state/home
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
+            # For reconcile-automations.mts, which calls the gateway on loopback as an operator.
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: openclaw_gateway_token
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          # The automation reconcile runs the openclaw CLI once per job file. The git loop alone
+          # fits in 256Mi; the reconcile peaked at 365MiB RSS across its process tree (OpenClaw
+          # 2026.9.5, one job file). 1Gi leaves headroom above that measured peak.
           resources:
             requests:
               cpu: "50m"
               memory: 64Mi
             limits:
               cpu: "500m"
-              memory: 256Mi
+              memory: 1Gi
           volumeMounts:
             - name: state
               mountPath: /state

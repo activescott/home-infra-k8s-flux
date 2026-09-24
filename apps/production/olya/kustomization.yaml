@@ -32,6 +32,7 @@ configMapGenerator:
       - scripts/memory-sync.mts
       - scripts/install-plugins.mts
       - scripts/check-memory-mounts.mts
+      - scripts/reconcile-automations.mts
       - scripts/ssh-proxy-connect.mts
       # Imported by the three above. Not a program, but it ships in the same ConfigMap because
       # all three resolve it as ./volume-layout.mts from /scripts.
@@ -90,4 +91,4 @@ secretGenerator:
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790125571 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1790195922 # {"$imagepolicy": "flux-system:policy-olya:tag"}

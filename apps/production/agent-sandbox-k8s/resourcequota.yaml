@@ -1,0 +1,47 @@
+# What the sandbox may take from nas1, which is one node shared with everything else in this
+# repo. Measured before choosing the numbers, from Prometheus on 2026-09-23: capacity 20 cores,
+# 125 GiB memory, 250 pods; already requested 7.8 cores, 19 GiB, 114 pods. So the spare is about
+# 12 cores, 105 GiB and 136 pods, and the sandbox is allowed a visible minority of it.
+#
+# The four dimensions are sized to run out together, because a quota that trips on one dimension
+# long before the others reads as a bug ("exceeded quota: limits.cpu" at six pods when
+# count/pods says 24). With the LimitRange defaults next door -- 50m/128Mi/64Mi requested and
+# 1/512Mi/2Gi limited per container -- 24 single-container pods plus the control plane come to
+# roughly 1.4 cores and 3.3Gi requested, 24 cores and 12Gi limited, and 58Gi of ephemeral
+# storage. Change one file and re-check the other.
+#
+# CPU limits are allowed to oversubscribe the node (12 vs ~12 spare cores, and they are ceilings
+# on throttling, not reservations); memory limits are not, because nothing throttles memory --
+# 24Gi is what this namespace can make the kernel hand out before the OOM killer starts choosing
+# victims elsewhere on the node.
+#
+# services.nodeports: 0 is a security rule wearing a quota's clothes. An agent with cluster-admin
+# in the virtual cluster can create a NodePort Service; vcluster would sync it here and publish
+# the sandbox on the node's LAN address, outside everything networkpolicy.yaml decides. The quota
+# refuses it, and the refusal is visible on the syncer rather than silent. It does not cover
+# spec.externalIPs, which is not a Service type and needs the admission policy next door.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agent-sandbox-k8s
+  namespace: agent-sandbox-k8s
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    requests.ephemeral-storage: 4Gi
+    limits.cpu: "12"
+    limits.memory: 24Gi
+    limits.ephemeral-storage: 64Gi
+    count/pods: "24"
+    # One claim and 5Gi of storage is exactly the control plane's own volume, which leaves none
+    # for an agent. That is deliberate and it is not a size: local-path does not enforce capacity,
+    # so a 10Gi claim can write until the disk is full, and these claims land in the k3s data
+    # directory beside the datastore and containerd's image store. A test that fills it takes the
+    # node down with it. Raise this when a sandbox StorageClass backed by a zvol or a
+    # ZFS-quota'd dataset exists, and not before. Tests that need scratch space use emptyDir,
+    # which is the ephemeral-storage above and is enforced by kubelet eviction.
+    count/persistentvolumeclaims: "1"
+    requests.storage: 5Gi
+    services.nodeports: "0"
+    services.loadbalancers: "0"
