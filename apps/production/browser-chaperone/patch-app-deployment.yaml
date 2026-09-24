@@ -12,6 +12,9 @@
     # email-relay's sender map gives this exact address to browserchaperone@relay.local.
     - name: FROM_EMAIL
       value: browser-chaperone-noreply@pingpoet.com
+    # The request-waiting email links back here (browser-chaperone#16).
+    - name: APP_URL
+      value: https://chaperone.pingpoet.com
 - op: add
   path: /spec/template/spec/containers/0/envFrom/-
   value:
