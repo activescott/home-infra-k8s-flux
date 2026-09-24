@@ -49,8 +49,9 @@ which of two real things it is.
    `volumes`, and `serviceAccountName`. A privileged container or a host mount here is a
    manifest bug, and the fix is a PR against this repo.
 2. Nothing in the manifests explains it, in which case treat the node as involved. The escape
-   and capability rules exclude two runtime binaries by the path of the executable
-   (`sandbox_runtime_exepaths`), so a match means some other binary did it.
+   and capability rules exclude the container runtimes by the path of the executable
+   (`sandbox_runtime_proc`, which is the two dind binaries, runc's memfd self-copy, and the
+   host's runc under k3s's data directory), so a match means some other binary did it.
 
 Which rule fired changes where to look, in one case in a way that is easy to get backwards.
 `elevated capabilities` and `nested container mounted a sensitive path` are the two rules that
@@ -69,10 +70,20 @@ sandboxes at that timestamp.
 
 A `Kubernetes credential read` match from `agent-sandbox-docker` means a service account token
 or Secret was read in a pod that mounts neither; check `automountServiceAccountToken` on the
-pod and its service account before anything else. From `agent-sandbox-k8s` it means kubelet's
-or k3s's own files, which no pod there can reach without a host mount. The virtual service
-account token every vcluster pod carries is deliberately not matched (`helmrelease.yaml` says
-why), so this alert never fires on one.
+pod and its service account before anything else. From `agent-sandbox-k8s` it means one of
+three things, and `proc.exepath` and `fd.name` in the log line say which: kubelet's or k3s's
+own files, which no pod there can reach without a host mount; another container's token read
+out of containerd's state directory under `/run/k3s/containerd/`; or a pod reading its own
+service account token, which every workload an agent creates can do and none of them should.
+The one reader excluded is `/vcluster` reading the token in its own pod, because the syncer
+authenticates to nas1 as `agent-sandbox-0`.
+
+Two of those have an innocent version. vcluster's own CoreDNS uses in-cluster config and will
+match on startup until its binary is added to `vcluster_control_plane_exepaths`. And runc
+touches the same paths while it builds a container, which is what
+[activeassistant#357](https://github.com/activescott/activeassistant/issues/357) was: it is
+excluded by the path of its binary, so a match whose `proc.exepath` is the k3s runc means
+something forged that path inside an image.
 
 ## FalcoSandboxWarning
 

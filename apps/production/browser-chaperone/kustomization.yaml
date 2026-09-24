@@ -4,6 +4,12 @@ resources:
   - namespace.yaml
   - egress-proxy-deployment.yaml
   - egress-proxy-service.yaml
+  # Not in the base: browser-chaperone's k8s/base has no manifest for this package.
+  - slack-relay-deployment.yaml
+  - slack-relay-service.yaml
+  - olya-egress-proxy-deployment.yaml
+  - olya-egress-proxy-service.yaml
+  - olya-egress-proxy-pdb.yaml
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
@@ -38,6 +44,9 @@ configMapGenerator:
   - name: egress-proxy-config
     files:
       - squid.conf
+  - name: olya-egress-proxy-config
+    files:
+      - squid.conf=olya-egress-squid.conf
   # Where the browser service finds the approval app and the proxy. Both are
   # Services in this namespace, and networkpolicy.yaml allows the browser pod
   # to reach nothing else.
@@ -47,6 +56,12 @@ configMapGenerator:
       - EGRESS_PROXY_URL=http://egress-proxy:3128
       - AGENT_IDENTITY=olya
       - NODE_ENV=production
+  # The operators' channel (#dream-on), where the app posts each waiting request
+  # (browser-chaperone#23). Read by the app, which names it, and by the Slack relay, which
+  # refuses the app's credential anywhere else.
+  - name: slack-notify-config
+    literals:
+      - SLACK_NOTIFY_CHANNEL=C0C4YKR21DW
 secretGenerator:
   - name: db-creds
     envs:
@@ -59,15 +74,25 @@ secretGenerator:
   - name: app-signin
     envs:
       - .env.secret.app-signin.encrypted
-  # One Secret for both Deployments: the browser sends this token on every /internal/* call
-  # and the app refuses any call without it.
+  # One Secret for the browser, the Slack relay and the app: both clients send this token on
+  # every /internal/* call and the app refuses any call without it.
   - name: internal-api-token
     envs:
       - .env.secret.internal-api-token.encrypted
+  # The workspace's two real Slack tokens and the two credentials Olya presents instead. The
+  # committed file holds PLACEHOLDERS until activescott/activeassistant#312 produces the real
+  # ones; see README.md "Slack relay tokens" for who puts what where. Also RELAY_NOTIFY_TOKEN,
+  # the app's credential for the request notice, which the app reads as its one key here.
+  - name: slack-relay-creds
+    envs:
+      - .env.secret.slack-relay.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.8.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
+  - name: browser-chaperone-image-slack-relay
+    newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
+    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}

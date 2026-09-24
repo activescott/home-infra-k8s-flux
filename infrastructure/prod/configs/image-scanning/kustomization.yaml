@@ -8,6 +8,7 @@ resources:
   - amazon-searcher.yaml
   - browser-chaperone-app.yaml
   - browser-chaperone-browser.yaml
+  - browser-chaperone-slack-relay.yaml
   - fernfiles-app.yaml
   - fernfiles-inference-service.yaml
   - fernfiles-worker.yaml

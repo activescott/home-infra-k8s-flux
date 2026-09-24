@@ -125,10 +125,20 @@ non-allowlisted `Binds` is the control, and it belongs in #347.
 
 ## What the exclusions cost
 
-`sandbox_runtime_exepaths` is the only exclusion the escape and capability rules have, and
-anything it matches is invisible to both. It holds two absolute paths from the dind image,
-plus a prefix match on runc's memfd self-copy, which runc re-execs before every container
-start and which the kernel reports as `/memfd:runc_cloned:/proc/self/exe (deleted)`.
+`sandbox_runtime_proc` is the only exclusion the escape and capability rules have, and
+anything it matches is invisible to both. It holds two absolute paths from the dind image, a
+prefix match on runc's memfd self-copy, which runc re-execs before every container start and
+which the kernel reports as `/memfd:runc_cloned:/proc/self/exe (deleted)`, and a glob over the
+host's own runc, `/var/lib/rancher/k3s/data/*/bin/runc`.
+
+The host's runc was added after the vcluster rollout on 2026-09-24
+([activeassistant#357](https://github.com/activescott/activeassistant/issues/357)), which
+raised 191 Critical matches in twenty seconds, 184 of them runc bringing up the three
+containers the rollout started. #229 took the host's runtime for something Falco would not see
+here, since it is not the workload. It is a container event: containerd puts runc in the
+starting container's cgroup before it runs, so the plugin attributes runc's `setns`, its
+`unshare`, and every rootfs path it opens to the container being built. The glob covers the
+version hash in k3s's unpacked data directory, which moves with the k3s version.
 
 Process names are not usable here and this is worth stating, because the obvious version of
 this list was written that way first. `proc.name` is matched by `cp exploit /tmp/runc-x`,
@@ -140,15 +150,22 @@ path, so matching it means being that binary.
 The memfd prefix is the weak one. A process that can already exec inside a nested container
 can name a memfd the same thing, so an attacker who wants their second stage unseen can have
 it. Their first exec in that container has already fired the capability rule if it held any
-of the four, which is the event that matters.
+of the four, which is the event that matters. The k3s runc glob is weak the same way and a
+little worse: in `agent-sandbox-k8s` the agent writes the pod spec, so it chooses the image
+and can put a file at that path. What the exclusion buys is everything runc does before the
+container's entrypoint exists, and that was all of the rollout noise. Pinning
+the glob to `proc.is_exe_upper_layer = false and proc.is_exe_lower_layer = false` would
+tighten it further, since both are false for the host's runc and true for a container's own.
 
 Adding to that list is a security change, not tuning. Any addition should be an absolute path
 shipped in an image, and the PR should say which alert made the case.
 
 ## How this stays quiet enough to page on
 
-Nothing here is tuned against observed traffic, because neither sandbox namespace exists yet.
-The claim is structural, and these are the four things doing the work:
+One namespace has now been observed: `agent-sandbox-k8s` came up on 2026-09-24 and the rules
+paged three times on it before anything ran inside (activeassistant#357). The exclusions that
+came out of that are in the section above and in `helmrelease.yaml`. The rest of the claim is
+still structural, and these are the four things doing the work:
 
 - The escape and capability rules key on an event no ordinary workload produces.
   `setns`/`unshare`/`init_module` and a capability set the pod spec cannot ask for are not
@@ -158,11 +175,14 @@ The claim is structural, and these are the four things doing the work:
   does them unprompted, and that rule is also the cheapest flood in the set (a pty in a loop
   matches as fast as it can fork). In `olya` the agents run without a tty, so a pty shell is a
   person or something wearing one.
-- The credential-read rule matches host-side material in `agent-sandbox-k8s`, not the service
-  account token. vcluster rewrites every virtual pod's projected token into a Secret-backed
-  volume at the standard path, so anything using in-cluster config reads that file on startup;
-  alerting on it would put a Critical on ordinary use. The token path stays matched in
-  `agent-sandbox-docker`, which has no service account at all.
+- The credential-read rule matches host-side material and service account tokens in both
+  sandboxes, with one exclusion: `/vcluster`, in `agent-sandbox-k8s`, reading the token
+  projected into its own pod. The syncer authenticates to nas1 as `agent-sandbox-0`'s service
+  account, so the claim that holds is the narrower one, that no workload in the sandbox reads
+  a credential. #229 excluded the token path in that namespace outright on the grounds that
+  anything using in-cluster config reads it; that is true of vcluster's own CoreDNS, which
+  will match on the next rollout, and the answer to it is a second entry in
+  `vcluster_control_plane_exepaths` rather than an open token path.
 - The `/etc` rule matches a named list of files that buy persistence or a privilege change,
   not all of `/etc`. A sandbox that builds images rewrites half of `/etc` on every
   `apt-get install`.

@@ -1,7 +1,8 @@
 # Who may talk to what in browser-chaperone (activescott/activeassistant#191, #196).
 #
 # Written against the labels in browser-chaperone's k8s/base (`app: browser`, `app: app`,
-# `app: db`), which apps/base/browser-chaperone copies.
+# `app: db`), which apps/base/browser-chaperone copies. `app: slack-relay` has no base; the
+# Deployment is in this directory.
 #
 # The assistant's pod (namespace olya) is the one to keep out. Its own egress policy already
 # denies all of 172.16.0.0/12, so today it cannot reach anything in this namespace at all, and
@@ -9,6 +10,10 @@
 # (apps/production/olya/olya-rbac.yaml). The policies below make this namespace refuse it too,
 # so the allowlist store stays closed if that policy is ever loosened to let her drive the
 # browser.
+#
+# Two ports are now open to her, and they are the two services that gate what she does with
+# them: browser:3500 (#229) and slack-relay:3600 (#315). The db and the approval app are still
+# closed to her, which is the point: both hold the grants that decide those two gates.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. Kubelet
 # probes come from the node and are not affected.
@@ -115,9 +120,127 @@ spec:
         - port: 53
           protocol: TCP
 ---
-# The approval app holds every write route to the allowlist. In-cluster, only the browser
-# service calls it; people reach the UI through Traefik. Ingress only: what the app itself
-# needs to reach is decided when it is deployed.
+# The assistant's proxy (olya-egress-squid.conf): reachable from olya-0 only, and out to the
+# internet but no private network. Same egress as the browser's proxy above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: olya-egress-proxy
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: olya-egress-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 3128
+          protocol: TCP
+
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+    # DNS, for the destinations and for the reverse lookup that puts the pod name in the log.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The Slack relay: in from olya-0 and the approval app on its port, out to Slack and to the
+# approval app (activescott/activeassistant#315, browser-chaperone#23).
+#
+# Both directions matter here in a way they do not for the browser. Inbound, this port is the
+# whole of Olya's Slack access, and the two credentials she holds are good for nothing else,
+# so nobody else has any business presenting them. The approval app comes in to post the
+# waiting-request notice with a third credential that reaches one channel. Outbound, the relay is what makes her pod
+# have no route to slack.com of its own: it is the process with the real tokens, and it may
+# reach Slack and the approval app and nothing on any private network.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: slack-relay
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: slack-relay
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 3600
+          protocol: TCP
+
+  egress:
+    # slack.com for the Web API, files.slack.com for the second hop of an upload, and no
+    # private network. The except list matches the assistant's own policy in
+    # apps/production/olya; Slack publishes no fixed address range to narrow this to.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+    # GET /internal/allowlist/check and POST /internal/allowlist/requests, on every gated
+    # call. An app it cannot reach is a refusal, so this rule going missing fails closed and
+    # noisily rather than quietly widening anything.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 3400
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The approval app holds every write route to the allowlist. In-cluster, the browser service
+# and the Slack relay call it; people reach the UI through Traefik. Ingress only: what the app
+# itself needs to reach is decided when it is deployed.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -134,6 +257,9 @@ spec:
         - podSelector:
             matchLabels:
               app: browser
+        - podSelector:
+            matchLabels:
+              app: slack-relay
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
