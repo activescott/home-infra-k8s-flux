@@ -60,12 +60,13 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
-          # No CPU limit: throttling adds latency to every call, and the proxy is on the path of all of them.
+          # CPU limit is high so the proxy is never throttled but still bounded on a single node.
           resources:
             requests:
               memory: 256Mi
               cpu: 100m
             limits:
+              cpu: "2"
               memory: 1Gi
           securityContext:
             runAsNonRoot: true
