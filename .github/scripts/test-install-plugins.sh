@@ -179,7 +179,27 @@ grep -qE "acpx trust record-missing at .*; installing" "$work/untrusted.log" ||
 grep -q "acpx trust record present" "$work/untrusted.log" && fail "untrusted: skipped an untrusted copy"
 echo "::endgroup::"
 
-docker volume rm "$fresh" "$older" "$older_copy" "$untrusted" >/dev/null
+# A first install that fails with nothing installed to fall back on must not wedge the pod
+# (Scott, 2026-09-24): exit 0, an ERROR line, and the failures file for the main container.
+echo "::group::failed first install (no usable version)"
+broken=$(new_volume broken)
+broken_cfg=$work/broken.txt
+echo "@openclaw/no-such-plugin-zzz@1.0.0" >"$broken_cfg"
+run_install "$broken" "$mem" "$broken_cfg" "$work/broken.log"
+[ "$RUN_EXIT" = 0 ] || fail "broken: exit $RUN_EXIT, expected 0"
+grep -qE "install-plugins: ERROR no-such-plugin-zzz pinned 1\.0\.0 failed to install" "$work/broken.log" ||
+  fail "broken: no ERROR line naming the plugin and pinned version"
+docker run --rm --user 1000:1000 -v "$broken:/state" --entrypoint cat "$image" \
+  /state/openclaw/install-plugins-failures.json >"$work/broken.json" || true
+[ "$(yq -p json '.[0].plugin' "$work/broken.json")" = no-such-plugin-zzz ] ||
+  fail "broken: failures file missing or does not name the plugin"
+run_install "$broken" "$mem" "$olya/managed-plugins.txt" "$work/broken-clean.log"
+docker run --rm --user 1000:1000 -v "$broken:/state" --entrypoint test "$image" \
+  ! -e /state/openclaw/install-plugins-failures.json ||
+  fail "broken: failures file still present after a clean run"
+echo "::endgroup::"
+
+docker volume rm "$fresh" "$older" "$broken" "$older_copy" "$untrusted" >/dev/null
 if [ "$failures" -gt 0 ]; then
   echo "$failures check(s) failed"
   exit 1

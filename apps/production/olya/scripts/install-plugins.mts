@@ -5,12 +5,18 @@
 // A failed upgrade does not block boot. If the pinned version fails to install (non-zero exit,
 // OOMKill, timeout) but an earlier version is still installed, this logs a WARNING line and
 // exits 0 so olya-0 boots on the old version. The same goes when inspect itself cannot run: the
-// plugin is left as it is. It exits non-zero only when an install fails and leaves the plugin
-// with no usable install at all. Grep the init container log for "install-plugins: WARNING".
+// plugin is left as it is.
+//
+// It always exits 0, even when an install fails and leaves the plugin with no usable install.
+// Scott decided on 2026-09-24 that a plugin that fails to install must never wedge the pod: it
+// comes up without that plugin, so a restart always gets Olya back partially working. That case
+// logs an "install-plugins: ERROR" line and is written to $OPENCLAW_STATE_DIR/
+// install-plugins-failures.json for the main container to surface; a clean run removes the file.
+// Grep the init container log for "install-plugins: WARNING" and "install-plugins: ERROR".
 import { execFileSync } from "node:child_process"
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 const pluginsFile = "/cfg/managed-plugins.txt"
 if (!existsSync(pluginsFile)) {
@@ -21,6 +27,11 @@ if (!existsSync(pluginsFile)) {
 // The --force reinstall ran ~5min before its 1Gi OOMKill (#204). Long enough for that path to
 // finish at 2Gi, short enough that a hung npm doesn't hold the pod in Init indefinitely.
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
+
+const failuresFile = join(
+  process.env.OPENCLAW_STATE_DIR ?? join(homedir(), ".openclaw"),
+  "install-plugins-failures.json",
+)
 
 // Trust reasons that mean the loaded copy is the one openKeyedStore accepts. Anything else, e.g.
 // record-missing for a copy loaded from a plugins.load.paths entry, needs a managed install.
@@ -82,7 +93,7 @@ function usableVersion(id: string): string | undefined {
   return version
 }
 
-let failed = false
+const failures: { plugin: string; pinnedVersion?: string; cause: string; time: string }[] = []
 const lines = readFileSync(pluginsFile, "utf8").split("\n")
 
 for (const line of lines) {
@@ -130,9 +141,9 @@ for (const line of lines) {
         )
       } else {
         console.error(
-          `install-plugins: ERROR ${id} install of ${pinnedVersion} failed (${how}) and no usable version is installed`,
+          `install-plugins: ERROR ${id} pinned ${pinnedVersion} failed to install (${how}) and no usable version is installed; continuing without it`,
         )
-        failed = true
+        failures.push({ plugin: id, pinnedVersion, cause: how, time: new Date().toISOString() })
       }
     }
   } else {
@@ -140,4 +151,14 @@ for (const line of lines) {
   }
 }
 
-process.exit(failed ? 1 : 0)
+try {
+  if (failures.length > 0) {
+    mkdirSync(dirname(failuresFile), { recursive: true })
+    writeFileSync(failuresFile, JSON.stringify(failures, null, 2) + "\n")
+  } else {
+    rmSync(failuresFile, { force: true })
+  }
+} catch (err) {
+  console.error(`install-plugins: ERROR could not update ${failuresFile}: ${err}`)
+}
+process.exit(0)
