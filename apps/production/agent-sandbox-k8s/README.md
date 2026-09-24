@@ -126,3 +126,62 @@ kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig run egress --rm -it \
 
 The end-to-end proof #346 asks for (job-accelerator's Postgres plus the app, driven from olya-0)
 needs the olya-side follow-up above before it can run at all.
+
+## Hypotheses and how we test them
+
+The question being answered is #345's, not this vcluster's: which of these controls hold when an
+agent is root inside the thing they contain, and which a customer's security reviewer would
+accept. Each claim below can fail. Results go on
+[activescott/activeassistant#346](https://github.com/activescott/activeassistant/issues/346).
+
+Only 6 can run today. The rest need the olya-side follow-up above (the `Role` over
+`vc-agent-sandbox` and the egress rule to this namespace's API), which restarts olya-0, so they
+want an attended window.
+
+1. An agent holding only this kubeconfig can bring up a real app with its database and run its
+   tests. Deploy job-accelerator's Postgres and its app into the vcluster from olya-0, with
+   `emptyDir` in place of the PVCs, then run the app's test command against that Postgres.
+   Passes if the suite reaches the same result it does outside the sandbox. This decides whether
+   #344's sandbox tier is worth building: a boundary nobody can work inside does not get used.
+
+2. Pod Security and the admission policy reject every host-escape shape. From inside the
+   vcluster, create four pods: privileged, hostPath, hostNetwork, and one adding NET_ADMIN. The
+   `privesc` and `rawsock` commands above are the first and a pod that never drops capabilities.
+   Passes if each is created in the vcluster, stays Pending with no host pod, and the rejection
+   is on the syncer's events. Answers how far #344's "Kubernetes" option gets on admission alone,
+   before Kata or gVisor. The other half, `SandboxPodSecurityDenied` reaching Telegram, cannot be
+   tested yet: it reads the k3s audit log, which is off (`apps/production/monitoring/README.md`).
+
+3. A Service carrying `externalIPs` or `loadBalancerIP` never reaches kube-proxy. Run the
+   `hijack` commands above, then repeat the patch with `loadBalancerIP`. Passes if the virtual
+   Service exists, the host Service does not, and the denial names
+   `agent-sandbox-k8s-service-external-ips`. Separate from 2 because it is a node-wide traffic
+   hijack needing no kernel bug, and it is what a reviewer who knows Kubernetes asks about first.
+   `SandboxServiceExternalIP` is blocked on the audit log the same way.
+
+4. Egress reaches registries and nothing private. Extend the `egress` command above with a pull
+   from the in-cluster mirror and attempts at nas1's LAN address, the firewall's web UI, and the
+   cluster API. Passes if the registry pull and a public 443 fetch succeed while every
+   private-range attempt times out. What it cannot demonstrate is an allowlist: kube-router has
+   no FQDN rules, so this is the public internet on 80 and 443 with the private ranges removed.
+   That gap is the case for #344's egress proxy, and this test is how to size it.
+
+5. The quota stops a runaway workload before another namespace notices. Scale a Deployment past
+   24 replicas, each allocating memory until it is killed. Passes if the excess replicas stay
+   unschedulable with a quota message, node memory pressure never fires, and nothing outside this
+   namespace restarts or is evicted. Fails if a neighbour is evicted, which would mean the quota
+   is sized against the numbers in `resourcequota.yaml` rather than against real headroom.
+
+6. Falco turns a sandbox event into a Telegram message. Write a file under `/usr/bin` in a
+   sandbox pod, which is the cheapest harmless match. Passes if `FalcoSandboxWarning` arrives
+   with `falco_rule="Binary directory written in agent sandbox container"`. Two results that look
+   like failures and are not: `kubectl exec` of a shell into a sandbox pod matches no rule on
+   purpose (only Olya's namespace has one), and a pod refused at admission never starts a
+   container, so Falco sees nothing and the audit alerts in 2 and 3 are what would cover it. Run
+   this one first, since it needs no olya-side change and a broken pipeline looks exactly like a
+   quiet cluster.
+
+7. What this says about offering vcluster to OfB customers. Written up on #346 as two lists: what
+   held, and what a customer's security reviewer would still refuse. The second already has
+   entries before anything runs (the shared kernel, and egress that is not really an allowlist),
+   so the output worth having is which of 1 through 5 survive contact and what joins that list.
