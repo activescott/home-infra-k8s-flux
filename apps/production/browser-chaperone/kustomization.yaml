@@ -4,9 +4,6 @@ resources:
   - namespace.yaml
   - egress-proxy-deployment.yaml
   - egress-proxy-service.yaml
-  - olya-egress-proxy-deployment.yaml
-  - olya-egress-proxy-service.yaml
-  - olya-egress-proxy-pdb.yaml
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
@@ -41,9 +38,6 @@ configMapGenerator:
   - name: egress-proxy-config
     files:
       - squid.conf
-  - name: olya-egress-proxy-config
-    files:
-      - squid.conf=olya-egress-squid.conf
   # Where the browser service finds the approval app and the proxy. Both are
   # Services in this namespace, and networkpolicy.yaml allows the browser pod
   # to reach nothing else.
