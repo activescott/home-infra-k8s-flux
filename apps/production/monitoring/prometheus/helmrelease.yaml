@@ -1638,13 +1638,39 @@ spec:
           # tinkerbell-log-health group above: these counters carry every stream
           # label Alloy had at that point in the pipeline, so an unaggregated
           # expression evaluates per pod and per node.
+          #
+          # The two Falco expressions carry a second arm, and it is the whole
+          # reason the first test of this pipeline failed
+          # (activescott/activeassistant#346). Alloy creates a counter series the
+          # first time a rule matches, and it is born at 1: increase() over a
+          # series with one sample in the window returns nothing, and at the next
+          # scrape both samples read 1, so it returns 0. Every rule's first match
+          # was therefore dropped, which for rules that are supposed to fire once
+          # in a year is most of them. The `unless ... offset 5m` arm says "this
+          # label set did not exist 5 minutes ago", which is exactly the birth
+          # case increase() cannot see. increase() stays as the first arm because
+          # it handles counter resets, which the offset arm gets backwards: after
+          # an Alloy restart the counter drops to 0 and climbs again, and only
+          # increase() reads that as an increase.
+          #
+          # Alerting from Loki instead, with a LogQL count_over_time rule, would
+          # have avoided the counter entirely. Loki here is deploymentMode
+          # SingleBinary with no ruler configured and no ruler storage, so that is
+          # a component to stand up rather than a rule to write, and it would
+          # split alerting across two systems for one group.
           - name: agent-sandbox-security
             rules:
               # Split by priority so a container escape and a shell someone
               # opened by hand do not arrive with the same severity. The rules
               # file assigns the priorities; see falco/helmrelease.yaml.
               - alert: FalcoSandboxCritical
-                expr: 'sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}[5m])) > 0'
+                expr: >-
+                  sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}[5m])) > 0
+                  or (
+                  sum by (falco_rule, falco_ns) (loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}) > 0
+                  unless
+                  sum by (falco_rule, falco_ns) (loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"} offset 5m)
+                  )
                 labels:
                   severity: critical
                 annotations:
@@ -1659,7 +1685,13 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcosandboxcritical
                   repo: activescott/home-infra-k8s-flux
               - alert: FalcoSandboxWarning
-                expr: 'sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}[5m])) > 0'
+                expr: >-
+                  sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}[5m])) > 0
+                  or (
+                  sum by (falco_rule, falco_ns) (loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}) > 0
+                  unless
+                  sum by (falco_rule, falco_ns) (loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"} offset 5m)
+                  )
                 labels:
                   severity: warning
                 annotations:

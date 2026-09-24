@@ -124,6 +124,25 @@ sits until `ETIMEDOUT` and never matches: non-blocking clients (curl, anything i
 `nc` and `bash /dev/tcp` do not. The rule reports destinations that were reachable, not
 destinations that were tried, and that is upstream's shape rather than ours.
 
+## Why both Falco expressions have a second arm
+
+Neither of the two alerts above is a plain `increase()`, and the second arm is not
+decoration. Alloy creates the counter series the first time a rule matches and it is born at
+1, which `increase()` over a 5 minute window reads as nothing and then as 0. The first test of
+this pipeline (activeassistant#346) produced exactly that: Falco matched `Binary directory
+written in agent sandbox container` at 01:26:17Z, the counter went to 1, and no alert fired.
+The `unless ... offset 5m` arm asks whether the label set existed 5 minutes ago, which is the
+one question `increase()` cannot answer about a series' first sample.
+
+What this changes for triage: an alert whose second arm fired carries no information about
+how many times the rule matched, only that it matched at least once in the last 5 minutes.
+Get the count from the log lines rather than from the alert. The arms also resolve on
+different schedules, so an alert can flap once at the 5 minute mark when a rule matches twice
+around the boundary; that is one event to investigate, not two.
+
+Keep both. Dropping `increase()` leaves the alert blind to a counter reset, which is what an
+Alloy restart looks like, and dropping the offset arm puts the first-match hole back.
+
 ## FalcoNotRunning
 
 Falco is the only thing watching these namespaces at syscall level, so while this fires the

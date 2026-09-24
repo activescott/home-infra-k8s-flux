@@ -59,7 +59,10 @@ spec:
         - podSelector: {}
 
     # Host DNS. The virtual cluster's own CoreDNS runs in this namespace and is covered above;
-    # this is what that CoreDNS and the control plane use to resolve anything else.
+    # this is what that CoreDNS and the control plane use to resolve anything else. It is also
+    # the only resolver they may use, which is why `controlPlane.coredns.overwriteConfig` in
+    # helmrelease.yaml forwards to kube-dns by address: the chart's default sends CoreDNS to
+    # the node's resolver on the LAN, and this rule denies it.
     - to:
         - namespaceSelector:
             matchLabels:

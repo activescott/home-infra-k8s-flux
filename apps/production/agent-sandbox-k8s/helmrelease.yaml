@@ -64,6 +64,55 @@ spec:
           - agent-sandbox.agent-sandbox-k8s.svc.cluster.local
           - agent-sandbox.agent-sandbox-k8s.svc
 
+      coredns:
+        # Where the virtual cluster resolves everything that is not one of its own Services.
+        # The CoreDNS pod runs on the host with `dnsPolicy: Default`, so the chart's default
+        # `forward . /etc/resolv.conf` is the NODE's resolver, 10.1.111.1 on the LAN, and
+        # networkpolicy.yaml allows DNS to kube-system and nothing else. Every public name in
+        # the sandbox failed (`wget: bad address 'pypi.org'`) and each attempt also raised a
+        # Falco "unexpected private network connection". Forwarding to the host cluster's
+        # kube-dns uses the DNS rule that is already there, so that file does not change.
+        #
+        # An address rather than `kube-dns.kube-system.svc`: CoreDNS's forward plugin parses
+        # its targets as IP, IP:port or a resolv.conf path and refuses a hostname at startup,
+        # so there is no by-name form to prefer. 172.17.0.10 is kube-dns's ClusterIP, fixed
+        # for the life of the cluster but still a literal -- check it first if names stop
+        # resolving in the sandbox.
+        #
+        # `networking.advanced.fallbackHostCluster: true` would derive the same address from
+        # the syncer's own resolv.conf, and was not used: it also makes unresolved cluster.local
+        # names fall through to the host, which would let a sandbox workload enumerate nas1's
+        # Services by name. The NetworkPolicy still refuses the connection, but a sandbox has
+        # no business reading the map.
+        #
+        # overwriteConfig replaces the whole Corefile, so everything below except the forward
+        # line is the chart's default for these values, from pkg/coredns/template.go at 0.37.1.
+        # Re-render it against that file when the chart version moves.
+        overwriteConfig: |
+          .:1053 {
+              errors
+              health
+              ready
+              rewrite name regex .*\.nodes\.vcluster\.com kubernetes.default.svc.cluster.local
+              kubernetes cluster.local in-addr.arpa ip6.arpa {
+                  pods insecure
+                  fallthrough in-addr.arpa ip6.arpa
+              }
+              hosts /etc/coredns/NodeHosts {
+                  ttl 60
+                  reload 15s
+                  fallthrough
+              }
+              prometheus :9153
+              forward . 172.17.0.10
+              cache 30
+              loop
+              reload
+              loadbalance
+          }
+
+          import /etc/coredns/custom/*.server
+
     # Where olya-0's agents get their credentials. vcluster writes a kubeconfig to the Secret
     # `vc-agent-sandbox` in this namespace, holding a client certificate that is cluster-admin
     # INSIDE the virtual cluster and nothing at all outside it. The default server address is
