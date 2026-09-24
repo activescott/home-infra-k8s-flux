@@ -234,7 +234,11 @@ because Dependabot-triggered runs read a separate secret store.
 To add a repo, add `owner/name` to that secret's `repos` and run the script. To add a secret,
 add an entry with a `source` (`{"sops": <encrypted dotenv file>, "key": <name>}` or
 `{"op": "op://vault/item/field"}`) and its `repos`. Rotating the underlying value means
-`edit`ing the encrypted file, then running the script again.
+`edit`ing the encrypted file, then running the script again. The exception is
+`ZOT_CI_PASSWORD` and `ZOT_MIRROR_PASSWORD`: rotate them with
+`apps/production/zot/scripts/create-zot-htpasswd.sh`, which regenerates the bcrypt hashes
+zot checks against, and commit both encrypted files. Editing only the passwords file leaves
+the registry rejecting them.
 
 #### Generated secrets
 

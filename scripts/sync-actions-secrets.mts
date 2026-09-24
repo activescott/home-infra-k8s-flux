@@ -114,9 +114,17 @@ function preflight(secrets: Record<string, SecretConfig>, repoRoot: string): voi
       fail(`${name}: ${source.sops} does not exist`)
     }
   }
-  if (Object.values(secrets).some(({ source }) => "op" in source)) {
-    const version = run("op", ["--version"])
-    if (version.status !== 0) fail(`op --version failed:\n${version.stderr.trim()}`)
+  // sops sources need op too: show fetches the age key from 1Password.
+  if (Object.values(secrets).some(({ source }) => "sops" in source)) {
+    const version = run("sops", ["--version"])
+    if (version.status !== 0) fail(`sops --version failed:\n${version.stderr.trim()}`)
+  }
+  const version = run("op", ["--version"])
+  if (version.status !== 0) fail(`op --version failed:\n${version.stderr.trim()}`)
+  const vault = process.env.OP_VAULT ?? "Private"
+  const reach = run("op", ["vault", "get", vault, "--format", "json"])
+  if (reach.status !== 0) {
+    fail(`op cannot read vault "${vault}" (signed out or locked?):\n${reach.stderr.trim()}`)
   }
 }
 

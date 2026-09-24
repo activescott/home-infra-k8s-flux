@@ -54,8 +54,8 @@ if [[ "$mode" == "rotate" ]]; then
 # against) FROM this file - the two are always in sync because one script
 # run produces both.
 #
-# Gitignored; not committed. Back this up (or push a rotation) with:
-#   ./scripts/onepassword-secrets.mts push --only zot
+# Gitignored; not committed. This script encrypts it to
+# .env.secret.zot-passwords.encrypted, which is the copy that gets committed.
 #
 # To rotate both accounts, rerun this script and choose "rotate" - it
 # regenerates both passwords and both files together, and re-pushes the
@@ -76,6 +76,33 @@ source "$plaintext_file"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
+
+# In reuse mode nothing changed, but sops and bcrypt output differ on every run, so
+# rewriting either file would leave a spurious diff. Skip a file whose committed
+# ciphertext already decrypts to the current passwords.
+sops_show() {
+  "$repo_dir/scripts/onepassword-secrets.mts" show "$1" 2>/dev/null
+}
+
+htpasswd_current=false
+passwords_current=false
+if [[ "$mode" == "reuse" ]]; then
+  existing_hashes="$tmpdir/existing-htpasswd"
+  if sops_show "$zot_dir/zot-htpasswd.encrypted" > "$existing_hashes" \
+      && htpasswd -vb "$existing_hashes" ci "$CI_PASSWORD" >/dev/null 2>&1 \
+      && htpasswd -vb "$existing_hashes" mirror "$MIRROR_PASSWORD" >/dev/null 2>&1; then
+    htpasswd_current=true
+  fi
+  rm -f "$existing_hashes"
+
+  existing_passwords=$(sops_show "$plaintext_file.encrypted" || true)
+  existing_ci=$(printf '%s\n' "$existing_passwords" | sed -n 's/^CI_PASSWORD=//p' | tr -d "\"'")
+  existing_mirror=$(printf '%s\n' "$existing_passwords" | sed -n 's/^MIRROR_PASSWORD=//p' | tr -d "\"'")
+  if [[ -n "$existing_ci" && "$existing_ci" == "$CI_PASSWORD" && "$existing_mirror" == "$MIRROR_PASSWORD" ]]; then
+    passwords_current=true
+  fi
+  unset existing_passwords existing_ci existing_mirror
+fi
 
 htpasswd_file="$tmpdir/htpasswd"
 # htpasswd -n emits a trailing blank line after each entry on some platforms
@@ -98,28 +125,31 @@ htpasswd_file_encrypted="$zot_dir/zot-htpasswd.encrypted"
 # Prepare for sops (the include lives at repo root, not next to this script):
 source "$repo_dir/scripts/_sops_config.include.sh"
 
-sops -encrypt \
-  --age "$age_key_public" \
-  --input-type=binary \
-  --output-type=binary "$htpasswd_file" > "$htpasswd_file_encrypted"
+if [[ "$htpasswd_current" == "true" ]]; then
+  echo "Existing ${htpasswd_file_encrypted} already matches the passwords; not rewriting it."
+else
+  sops -encrypt \
+    --age "$age_key_public" \
+    --input-type=binary \
+    --output-type=binary "$htpasswd_file" > "$htpasswd_file_encrypted"
+fi
 
 cat <<EOF
-Wrote (both gitignored except the .encrypted one):
-  ${plaintext_file}      (plaintext ci/mirror passwords - back up now)
-  ${htpasswd_file_encrypted}  (bcrypt hashes, committed, consumed by Flux)
-
-Back up the plaintext passwords to 1Password:
-  ./scripts/onepassword-secrets.mts push --only zot
+Writing (the plaintext file is gitignored; the two .encrypted files are committed):
+  ${plaintext_file}  (plaintext ci/mirror passwords)
+  ${plaintext_file}.encrypted  (same passwords, read by sync-actions-secrets.mts)
+  ${htpasswd_file_encrypted}  (bcrypt hashes, consumed by Flux)
 
 Sanity-check the htpasswd round-trip before committing:
   SOPS_AGE_KEY_FILE=$repo_dir/home-infra-private.agekey \\
     sops -d --input-type binary --output-type binary ${htpasswd_file_encrypted}
   # expect two lines: ci:\$2y\$...  and  mirror:\$2y\$...
 
-To deploy, commit and push (the plaintext file is gitignored - only the
-.encrypted one should ever be staged):
+To deploy, commit and push both encrypted files (the plaintext file is
+gitignored and must never be staged). Committing only the hashes leaves the
+old passwords in git, and the next sync would push them:
 
-  git add apps/production/zot/zot-htpasswd.encrypted
+  git add apps/production/zot/zot-htpasswd.encrypted apps/production/zot/.env.secret.zot-passwords.encrypted
   git commit -m "rotate zot htpasswd accounts"
   git push
 EOF
@@ -131,14 +161,18 @@ EOF
 # the day it starts logging into zot in CI (grep its .github/workflows for "zot"/
 # "oci-registry" to check). Known as of 2026-09-24: fernfiles and ramblefeed use the
 # writable zot (ZOT_CI_PASSWORD) and the mirror; browser-chaperone, job-accelerator,
-# tinkerbell and gpu-poet use only the mirror (ZOT_MIRROR_PASSWORD). gpu-poet-data does NOT
-# use zot.
+# tinkerbell and gpu-poet are being moved to the mirror only (ZOT_MIRROR_PASSWORD), and
+# none of them read it yet. gpu-poet-data does NOT use zot.
 #
 # The sync reads the values from the encrypted passwords file, so it is written first.
 # It pushes straight to gh with the value on stdin, rather than printing commands to
 # copy-paste, so the plaintext value only ever exists in this process's memory - never in
 # terminal scrollback or shell history.
-"$repo_dir/scripts/encrypt-env-files.sh" "$plaintext_file"
+if [[ "$passwords_current" == "true" ]]; then
+  echo "Existing ${plaintext_file}.encrypted already matches the passwords; not rewriting it."
+else
+  "$repo_dir/scripts/encrypt-env-files.sh" "$plaintext_file"
+fi
 
 echo
 echo "Pushing to GitHub secrets in every repo listed in scripts/actions-secrets.json:"
