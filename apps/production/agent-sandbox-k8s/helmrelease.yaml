@@ -63,6 +63,41 @@ spec:
         extraSANs:
           - agent-sandbox.agent-sandbox-k8s.svc.cluster.local
           - agent-sandbox.agent-sandbox-k8s.svc
+      # The chart's Corefile with one line changed: `forward` names the host's kube-dns Service
+      # instead of /etc/resolv.conf. vcluster runs its CoreDNS with dnsPolicy: Default, so that
+      # file is the node's, whose nameserver is the OPNsense router at 10.1.111.1, and
+      # networkpolicy.yaml denies the LAN on 53. Every lookup outside cluster.local timed out,
+      # and forward's health check retried the dead upstream about 80 times a minute, each one a
+      # Falco "unexpected private network connection". kube-system on 53 is the DNS path that file
+      # does allow.
+      #
+      # The rest is what vcluster 0.37.1 generates for these values (pkg/coredns/template.go).
+      # Re-read that template when the chart moves, since this replaces it whole.
+      coredns:
+        overwriteConfig: |-
+          .:1053 {
+              errors
+              health
+              ready
+              rewrite name regex .*\.nodes\.vcluster\.com kubernetes.default.svc.cluster.local
+              kubernetes cluster.local in-addr.arpa ip6.arpa {
+                  pods insecure
+                  fallthrough in-addr.arpa ip6.arpa
+              }
+              hosts /etc/coredns/NodeHosts {
+                  ttl 60
+                  reload 15s
+                  fallthrough
+              }
+              prometheus :9153
+              forward . 172.17.0.10
+              cache 30
+              loop
+              reload
+              loadbalance
+          }
+
+          import /etc/coredns/custom/*.server
 
     # Where olya-0's agents get their credentials. vcluster writes a kubeconfig to the Secret
     # `vc-agent-sandbox` in this namespace, holding a client certificate that is cluster-admin
