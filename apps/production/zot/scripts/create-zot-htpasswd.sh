@@ -124,49 +124,28 @@ To deploy, commit and push (the plaintext file is gitignored - only the
   git push
 EOF
 
-# Consumer repos are not discoverable from this repo, so this list is manually
-# maintained - add a repo here the day it starts logging into zot in CI (grep
-# its .github/workflows for "zot"/"oci-registry" to check). Known as of
-# 2026-09-17: tinkerbell, gpu-poet, and gpu-poet-data do NOT use zot.
+# The repo list lives in scripts/actions-secrets.json, the single source of truth for
+# which repos get which shared Actions secret; sync-actions-secrets.mts sets each one both as
+# a plain Actions secret and with "--app dependabot" (see its header for why both).
+# Repos are not discoverable from this repo, so that list is maintained by hand - add a repo
+# the day it starts logging into zot in CI (grep its .github/workflows for "zot"/
+# "oci-registry" to check). Known as of 2026-09-24: fernfiles and ramblefeed use the
+# writable zot (ZOT_CI_PASSWORD) and the mirror; browser-chaperone, job-accelerator,
+# tinkerbell and gpu-poet use only the mirror (ZOT_MIRROR_PASSWORD). gpu-poet-data does NOT
+# use zot.
 #
-# Each repo needs BOTH the plain Actions secret (covers pushes and same-repo
-# contributor PRs) and the "--app dependabot" secret (a separate, narrower
-# store Dependabot-triggered runs use instead - see the "Secret source:
-# Dependabot" line these workflows report - having only the former means
-# every Dependabot PR's e2e/validate jobs silently get an empty password).
-zot_consumer_repos=(
-  "activescott/fernfiles"
-  "activescott/ramblefeed"
-)
-
-# Pushes straight to gh, rather than printing commands to copy-paste, so the
-# plaintext value only ever exists in this process's memory and 1Password -
-# never in terminal scrollback or shell history.
-failures=()
-set_zot_secret() {
-  local name="$1" value="$2" repo="$3" scope_label="$4"
-  shift 4
-  if gh secret set "$name" "$@" --repo "$repo" --body "$value" >/dev/null 2>&1; then
-    echo "  ok      $repo  $name  ($scope_label)"
-  else
-    echo "  FAILED  $repo  $name  ($scope_label) - value is in $plaintext_file, retry by hand" >&2
-    failures+=("$repo $name ($scope_label)")
-  fi
-}
+# The sync reads the values from the encrypted passwords file, so it is written first.
+# It pushes straight to gh with the value on stdin, rather than printing commands to
+# copy-paste, so the plaintext value only ever exists in this process's memory - never in
+# terminal scrollback or shell history.
+"$repo_dir/scripts/encrypt-env-files.sh" "$plaintext_file"
 
 echo
-echo "Pushing to GitHub secrets in every known zot consumer repo:"
-for repo in "${zot_consumer_repos[@]}"; do
-  set_zot_secret ZOT_CI_PASSWORD "$CI_PASSWORD" "$repo" "actions"
-  set_zot_secret ZOT_CI_PASSWORD "$CI_PASSWORD" "$repo" "dependabot" --app dependabot
-  set_zot_secret ZOT_MIRROR_PASSWORD "$MIRROR_PASSWORD" "$repo" "actions"
-  set_zot_secret ZOT_MIRROR_PASSWORD "$MIRROR_PASSWORD" "$repo" "dependabot" --app dependabot
-done
-
-if [[ ${#failures[@]} -gt 0 ]]; then
+echo "Pushing to GitHub secrets in every repo listed in scripts/actions-secrets.json:"
+if ! "$repo_dir/scripts/sync-actions-secrets.mts"; then
   echo
-  echo "${#failures[@]} secret push(es) failed:"
-  printf '  %s\n' "${failures[@]}"
+  echo "Some secret push(es) failed - the new passwords are in ${plaintext_file}.encrypted;" >&2
+  echo "retry with ./scripts/sync-actions-secrets.mts (add --repo/--secret to narrow it)." >&2
   exit 1
 fi
 

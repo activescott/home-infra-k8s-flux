@@ -7,6 +7,15 @@
 // onepassword-secrets.mts show) or from `op read <reference>`. It reaches `gh secret set` on
 // stdin. It is never passed as an argument, logged, or written to disk.
 //
+// Each secret is set once per entry in its "apps" list (default: actions and dependabot).
+// The plain Actions secret covers pushes and same-repo contributor PRs. The dependabot one
+// is a separate, narrower store that Dependabot-triggered runs use instead (the "Secret
+// source: Dependabot" line in a job's setup log). Having only the former means every
+// Dependabot PR's jobs silently get an empty value.
+//
+// Repos are not discoverable from this repo, so the lists are maintained by hand: add a repo
+// the day its CI starts using the secret (grep its .github/workflows for the secret name).
+//
 // Usage:
 //   ./scripts/sync-actions-secrets.mts [--dry-run] [--secret <NAME>] [--repo <owner/name>]
 //
@@ -25,9 +34,13 @@ const BAD = "❌"
 
 type Source = { sops: string; key: string } | { op: string }
 
+const APPS = ["actions", "dependabot"] as const
+type App = (typeof APPS)[number]
+
 interface SecretConfig {
   source: Source
   repos: string[]
+  apps: App[]
 }
 
 interface CommandResult {
@@ -83,7 +96,11 @@ function loadConfig(repoRoot: string): Record<string, SecretConfig> {
     for (const repo of entry.repos) {
       if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) fail(`${name}: "${repo}" is not <owner>/<name>`)
     }
-    secrets[name] = { source: source as unknown as Source, repos: entry.repos }
+    const apps = (entry as { apps?: unknown }).apps ?? ["actions", "dependabot"]
+    if (!Array.isArray(apps) || apps.length === 0 || apps.some((app) => !APPS.includes(app))) {
+      fail(`${name}: apps must be a non-empty list of ${APPS.join(", ")}`)
+    }
+    secrets[name] = { source: source as unknown as Source, repos: entry.repos, apps }
   }
   if (Object.keys(secrets).length === 0) fail(`${CONFIG_PATH} lists no secrets`)
   return secrets
@@ -174,24 +191,30 @@ function main(): void {
     preflight(selected, repoRoot)
 
     let failures = 0
-    for (const [name, { source, repos }] of Object.entries(selected)) {
+    for (const [name, { source, repos, apps }] of Object.entries(selected)) {
       if (dryRun) {
-        for (const repo of repos) console.log(`would set ${name} on ${repo}`)
+        for (const repo of repos) {
+          for (const app of apps) console.log(`would set ${name} on ${repo} (${app})`)
+        }
         continue
       }
       const value = readValue(name, source, repoRoot)
       for (const repo of repos) {
-        const result = run("gh", ["secret", "set", name, "--repo", repo], value)
-        if (result.status === 0) {
-          console.log(`${OK} ${repo} ${name}`)
-        } else {
-          failures++
-          console.log(`${BAD} ${repo} ${name}`)
-          note(result.stderr.trim())
+        for (const app of apps) {
+          const args = ["secret", "set", name, "--repo", repo]
+          if (app !== "actions") args.push("--app", app)
+          const result = run("gh", args, value)
+          if (result.status === 0) {
+            console.log(`${OK} ${repo} ${name} (${app})`)
+          } else {
+            failures++
+            console.log(`${BAD} ${repo} ${name} (${app})`)
+            note(result.stderr.trim())
+          }
         }
       }
     }
-    if (failures > 0) fail(`${failures} repo(s) failed`)
+    if (failures > 0) fail(`${failures} secret push(es) failed`)
   } catch (error) {
     if (!(error instanceof CliError)) throw error
     console.error(`Error: ${error.message}`)

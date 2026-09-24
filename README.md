@@ -222,6 +222,8 @@ Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 GitHub personal accounts have no organization secrets, so `scripts/actions-secrets.json` lists,
 per secret, where its value lives and which repos get it. `scripts/sync-actions-secrets.mts`
 reads each value from its source and runs `gh secret set` per repo, with the value on stdin.
+Each secret is set for every entry in its optional `apps` list (default `["actions", "dependabot"]`),
+because Dependabot-triggered runs read a separate secret store.
 
 ```bash
 ./scripts/sync-actions-secrets.mts --dry-run          # list what would be set, read nothing
