@@ -7,6 +7,9 @@ resources:
   # Not in the base: browser-chaperone's k8s/base has no manifest for this package.
   - slack-relay-deployment.yaml
   - slack-relay-service.yaml
+  - olya-egress-proxy-deployment.yaml
+  - olya-egress-proxy-service.yaml
+  - olya-egress-proxy-pdb.yaml
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
@@ -41,6 +44,9 @@ configMapGenerator:
   - name: egress-proxy-config
     files:
       - squid.conf
+  - name: olya-egress-proxy-config
+    files:
+      - squid.conf=olya-egress-squid.conf
   # Where the browser service finds the approval app and the proxy. Both are
   # Services in this namespace, and networkpolicy.yaml allows the browser pod
   # to reach nothing else.
@@ -76,7 +82,7 @@ secretGenerator:
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.6.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
