@@ -153,7 +153,9 @@ it. Their first exec in that container has already fired the capability rule if 
 of the four, which is the event that matters. The k3s runc glob is weak the same way and a
 little worse: in `agent-sandbox-k8s` the agent writes the pod spec, so it chooses the image
 and can put a file at that path. What the exclusion buys is everything runc does before the
-container's entrypoint exists, and that was all of the rollout noise.
+container's entrypoint exists, and that was all of the rollout noise. Pinning
+the glob to `proc.is_exe_upper_layer = false and proc.is_exe_lower_layer = false` would
+tighten it further, since both are false for the host's runc and true for a container's own.
 
 Adding to that list is a security change, not tuning. Any addition should be an absolute path
 shipped in an image, and the PR should say which alert made the case.

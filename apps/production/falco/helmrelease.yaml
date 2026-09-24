@@ -196,8 +196,13 @@ spec:
         # Unanchored, upstream's [/] matched every source there is, and
         # [/mnt/fast-scratch/k3s-kubelet] and [/etc] matched each pod's own
         # kubelet volumes (.../pods/<uid>/etc-hosts among them). That kept
-        # olya-memory-sync paging hourly after the fix below. `.` is left
-        # unescaped: it can only make a clause match more.
+        # olya-memory-sync paging hourly after the fix below.
+        #
+        # The source is the hostPath exactly as the pod spec wrote it: kubelet
+        # passes it through and containerd cleans it only when it mounts. So
+        # each separator is `/+(\./+)*` rather than `/`, and an exact path ends
+        # in `(/+\.?)*$`, to match every spelling the API accepts for the same
+        # directory.
         #
         # The test is `startswith /` rather than upstream's
         # `not ... in ("<NA>","N/A")` because the container plugin returns no
@@ -224,23 +229,23 @@ spec:
         # pods/<uid>/ is the one case that reads the same as a pod's own
         # volume here; the whole pods directory does not.
         - macro: sensitive_mount
-          condition: (container.mount.dest[^/proc] startswith / or
-                      container.mount.dest[^/var/run/docker.sock] startswith / or
-                      container.mount.dest[^/run/docker.sock] startswith / or
-                      container.mount.dest[^/var/run/crio] startswith / or
-                      container.mount.dest[^/var/run/containerd] startswith / or
-                      container.mount.dest[^/run/containerd] startswith / or
-                      container.mount.dest[^/run/k3s] startswith / or
-                      container.mount.dest[^/var/lib/kubelet$] startswith / or
-                      container.mount.dest[^/var/lib/kubelet/pki] startswith / or
-                      container.mount.dest[^/var/lib/kubelet/pods$] startswith / or
-                      container.mount.dest[^/mnt/fast-scratch/k3s-kubelet$] startswith / or
-                      container.mount.dest[^/mnt/fast-scratch/k3s-kubelet/pki] startswith / or
-                      container.mount.dest[^/mnt/fast-scratch/k3s-kubelet/pods$] startswith / or
-                      container.mount.dest[^/$] startswith / or
-                      container.mount.dest[^/etc] startswith / or
-                      container.mount.dest[^/var/lib/rancher/k3s] startswith / or
-                      container.mount.dest[^/root] startswith /)
+          condition: (container.mount.dest[^/+(\./+)*proc] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*run/+(\./+)*docker\.sock] startswith / or
+                      container.mount.dest[^/+(\./+)*run/+(\./+)*docker\.sock] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*run/+(\./+)*crio] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*run/+(\./+)*containerd] startswith / or
+                      container.mount.dest[^/+(\./+)*run/+(\./+)*containerd] startswith / or
+                      container.mount.dest[^/+(\./+)*run/+(\./+)*k3s] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*kubelet(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*kubelet/+(\./+)*pki] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*kubelet/+(\./+)*pods(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*mnt/+(\./+)*fast-scratch/+(\./+)*k3s-kubelet(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*mnt/+(\./+)*fast-scratch/+(\./+)*k3s-kubelet/+(\./+)*pki] startswith / or
+                      container.mount.dest[^/+(\./+)*mnt/+(\./+)*fast-scratch/+(\./+)*k3s-kubelet/+(\./+)*pods(/+\.?)*$] startswith / or
+                      container.mount.dest[^/+(\./+)*\.?$] startswith / or
+                      container.mount.dest[^/+(\./+)*etc] startswith / or
+                      container.mount.dest[^/+(\./+)*var/+(\./+)*lib/+(\./+)*rancher/+(\./+)*k3s] startswith / or
+                      container.mount.dest[^/+(\./+)*root] startswith /)
 
         # ── The exclusion, which is a bypass surface ──────────────────────────
         # A sandbox that runs a real Docker daemon spends its life doing things
@@ -631,14 +636,17 @@ spec:
         # /vcluster is where ghcr.io/loft-sh/vcluster-oss puts the binary
         # (entrypoint ["/vcluster","start"]). It is a path an agent-supplied
         # image can carry as well, the same trade as the runtime exclusion
-        # above, and it is why the exclusion is also pinned to the namespace
-        # and to the token path rather than to the binary alone.
+        # above, and it is why the exclusion is also pinned to the namespace,
+        # the syncer's pod and the token path rather than to the binary alone.
+        # No workload can take the pod name: the syncer gives every pod it
+        # creates a -x-<ns>-x-agent-sandbox suffix.
         - list: vcluster_control_plane_exepaths
           items: [/vcluster]
 
         - macro: vcluster_control_plane_own_token
           condition: >
             (k8s.ns.name = "agent-sandbox-k8s"
+             and k8s.pod.name = "agent-sandbox-0"
              and proc.exepath in (vcluster_control_plane_exepaths)
              and fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/)
 
