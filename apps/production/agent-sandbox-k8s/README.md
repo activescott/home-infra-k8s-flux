@@ -181,6 +181,16 @@ want an attended window.
    this one first, since it needs no olya-side change and a broken pipeline looks exactly like a
    quiet cluster.
 
+   6 also carries a claim that got narrower on 2026-09-24
+   ([activescott/activeassistant#357](https://github.com/activescott/activeassistant/issues/357)):
+   no *workload* in the sandbox can read a credential. The control plane must, since the syncer
+   authenticates to nas1 as this namespace's service account, so the Falco rule excludes that one
+   binary by its path and alerts on every other read. Test it with
+   `cat /var/run/secrets/kubernetes.io/serviceaccount/token` in a pod created through the
+   kubeconfig above, and expect `FalcoSandboxCritical` with
+   `falco_rule="Kubernetes credential read in agent sandbox container"`. Reading it is not itself
+   a way out of the sandbox; the alert is how we learn an agent went looking.
+
 7. What this says about offering vcluster to OfB customers. Written up on #346 as two lists: what
    held, and what a customer's security reviewer would still refuse. The second already has
    entries before anything runs (the shared kernel, and egress that is not really an allowlist),
