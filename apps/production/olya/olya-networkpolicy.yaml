@@ -175,6 +175,23 @@ spec:
         - port: 3500
           protocol: TCP
 
+    # The Slack relay (activescott/activeassistant#315). Her SLACK_API_URL points at this
+    # Service, and the relay holds the workspace's real tokens, so this is the only route from
+    # here to Slack. It is deliberately the relay and not slack.com: the internet rule above
+    # would let her reach slack.com directly, and what stops that being useful is that no
+    # Slack credential exists in this pod. The relay pod's own policy in
+    # apps/production/browser-chaperone admits her on this port and nothing else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: browser-chaperone-prod
+          podSelector:
+            matchLabels:
+              app: slack-relay
+      ports:
+        - port: 3600
+          protocol: TCP
+
     # The sandbox vcluster's API, so an agent can run tests against a real Kubernetes API
     # instead of against nas1 (activescott/activeassistant#346). The kubeconfig for it is the
     # Secret `vc-agent-sandbox`, which apps/production/agent-sandbox-k8s/olya-kubeconfig-rbac.yaml
