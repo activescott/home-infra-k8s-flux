@@ -155,6 +155,8 @@ spec:
           apiVersion: v1
           kind: ConfigMap
           metadata:
+            # Suffix is the first ten hex digits of sha256 of the Corefile. If you change it, update
+            # this name and the other one to match, or validate fails. See the comment above.
             name: coredns-corefile-36679dc1d5
             namespace: kube-system
           data:
@@ -272,6 +274,8 @@ spec:
                     projected:
                       sources:
                         - configMap:
+                            # Suffix is the first ten hex digits of sha256 of the Corefile. If you change it, update
+                            # this name and the other one to match, or validate fails. See the comment above.
                             name: coredns-corefile-36679dc1d5
                             items:
                               - key: Corefile
