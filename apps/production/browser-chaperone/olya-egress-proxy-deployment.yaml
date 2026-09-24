@@ -1,0 +1,93 @@
+# Squid, as the assistant's forwarding proxy. See olya-egress-squid.conf for what it does and
+# does not do. Same image and shape as egress-proxy-deployment.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: olya-egress-proxy
+  namespace: browser-chaperone-prod
+spec:
+  # Two replicas so a restart or a rollout leaves the other one serving; nas1 is a single-node
+  # cluster, so this is not node-loss protection.
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: olya-egress-proxy
+  template:
+    metadata:
+      labels:
+        # Alloy promotes this to the Loki `app` label, so the connection log is
+        # {namespace="browser-chaperone-prod", app="olya-egress-proxy"}.
+        app: olya-egress-proxy
+    spec:
+      # ScheduleAnyway, not DoNotSchedule: on this single-node cluster a hard requirement would
+      # leave the second replica Pending forever. If a second node ever joins, this spreads them.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: olya-egress-proxy
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      securityContext:
+        # The image's own non-root user (`_daemon_`), which owns its writable directories.
+        runAsUser: 584792
+        runAsGroup: 584792
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: squid
+          image: ubuntu/squid:7.2-26.04_edge@sha256:77585a8f42b57872b96c6c10de8d0199642256b9390beeb6e99afa5de8a71e1c
+          # The image's entrypoint is pebble, which runs a script that tails log files into
+          # stdout. squid.conf writes the log to stdout directly, so squid runs as PID 1
+          # instead. -N keeps it in the foreground; there is no cache_dir, so no -z step.
+          command:
+            - /usr/sbin/squid-gnutls
+            - -N
+            - -f
+            - /etc/squid-egress/squid.conf
+          ports:
+            - name: proxy
+              containerPort: 3128
+          volumeMounts:
+            - name: config
+              mountPath: /etc/squid-egress
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 20m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            tcpSocket:
+              port: proxy
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: config
+          configMap:
+            name: olya-egress-proxy-config
+        - name: tmp
+          emptyDir: {}
