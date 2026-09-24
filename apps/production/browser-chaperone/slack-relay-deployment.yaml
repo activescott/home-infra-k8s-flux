@@ -56,10 +56,14 @@ spec:
             # AUDIT_URL is deliberately unset: the approval app has nowhere to put audit
             # records yet, so the log is the only sink and Loki is where they are read.
           envFrom:
-            # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, RELAY_BOT_TOKEN, RELAY_APP_TOKEN. The service
-            # refuses to start if a relay credential equals one of the real tokens.
+            # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, RELAY_BOT_TOKEN, RELAY_APP_TOKEN, and
+            # RELAY_NOTIFY_TOKEN once it is added. The service refuses to start if a relay
+            # credential equals one of the real tokens.
             - secretRef:
                 name: slack-relay-creds
+            # SLACK_NOTIFY_CHANNEL: the one channel RELAY_NOTIFY_TOKEN may post in.
+            - configMapRef:
+                name: slack-notify-config
             # INTERNAL_API_TOKEN, the same Secret the app and the browser service read: the
             # app refuses an /internal/* call without it.
             - secretRef:
