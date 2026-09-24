@@ -168,12 +168,13 @@ spec:
         - port: 53
           protocol: TCP
 ---
-# The Slack relay: in from olya-0 on its port, out to Slack and to the approval app
-# (activescott/activeassistant#315).
+# The Slack relay: in from olya-0 and the approval app on its port, out to Slack and to the
+# approval app (activescott/activeassistant#315, browser-chaperone#23).
 #
 # Both directions matter here in a way they do not for the browser. Inbound, this port is the
 # whole of Olya's Slack access, and the two credentials she holds are good for nothing else,
-# so nobody else has any business presenting them. Outbound, the relay is what makes her pod
+# so nobody else has any business presenting them. The approval app comes in to post the
+# waiting-request notice with a third credential that reaches one channel. Outbound, the relay is what makes her pod
 # have no route to slack.com of its own: it is the process with the real tokens, and it may
 # reach Slack and the approval app and nothing on any private network.
 apiVersion: networking.k8s.io/v1
@@ -197,6 +198,9 @@ spec:
           podSelector:
             matchLabels:
               app: olya
+        - podSelector:
+            matchLabels:
+              app: app
       ports:
         - port: 3600
           protocol: TCP
