@@ -76,3 +76,7 @@ resources:
   # should restart olya-0. She cannot reach it yet -- see "Getting the kubeconfig into olya-0"
   # in apps/production/agent-sandbox-k8s/README.md.
   - ./agent-sandbox-k8s
+  # Falco, watching syscalls in the agent sandbox namespaces and Olya's
+  # (activescott/activeassistant#348). It needs kernel-level access; what that
+  # means and why it is the shape it is, is in apps/production/falco/README.md.
+  - ./falco
