@@ -107,8 +107,47 @@
     },
     {
       "type": "timeseries",
+      "title": "Concurrent sub-agents",
+      "description": "Sub-agent and ACP runs in flight, from the subagent-events plugin's log lines (activeassistant#395). A run counts from its run_started line until its run_ended line, for at most 24h, so a run that never logs an end drops off after a day. The count starts when the plugin was deployed; earlier time shows total as 0. The policy line at 3 is a soft guideline in AGENTS.md, not a limit. OpenClaw's real limit is agents.defaults.subagents.maxConcurrent, unset in openclaw.json, so its default of 8 applies.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "custom": { "fillOpacity": 20, "lineWidth": 2 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "policy: 3" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "OpenClaw maxConcurrent: 8" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        { "expr": "sum by (kind) (count by (kind, runId) (count_over_time({namespace=\"olya\", container=\"olya\"} |= \"subagent-events event=run_started\" | json | subsystem=\"plugins\" | message=~\"subagent-events event=run_started .*\" | line_format \"{{.message}}\" | logfmt | keep kind, runId [24h])) unless on (runId) count by (runId) (count_over_time({namespace=\"olya\", container=\"olya\"} |= \"subagent-events event=run_ended\" | json | subsystem=\"plugins\" | message=~\"subagent-events event=run_ended .*\" | line_format \"{{.message}}\" | logfmt | keep runId [24h])))", "legendFormat": "{{kind}}", "refId": "A" },
+        { "expr": "sum(count by (kind, runId) (count_over_time({namespace=\"olya\", container=\"olya\"} |= \"subagent-events event=run_started\" | json | subsystem=\"plugins\" | message=~\"subagent-events event=run_started .*\" | line_format \"{{.message}}\" | logfmt | keep kind, runId [24h])) unless on (runId) count by (runId) (count_over_time({namespace=\"olya\", container=\"olya\"} |= \"subagent-events event=run_ended\" | json | subsystem=\"plugins\" | message=~\"subagent-events event=run_ended .*\" | line_format \"{{.message}}\" | logfmt | keep runId [24h]))) or vector(0)", "legendFormat": "total", "refId": "B" },
+        { "expr": "vector(3)", "legendFormat": "policy: 3", "refId": "C" },
+        { "expr": "vector(8)", "legendFormat": "OpenClaw maxConcurrent: 8", "refId": "D" }
+      ]
+    },
+    {
+      "type": "timeseries",
       "title": "Error log rate (per 5m)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "fieldConfig": {
         "defaults": {
@@ -125,7 +164,7 @@
     {
       "type": "timeseries",
       "title": "Log volume by level",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "fieldConfig": {
         "defaults": {
@@ -137,7 +176,7 @@
     {
       "type": "logs",
       "title": "Recent errors and warnings",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
       "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true, "dedupStrategy": "none" },
       "targets": [{ "expr": "{namespace=\"olya\", app=\"olya\", level=~\"error|warn\"}", "refId": "A" }]
@@ -145,7 +184,7 @@
     {
       "type": "timeseries",
       "title": "Container restarts",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
@@ -154,7 +193,7 @@
     {
       "type": "timeseries",
       "title": "Memory usage",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
@@ -163,7 +202,7 @@
     {
       "type": "timeseries",
       "title": "CPU usage",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 2 } } },
       "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
@@ -172,7 +211,7 @@
     {
       "type": "timeseries",
       "title": "Live sessions by state",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
@@ -186,7 +225,7 @@
     {
       "type": "timeseries",
       "title": "Session turn rate by agent",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
@@ -200,7 +239,7 @@
     {
       "type": "timeseries",
       "title": "Harness run rate",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "fieldConfig": {
         "defaults": {
