@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dreamwright
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dreamwright
+  template:
+    metadata:
+      labels:
+        app: dreamwright
+    spec:
+      imagePullSecrets:
+        - name: github-container-registry-secret
+      containers:
+        - name: dreamwright
+          # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
+          image: dreamwright-image
+
+          resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+            requests:
+              cpu: "0.05"
+              memory: "128Mi"
+
+          ports:
+            - containerPort: 3000
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10

@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dreamwright-ingress
+spec:
+  # tls is patched in the overlay
+  rules:
+    - host: dreamwright.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dreamwright
+                port:
+                  name: web
