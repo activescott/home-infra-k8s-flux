@@ -143,3 +143,6 @@ spec:
     - kind: ImageRepository
       name: repo-browser-chaperone-slack-relay
       namespace: flux-system
+    - kind: ImageRepository
+      name: repo-browser-chaperone-mcp-gateway
+      namespace: flux-system

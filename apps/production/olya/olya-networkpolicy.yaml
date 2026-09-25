@@ -192,6 +192,20 @@ spec:
         - port: 3600
           protocol: TCP
 
+    # The MCP gateway (browser-chaperone#39). Her google-workspace MCP server is this Service,
+    # and the gateway holds the Google credential. Its own policy in
+    # apps/production/browser-chaperone admits her on this port and nothing else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: browser-chaperone-prod
+          podSelector:
+            matchLabels:
+              app: mcp-gateway
+      ports:
+        - port: 3700
+          protocol: TCP
+
     # The sandbox vcluster's API, so an agent can run tests against a real Kubernetes API
     # instead of against nas1 (activescott/activeassistant#346). The kubeconfig for it is the
     # Secret `vc-agent-sandbox`, which apps/production/agent-sandbox-k8s/olya-kubeconfig-rbac.yaml

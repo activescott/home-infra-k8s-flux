@@ -305,6 +305,13 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: relay_app_token
+            # mcp.servers.google-workspace in openclaw.json sends this as its bearer token. Good
+            # for nothing but the MCP gateway in browser-chaperone-prod (browser-chaperone#39).
+            - name: MCP_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-mcp-gateway
+                  key: mcp_gateway_token
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and

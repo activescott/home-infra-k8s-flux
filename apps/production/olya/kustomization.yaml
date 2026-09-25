@@ -90,6 +90,13 @@ secretGenerator:
   - name: olya-hooks
     envs:
       - .env.secret.olya-hooks.public-key-encrypted.encrypted
+  # Key: mcp_gateway_token, what she presents to the MCP gateway (browser-chaperone#39). Same
+  # value as gateway_client_token in
+  # ../browser-chaperone/.env.secret.mcp-gateway-token.public-key-encrypted.encrypted; rotate
+  # both together.
+  - name: olya-mcp-gateway
+    envs:
+      - .env.secret.olya-mcp-gateway.public-key-encrypted.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
