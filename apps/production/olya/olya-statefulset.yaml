@@ -174,6 +174,33 @@ spec:
               readOnly: true
             - name: google-workspace-data
               mountPath: /data
+        # The gateway refuses a group/world-writable temp dir without the sticky bit and disables
+        # its session observer (activescott/activeassistant#440). fsGroup leaves the tmp
+        # emptyDir root as root:node with mode 2777, and uid 1000 is not the owner so it cannot
+        # chmod it: the other initContainers cannot do this. Runs as root, the owner, which
+        # needs no capabilities. The emptyDir is recreated on every pod start, so this runs
+        # on every one.
+        - name: tmp-sticky
+          image: olya-image
+          command: ["chmod", "1777", "/tmp"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 16Mi
+            limits:
+              cpu: "100m"
+              memory: 32Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
 
       containers:
         - name: olya
@@ -358,19 +385,22 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
-          # 12Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
+          # 20Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
           # peaking at 7.93Gi (8,511,156,224 bytes) against the prior 8Gi limit, OOMKilling the
           # container mid-turn with three heavy agent sessions overlapping (install/build/test
           # work, not gh-only or review sessions). Backing out the ~1.1Gi idle baseline puts each
-          # heavy session at roughly 2-2.5Gi. 12Gi covers three heavy sessions plus the idle
-          # baseline with about 3.5Gi of margin, versus zero margin at 8Gi.
+          # heavy session at roughly 2-2.5Gi. 12Gi covered three heavy sessions plus the idle
+          # baseline with about 3.5Gi of margin, versus zero margin at 8Gi. The peak has since
+          # reached 10.23GiB (max_over_time of container_memory_working_set_bytes over the 14
+          # days to 2026-09-25), so 12Gi was down to under 2Gi of margin. Raised to 20Gi with
+          # the operator's approval (activescott/activeassistant#440).
           resources:
             requests:
               cpu: "500m"
               memory: 2Gi
             limits:
               cpu: "4"
-              memory: 12Gi
+              memory: 20Gi
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
