@@ -96,7 +96,8 @@ spec:
 
         # Installs managed plugins from /cfg/managed-plugins.txt via
         # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
-        # exists. See managed-plugins.txt for the plugin list and pinning notes. Runs after
+        # exists, and removes managed installs of packages marked "-" (slack, which now ships in
+        # the image). See managed-plugins.txt for the plugin list and pinning notes. Runs after
         # seed-workspace because plugin commands need the seeded config in place. A failed
         # upgrade keeps the installed version and logs "install-plugins: WARNING" instead of
         # failing this container; .github/workflows/install-plugins.yml runs each path at the

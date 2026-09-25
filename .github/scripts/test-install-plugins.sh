@@ -20,7 +20,8 @@ host=olya-0
 cp -r "$olya/scripts" "$work/scripts"
 chmod 0555 "$work"/scripts/*
 
-mapfile -t specs < <(grep -vE '^\s*(#|$)' "$olya/managed-plugins.txt")
+# Lines starting with "-" remove a managed install rather than pin one.
+mapfile -t specs < <(grep -vE '^\s*(#|-|$)' "$olya/managed-plugins.txt")
 
 plugin_id() { sed -E 's/@[0-9].*$//; s#^.*/##' <<<"$1"; }
 plugin_version() { sed -nE 's/^.*@([0-9][^@]*)$/\1/p' <<<"$1"; }
@@ -106,7 +107,7 @@ check() {
     want=$(plugin_version "$spec")
     got=$(installed_version "$vol" "$id")
     [ "$got" = "$want" ] || fail "$label: $id at '$got' after the run, expected $want"
-  done < <(grep -vE '^\s*(#|$)' "$expect_cfg")
+  done < <(grep -vE '^\s*(#|-|$)' "$expect_cfg")
 }
 
 # The pinned paths must finish inside the initContainer's limit without falling back.
@@ -198,6 +199,32 @@ docker run --rm --user 1000:1000 -v "$broken:/state" --entrypoint test "$image" 
   ! -e /state/openclaw/install-plugins-failures.json ||
   fail "broken: failures file still present after a clean run"
 echo "::endgroup::"
+
+# Each "-" line in managed-plugins.txt must remove a managed install of that package left on the
+# PV by an earlier boot, leave the pinned plugins alone, and do nothing on the next boot.
+mapfile -t removals < <(grep -E '^\s*-' "$olya/managed-plugins.txt" | sed -E 's/^\s*-//')
+for removal in "${removals[@]}"; do
+  pkg=$(sed -E 's/^npm://' <<<"$removal")
+  id=$(plugin_id "$pkg")
+  echo "::group::remove managed $pkg"
+  retired=$(new_volume "retired-$id")
+  # Seeded directly: once the image carries its own copy, install-plugins would skip it as trusted.
+  docker run --rm --hostname "$host" --user 1000:1000 \
+    -e HOME=/state/home \
+    -e OPENCLAW_STATE_DIR=/state/openclaw \
+    -e OPENCLAW_CONFIG_PATH=/state/config/openclaw.json \
+    -v "$retired:/state" --entrypoint openclaw "$image" \
+    plugins install "npm:$pkg@$(plugin_version "${specs[0]}")" --accept-capabilities --force
+  [ "$(installed_version "$retired" "$id")" != "" ] || fail "remove $id: could not seed a managed install"
+  run_install "$retired" "$mem" "$olya/managed-plugins.txt" "$work/retired-$id.log"
+  check_pinned "remove $id" "$retired" "$work/retired-$id.log" 0 "$id removed managed $pkg"
+  [ "$(installed_version "$retired" "$id")" = "" ] || fail "remove $id: managed install still recorded"
+  run_install "$retired" "$mem" "$olya/managed-plugins.txt" "$work/retired-again-$id.log"
+  grep -q "$id has no managed $pkg install; nothing to remove" "$work/retired-again-$id.log" ||
+    fail "remove $id: second run did not report nothing to remove"
+  docker volume rm "$retired" >/dev/null
+  echo "::endgroup::"
+done
 
 docker volume rm "$fresh" "$older" "$broken" "$older_copy" "$untrusted" >/dev/null
 if [ "$failures" -gt 0 ]; then
