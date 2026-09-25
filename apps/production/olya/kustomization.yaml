@@ -77,11 +77,6 @@ secretGenerator:
   - name: olya-ssh
     files:
       - id_ed25519=olya-ssh.secret.encrypted
-  # Google Workspace MCP credentials. Client ID, secret, and the credential JSON
-  # from the OAuth consent flow. See env.secret.google-workspace.example.
-  - name: olya-google-workspace
-    envs:
-      - .env.secret.google-workspace.encrypted
   # Key: openclaw_hooks_token, the bearer token Alertmanager presents to the gateway's /hooks
   # endpoint. Same value as
   # monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted;

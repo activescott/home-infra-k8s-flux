@@ -36,7 +36,7 @@ spec:
         # emptyDir volumes below.
         fsGroup: 1000
 
-      # Both initContainers repeat the container securityContext below. Pod-level settings do
+      # The initContainers repeat the container securityContext below. Pod-level settings do
       # NOT include the container-level ones, so without this an initContainer runs with
       # allowPrivilegeEscalation defaulting to true, no dropped capabilities, and a writable
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
@@ -150,30 +150,6 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
-        # Copies the Google Workspace credential JSON from the read-only Secret
-        # volume to a writable emptyDir so the MCP server can persist refreshed
-        # OAuth tokens. Secret volumes are always read-only in Kubernetes.
-        - name: copy-workspace-creds
-          image: olya-image
-          command: ["sh", "-c", "cp /secret/credentials.json /data/credentials.json && chmod 0600 /data/credentials.json"]
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          resources:
-            requests:
-              cpu: "10m"
-              memory: 16Mi
-            limits:
-              cpu: "100m"
-              memory: 32Mi
-          volumeMounts:
-            - name: google-workspace-creds
-              mountPath: /secret
-              readOnly: true
-            - name: google-workspace-data
-              mountPath: /data
         # The gateway refuses a group/world-writable temp dir without the sticky bit and disables
         # its session observer (activescott/activeassistant#440). fsGroup leaves the tmp
         # emptyDir root as root:node with mode 2777, and uid 1000 is not the owner so it cannot
@@ -286,18 +262,6 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: tinkerbell_api_token
-            - name: WORKSPACE_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: olya-google-workspace
-                  key: google_workspace_client_id
-            - name: WORKSPACE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: olya-google-workspace
-                  key: google_workspace_client_secret
-            - name: WORKSPACE_CREDENTIALS_PATH
-              value: /etc/olya-google-workspace/credentials.json
             # hooks.token in openclaw.json. Has to be deployed before the config references it:
             # an unresolved ${OPENCLAW_HOOKS_TOKEN} stays a literal string.
             - name: OPENCLAW_HOOKS_TOKEN
@@ -492,8 +456,6 @@ spec:
             - name: ssh-key
               mountPath: /etc/olya-ssh
               readOnly: true
-            - name: google-workspace-data
-              mountPath: /etc/olya-google-workspace
             # For the postStart hook only. She has no reason to run these, but the ConfigMap is
             # read-only here and holds nothing sensitive.
             - name: scripts
@@ -572,18 +534,6 @@ spec:
           secret:
             secretName: olya-ssh
             defaultMode: 0400
-        # Google Workspace MCP credentials (read-only source). The initContainer
-        # copies this to the writable google-workspace-data emptyDir so the MCP
-        # server can persist refreshed OAuth tokens.
-        - name: google-workspace-creds
-          secret:
-            secretName: olya-google-workspace
-            items:
-              - key: google_workspace_credentials_json
-                path: credentials.json
-            defaultMode: 0600
-        - name: google-workspace-data
-          emptyDir: {}
         # readOnlyRootFilesystem means node, npm, and git all need somewhere to write.
         - name: tmp
           emptyDir: {}
