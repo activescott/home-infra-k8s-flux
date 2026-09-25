@@ -58,10 +58,13 @@ configMapGenerator:
       - NODE_ENV=production
   # The operators' channel (#dream-on), where the app posts each waiting request
   # (browser-chaperone#23). Read by the app, which names it, and by the Slack relay, which
-  # refuses the app's credential anywhere else.
+  # refuses the app's credential anywhere else. The OPERATOR_* ids are the app's start-up
+  # grants (browser-chaperone#34): a DM grant per operator and a post grant for the channel.
   - name: slack-notify-config
     literals:
       - SLACK_NOTIFY_CHANNEL=C0C4YKR21DW
+      - OPERATOR_SLACK_USER_IDS=U0FS2ER1Q
+      - OPERATOR_SLACK_CHANNEL_ID=C0C4YKR21DW
 secretGenerator:
   - name: db-creds
     envs:
