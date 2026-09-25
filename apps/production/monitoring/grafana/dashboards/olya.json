@@ -40,7 +40,7 @@
         }
       },
       "options": { "colorMode": "background", "graphMode": "none" },
-      "targets": [{ "expr": "time() - kube_pod_start_time{namespace=\"olya\", pod=~\"olya.*\"}", "legendFormat": "{{pod}}", "instant": true, "refId": "A" }]
+      "targets": [{ "expr": "time() - kube_pod_start_time{namespace=\"olya\", pod=\"olya-0\"}", "legendFormat": "{{pod}}", "instant": true, "refId": "A" }]
     },
     {
       "type": "stat",
@@ -60,7 +60,7 @@
         }
       },
       "options": { "colorMode": "background", "graphMode": "none" },
-      "targets": [{ "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"olya\", pod=~\"olya.*\"})", "refId": "A" }]
+      "targets": [{ "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"olya\", pod=\"olya-0\"})", "refId": "A" }]
     },
     {
       "type": "stat",
@@ -74,7 +74,7 @@
         }
       },
       "options": { "colorMode": "background", "graphMode": "none" },
-      "targets": [{ "expr": "kube_pod_status_phase{namespace=\"olya\", pod=~\"olya.*\", phase=\"Running\"}", "legendFormat": "{{pod}}", "instant": true, "refId": "A" }]
+      "targets": [{ "expr": "kube_pod_status_phase{namespace=\"olya\", pod=\"olya-0\", phase=\"Running\"}", "legendFormat": "{{pod}}", "instant": true, "refId": "A" }]
     },
     {
       "type": "state-timeline",
