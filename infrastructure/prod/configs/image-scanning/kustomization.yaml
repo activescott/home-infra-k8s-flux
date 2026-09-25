@@ -6,6 +6,7 @@ namespace: flux-system
 resources:
   - ../ghcr-pull-secret/
   - amazon-searcher.yaml
+  - dreamwright.yaml
   - browser-chaperone-app.yaml
   - browser-chaperone-browser.yaml
   - browser-chaperone-slack-relay.yaml

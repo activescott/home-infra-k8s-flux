@@ -83,6 +83,9 @@ spec:
       name: repo-scott-willeke-com
       namespace: flux-system
     - kind: ImageRepository
+      name: repo-dreamwright
+      namespace: flux-system
+    - kind: ImageRepository
       name: repo-gpupoet-app
       namespace: flux-system
     - kind: ImageRepository

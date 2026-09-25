@@ -12,6 +12,7 @@ resources:
   - zones/activescott.com.yaml
   - zones/coinpoet.com.yaml
   - zones/datamanifest.com.yaml
+  - zones/dreamwright.app.yaml
   - zones/fernfiles.com.yaml
   - zones/gpupoet.com.yaml
   - zones/pingpoet.com.yaml
