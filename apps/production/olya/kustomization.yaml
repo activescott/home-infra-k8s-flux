@@ -48,9 +48,8 @@ configMapGenerator:
       - no_proxy=localhost,.localhost,127.0.0.1,::1,.svc,.cluster.local,172.16.0.0/12
       - NODE_USE_ENV_PROXY=1
 secretGenerator:
-  # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
-  # openclaw_gateway_token, anthropic_api_key, openrouter_api_key, and relay_bot_token and
-  # relay_app_token, which are the Slack relay's credentials and not Slack tokens
+  # Keys: tinkerbell_api_token, openclaw_gateway_token, anthropic_api_key, openrouter_api_key,
+  # and relay_bot_token and relay_app_token, which are the Slack relay's credentials and not Slack tokens
   # (activescott/activeassistant#315). Both must match the relay's Secret, in
   # ../browser-chaperone/.env.secret.slack-relay.encrypted.
   # The statefulset names the ones openclaw.json substitutes individually; see the comment there.

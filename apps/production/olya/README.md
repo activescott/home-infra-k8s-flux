@@ -88,7 +88,7 @@ committing, from a checkout of that repo:
 docker run --rm \
   -v "$PWD/openclaw.json:/cfg/openclaw.json:ro" \
   -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
-  -e OPENCLAW_GATEWAY_TOKEN=dummy -e TELEGRAM_ALLOW_FROM=1 \
+  -e OPENCLAW_GATEWAY_TOKEN=dummy \
   ghcr.io/activescott/olya:v0.1.0 openclaw config validate
 ```
 
