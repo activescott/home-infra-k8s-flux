@@ -134,6 +134,7 @@
         "ghcr.io/activescott/browser-chaperone/app",
         "ghcr.io/activescott/browser-chaperone/browser",
         "ghcr.io/activescott/browser-chaperone/slack-relay",
+        "ghcr.io/activescott/browser-chaperone/mcp-gateway",
         "ghcr.io/activescott/fernfiles/app",
         "ghcr.io/activescott/fernfiles/worker",
         "ghcr.io/activescott/fernfiles/inference-service",

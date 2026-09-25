@@ -20,7 +20,7 @@ configMapGenerator:
   # of activescott/activeassistant:
   #   docker run --rm -v $PWD/openclaw.json:/cfg/openclaw.json:ro \
   #     -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
-  #     -e OPENCLAW_GATEWAY_TOKEN=dummy -e TELEGRAM_ALLOW_FROM=1 \
+  #     -e OPENCLAW_GATEWAY_TOKEN=dummy \
   #     ghcr.io/activescott/olya:v0.1.0 openclaw config validate
   - name: olya-config
     files:
@@ -59,9 +59,8 @@ configMapGenerator:
       - no_proxy=localhost,.localhost,127.0.0.1,::1,.svc,.cluster.local,172.16.0.0/12
       - NODE_USE_ENV_PROXY=1
 secretGenerator:
-  # Keys: telegram_bot_token, telegram_allow_from, tinkerbell_api_token,
-  # openclaw_gateway_token, anthropic_api_key, openrouter_api_key, and relay_bot_token and
-  # relay_app_token, which are the Slack relay's credentials and not Slack tokens
+  # Keys: tinkerbell_api_token, openclaw_gateway_token, anthropic_api_key, openrouter_api_key,
+  # and relay_bot_token and relay_app_token, which are the Slack relay's credentials and not Slack tokens
   # (activescott/activeassistant#315). Both must match the relay's Secret, in
   # ../browser-chaperone/.env.secret.slack-relay.encrypted.
   # The statefulset names the ones openclaw.json substitutes individually; see the comment there.
@@ -91,6 +90,13 @@ secretGenerator:
   - name: olya-hooks
     envs:
       - .env.secret.olya-hooks.public-key-encrypted.encrypted
+  # Key: mcp_gateway_token, what she presents to the MCP gateway (browser-chaperone#39). Same
+  # value as gateway_client_token in
+  # ../browser-chaperone/.env.secret.mcp-gateway-token.public-key-encrypted.encrypted; rotate
+  # both together.
+  - name: olya-mcp-gateway
+    envs:
+      - .env.secret.olya-mcp-gateway.public-key-encrypted.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}

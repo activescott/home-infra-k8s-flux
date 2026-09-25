@@ -7,6 +7,9 @@ resources:
   # Not in the base: browser-chaperone's k8s/base has no manifest for this package.
   - slack-relay-deployment.yaml
   - slack-relay-service.yaml
+  # Same: no manifest in the base.
+  - mcp-gateway-deployment.yaml
+  - mcp-gateway-service.yaml
   - olya-egress-proxy-deployment.yaml
   - olya-egress-proxy-service.yaml
   - olya-egress-proxy-pdb.yaml
@@ -89,13 +92,28 @@ secretGenerator:
   - name: slack-relay-creds
     envs:
       - .env.secret.slack-relay.encrypted
+  # The Google credential for Olya's account (browser-chaperone#39). The committed file holds
+  # PLACEHOLDERS until the operator writes the real values; see
+  # env.secret.mcp-gateway-google.example.
+  - name: mcp-gateway-creds
+    envs:
+      - .env.secret.mcp-gateway-google.encrypted
+  # Key: gateway_client_token, the token Olya presents to the gateway. Same value as
+  # mcp_gateway_token in ../olya/.env.secret.olya-mcp-gateway.public-key-encrypted.encrypted;
+  # rotate both together. A Secret of its own because two SOPS files cannot share a generator.
+  - name: mcp-gateway-token
+    envs:
+      - .env.secret.mcp-gateway-token.public-key-encrypted.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.9.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.10.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
     newTag: v0.3.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+  - name: browser-chaperone-image-mcp-gateway
+    newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
+    newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
