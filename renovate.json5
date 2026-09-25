@@ -144,6 +144,7 @@
         "ghcr.io/activescott/gpu-poet/indexnow-notifier",
         "ghcr.io/activescott/ramblefeed/app",
         "ghcr.io/activescott/www",
+        "ghcr.io/ping-poet/dreamwright/app",
         "ghcr.io/activescott/tinkerbell/app",
         "ghcr.io/activescott/tinkerbell/mcp-gateway",
         "ghcr.io/activescott/job-accelerator/app",
