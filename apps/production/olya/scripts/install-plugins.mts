@@ -17,6 +17,8 @@
 // A line starting with "-" removes that package's managed install instead, and only when the
 // install record names that package. This is how a plugin moves into the image: a managed copy
 // is origin global and outranks the bundled one, so leaving it would shadow the image's copy.
+// On an image without that copy it is kept: inspect would reinstall it from the official
+// catalog straight away.
 import { execFileSync } from "node:child_process"
 import { copyFileSync, readFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
@@ -40,6 +42,9 @@ const failuresFile = join(
 // Trust reasons that mean the loaded copy is the one openKeyedStore accepts. Anything else, e.g.
 // record-missing for a copy loaded from a plugins.load.paths entry, needs a managed install.
 const TRUSTED = new Set(["trusted-official", "bundled"])
+
+// Where the image's OpenClaw looks for bundled plugins.
+const BUNDLED_EXTENSIONS = "/app/dist/extensions"
 
 // failure is set when inspect could not say what is installed: it was killed (a starved
 // container OOMKills it before any install starts), or exited non-zero without a result.
@@ -114,6 +119,12 @@ function removeManagedInstall(spec: string) {
   }
   if (installedName !== pkg) {
     console.log(`install-plugins: ${id} has no managed ${pkg} install; nothing to remove`)
+    return
+  }
+  if (!existsSync(join(BUNDLED_EXTENSIONS, id, "openclaw.plugin.json"))) {
+    console.log(
+      `install-plugins: WARNING ${id} has no bundled copy in this image; keeping managed ${pkg}`,
+    )
     return
   }
   console.log(`install-plugins: ${id} removing managed ${pkg} install`)

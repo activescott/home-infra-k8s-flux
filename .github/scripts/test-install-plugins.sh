@@ -217,11 +217,18 @@ for removal in "${removals[@]}"; do
     plugins install "npm:$pkg@$(plugin_version "${specs[0]}")" --accept-capabilities --force
   [ "$(installed_version "$retired" "$id")" != "" ] || fail "remove $id: could not seed a managed install"
   run_install "$retired" "$mem" "$olya/managed-plugins.txt" "$work/retired-$id.log"
-  check_pinned "remove $id" "$retired" "$work/retired-$id.log" 0 "$id removed managed $pkg"
-  [ "$(installed_version "$retired" "$id")" = "" ] || fail "remove $id: managed install still recorded"
-  run_install "$retired" "$mem" "$olya/managed-plugins.txt" "$work/retired-again-$id.log"
-  grep -q "$id has no managed $pkg install; nothing to remove" "$work/retired-again-$id.log" ||
-    fail "remove $id: second run did not report nothing to remove"
+  # Without a bundled copy to take over, the managed one has to stay.
+  if docker run --rm --entrypoint test "$image" -f "/app/dist/extensions/$id/openclaw.plugin.json"; then
+    check_pinned "remove $id" "$retired" "$work/retired-$id.log" 0 "$id removed managed $pkg; now origin bundled"
+    [ "$(installed_version "$retired" "$id")" = "" ] || fail "remove $id: managed install still recorded"
+    run_install "$retired" "$mem" "$olya/managed-plugins.txt" "$work/retired-again-$id.log"
+    grep -q "$id has no managed $pkg install; nothing to remove" "$work/retired-again-$id.log" ||
+      fail "remove $id: second run did not report nothing to remove"
+  else
+    echo "test: $image has no bundled $id, so the managed install must be kept"
+    check "keep $id" "$retired" "$work/retired-$id.log" 0 "WARNING $id has no bundled copy in this image; keeping managed $pkg" "$olya/managed-plugins.txt"
+    [ "$(installed_version "$retired" "$id")" != "" ] || fail "keep $id: managed install removed with no bundled copy"
+  fi
   docker volume rm "$retired" >/dev/null
   echo "::endgroup::"
 done
