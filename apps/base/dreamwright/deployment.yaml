@@ -19,6 +19,14 @@ spec:
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: dreamwright-image
 
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
           resources:
             limits:
               cpu: "1"

@@ -12,4 +12,4 @@ namespace: dreamwright-prod
 images:
   - name: dreamwright-image
     newName: ghcr.io/ping-poet/dreamwright/app # {"$imagepolicy": "flux-system:policy-dreamwright:name"}
-    newTag: v202609250000 # {"$imagepolicy": "flux-system:policy-dreamwright:tag"}
+    newTag: v202609250513 # {"$imagepolicy": "flux-system:policy-dreamwright:tag"}
