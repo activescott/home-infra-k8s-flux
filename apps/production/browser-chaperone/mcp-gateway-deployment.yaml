@@ -1,0 +1,155 @@
+# Google Workspace as Olya reaches it: her `mcp.servers.google-workspace` entry points at this
+# Service, and this pod holds the Google credential for her account (browser-chaperone#39,
+# docs/mcp-gateway.md in activescott/browser-chaperone for what it checks and refuses).
+#
+# Same shape as the Slack relay: every gated call is a question to the approval app on
+# app:3400, nothing is cached. google-workspace-mcp runs inside this container as the
+# gateway's stdio child. Not in the base: browser-chaperone's k8s/base has no manifest for
+# this package.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: browser-chaperone-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-gateway
+  template:
+    metadata:
+      labels:
+        # Alloy promotes this to the Loki `app` label, so the audit records are
+        # {namespace="browser-chaperone-prod", app="mcp-gateway"}.
+        app: mcp-gateway
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: github-container-registry-secret
+      securityContext:
+        # The image's own unprivileged user, `node`. fsGroup so that user can read the
+        # Secret volume the initContainer copies from.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Copies the credential JSON from the read-only Secret volume to a writable emptyDir.
+        # Both the gateway and the workspace server write refreshed access tokens back to
+        # WORKSPACE_CREDENTIALS_PATH, and Secret volumes are always read-only.
+        - name: copy-workspace-creds
+          image: browser-chaperone-image-mcp-gateway
+          command: ["sh", "-c", "cp /secret/credentials.json /data/credentials.json && chmod 0600 /data/credentials.json"]
+          resources:
+            requests:
+              memory: 16Mi
+              cpu: 10m
+            limits:
+              memory: 32Mi
+              cpu: 500m
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: workspace-creds
+              mountPath: /secret
+              readOnly: true
+            - name: workspace-data
+              mountPath: /data
+      containers:
+        - name: mcp-gateway
+          image: browser-chaperone-image-mcp-gateway
+          ports:
+            - name: http
+              containerPort: 3700
+          env:
+            - name: NODE_ENV
+              value: production
+            # The approval app in this namespace, which holds the grants and the request
+            # queue. An app that does not answer is a refusal, not a pass.
+            - name: CHAPERONE_URL
+              value: http://app:3400
+            - name: WORKSPACE_CREDENTIALS_PATH
+              value: /data/credentials.json
+            # Named individually rather than envFrom, so the credential JSON reaches this
+            # container as the file above and not also as an environment variable.
+            - name: GATEWAY_CLIENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-gateway-token
+                  key: gateway_client_token
+            - name: WORKSPACE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-gateway-creds
+                  key: google_workspace_client_id
+            - name: WORKSPACE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-gateway-creds
+                  key: google_workspace_client_secret
+            # AUDIT_URL is deliberately unset, as on the relay: the log is the only sink.
+          envFrom:
+            # INTERNAL_API_TOKEN, the same Secret the app, the browser service and the relay
+            # read: the app refuses an /internal/* call without it.
+            - secretRef:
+                name: internal-api-token
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              # Two Node processes, and an attachment is buffered in memory up to
+              # ATTACHMENT_MAX_BYTES, 10Mi by default.
+              memory: 768Mi
+              cpu: "2"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: workspace-data
+              mountPath: /data
+            # The image's CMD starts it through npm, which wants $HOME writable.
+            - name: home
+              mountPath: /home/node
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/health/liveness
+              port: http
+            periodSeconds: 10
+      volumes:
+        - name: workspace-creds
+          secret:
+            secretName: mcp-gateway-creds
+            items:
+              - key: google_workspace_credentials_json
+                path: credentials.json
+            defaultMode: 0440
+        - name: workspace-data
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

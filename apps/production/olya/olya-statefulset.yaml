@@ -96,7 +96,8 @@ spec:
 
         # Installs managed plugins from /cfg/managed-plugins.txt via
         # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
-        # exists. See managed-plugins.txt for the plugin list and pinning notes. Runs after
+        # exists, and removes managed installs of packages marked "-" (slack, which now ships in
+        # the image). See managed-plugins.txt for the plugin list and pinning notes. Runs after
         # seed-workspace because plugin commands need the seeded config in place. A failed
         # upgrade keeps the installed version and logs "install-plugins: WARNING" instead of
         # failing this container; .github/workflows/install-plugins.yml runs each path at the
@@ -225,19 +226,16 @@ spec:
               value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
             # The two keys openclaw.json substitutes, plus provider API keys, named
             # individually rather than
-            # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
-            # telegram_bot_token, which the `items` projection further down exists to keep OUT
-            # of the environment: env is inherited by npx, the ACP adapters, and every shell
-            # command they run, and shows up in /proc/<pid>/environ.
+            # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, and env is
+            # inherited by npx, the ACP adapters, and every shell command they run, and shows up
+            # in /proc/<pid>/environ.
             #
             # Keep substituted keys in sync with `grep -o '\${[A-Z_]*}' openclaw.json`.
             # A missing substituted key is a startup failure, not a silent default.
             # Provider API keys (OPENROUTER_API_KEY) are read from the
             # environment by OpenClaw's provider plugins, not substituted in the config.
             #
-            # olya-env also holds telegram_bot_token, which is NOT delivered as an env
-            # var: it is a file (see the `items` projection below).
-            # grafana_service_account_token and tinkerbell_api_token ARE delivered
+            # grafana_service_account_token and tinkerbell_api_token are delivered
             # below, for the mcp-grafana and tinkerbell MCP servers configured in
             # openclaw.json.
             - name: OPENCLAW_GATEWAY_TOKEN
@@ -245,14 +243,6 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: openclaw_gateway_token
-            - name: TELEGRAM_ALLOW_FROM
-              valueFrom:
-                secretKeyRef:
-                  name: olya-env
-                  key: telegram_allow_from
-            # Where alert triage delivers, deliberately separate from the allowlist above.
-            - name: TELEGRAM_ALERT_CHAT_ID
-              value: "510755639"
             # OpenRouter API key for the fallback model chain.
             - name: OPENROUTER_API_KEY
               valueFrom:
@@ -315,6 +305,13 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: relay_app_token
+            # mcp.servers.google-workspace in openclaw.json sends this as its bearer token. Good
+            # for nothing but the MCP gateway in browser-chaperone-prod (browser-chaperone#39).
+            - name: MCP_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-mcp-gateway
+                  key: mcp_gateway_token
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
@@ -332,7 +329,7 @@ spec:
             - name: http
               containerPort: 18789
           # /startupz rather than /readyz for admission. /readyz additionally requires every
-          # configured channel to pass a deep health check, so a Telegram hiccup would pull the
+          # configured channel to pass a deep health check, so a Slack hiccup would pull the
           # pod out of service for a problem that has nothing to do with serving traffic.
           # exec + loopback, NOT httpGet. A kubelet httpGet probe dials the pod IP from an
           # address inside the cluster pod CIDR -- which is exactly what gateway.trustedProxies
@@ -465,17 +462,6 @@ spec:
             - name: ssh-key
               mountPath: /etc/olya-ssh
               readOnly: true
-            # subPath is REQUIRED, not tidiness. Mounting the volume at a directory gives the
-            # usual Kubernetes symlink chain (token -> ..data/token), and OpenClaw's secret
-            # loader will not follow it: the channel fails with "credential file is
-            # unavailable" while the file is plainly readable from a shell. subPath bind-mounts
-            # it as a regular file. The trade is that subPath mounts do not update in place
-            # when the Secret changes, which is fine here -- the generator's name hash changes
-            # on every edit, so the pod is replaced anyway.
-            - name: telegram-token
-              mountPath: /etc/olya-telegram/token
-              subPath: token
-              readOnly: true
             - name: google-workspace-data
               mountPath: /etc/olya-google-workspace
             # For the postStart hook only. She has no reason to run these, but the ConfigMap is
@@ -555,16 +541,6 @@ spec:
         - name: ssh-key
           secret:
             secretName: olya-ssh
-            defaultMode: 0400
-        # Projects just the bot token out of olya-env, renamed to `token`, because
-        # channels.telegram.tokenFile wants a path to a regular file rather than an env var.
-        # `items` keeps the rest of that Secret from also appearing on disk.
-        - name: telegram-token
-          secret:
-            secretName: olya-env
-            items:
-              - key: telegram_bot_token
-                path: token
             defaultMode: 0400
         # Google Workspace MCP credentials (read-only source). The initContainer
         # copies this to the writable google-workspace-data emptyDir so the MCP

@@ -1,7 +1,7 @@
 # Restricts what the assistant can reach on the local network.
 #
 # She is the one workload in this cluster that acts on untrusted input: anything arriving over
-# Telegram, and any web page a sub-agent fetches, can carry an instruction aimed at her. Without
+# Slack, and any web page a sub-agent fetches, can carry an instruction aimed at her. Without
 # this, a successful prompt injection makes outbound requests from inside the LAN, where services
 # largely authenticate by network position.
 #
@@ -190,6 +190,20 @@ spec:
               app: slack-relay
       ports:
         - port: 3600
+          protocol: TCP
+
+    # The MCP gateway (browser-chaperone#39). Her google-workspace MCP server is this Service,
+    # and the gateway holds the Google credential. Its own policy in
+    # apps/production/browser-chaperone admits her on this port and nothing else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: browser-chaperone-prod
+          podSelector:
+            matchLabels:
+              app: mcp-gateway
+      ports:
+        - port: 3700
           protocol: TCP
 
     # The sandbox vcluster's API, so an agent can run tests against a real Kubernetes API
