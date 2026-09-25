@@ -29,9 +29,9 @@ and the current attempt may not have logged anything yet.
 
 Every plugin is baked into the olya image (activescott/activeassistant#386), so the
 `install-plugins` container, the one most often stuck here on an npm install OOMKill
-(activescott/activeassistant#199, #203, #204), is gone. `prune-plugin-installs` only removes the old install
-records and always exits 0, so an OOMKill there means its 1Gi limit is wrong, not that a plugin
-is missing.
+(activescott/activeassistant#199, #203, #204), is gone. `prune-plugin-installs` only removes
+the old install records and always exits 0, so an OOMKill there means its 1Gi limit is wrong,
+not that a plugin is missing.
 
 ## Pod Pending
 
