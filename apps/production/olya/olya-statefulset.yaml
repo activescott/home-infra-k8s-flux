@@ -36,8 +36,8 @@ spec:
         # emptyDir volumes below.
         fsGroup: 1000
 
-      # The initContainer repeats the container securityContext below. Pod-level settings do
-      # NOT include the container-level ones, so without this it runs with
+      # The initContainers repeat the container securityContext below. Pod-level settings do
+      # NOT include the container-level ones, so without this an initContainer runs with
       # allowPrivilegeEscalation defaulting to true, no dropped capabilities, and a writable
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
       # with the ssh key mounted, so it is the last place to leave at the defaults.
