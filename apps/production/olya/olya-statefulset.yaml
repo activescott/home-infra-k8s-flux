@@ -248,7 +248,8 @@ spec:
             #
             # The ProxyCommand sends it through the egress proxy as CONNECT host:22, so git over
             # SSH is logged with everything else. Plain `ssh` without this variable still
-            # connects directly.
+            # connects directly; `ssh -F` the config gets the same ProxyCommand from the top of
+            # it, which seed-workspace.mts writes for the shells that lose this variable.
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
             # The two keys openclaw.json substitutes, plus provider API keys, named
