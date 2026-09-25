@@ -94,4 +94,4 @@ secretGenerator:
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790275431 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1790309606 # {"$imagepolicy": "flux-system:policy-olya:tag"}
