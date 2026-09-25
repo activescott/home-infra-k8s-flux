@@ -7,8 +7,8 @@
 // shows it pruned.
 //
 // A plugin in REPLACED is removed only when the image has its bundled copy, since on an older
-// image the record is the only copy there is. perplexity was most likely installed by doctor's automatic
-// repair on 2026-09-13 and nothing uses it.
+// image the record is the only copy there is. perplexity was most likely installed by doctor's
+// automatic repair on 2026-09-13, and nothing uses it.
 //
 // Like install-plugins before it, this always exits 0 (Scott, 2026-09-24): a failed prune leaves
 // the old copy loading, which is how olya-0 already runs, and must not wedge the pod. Grep the log
