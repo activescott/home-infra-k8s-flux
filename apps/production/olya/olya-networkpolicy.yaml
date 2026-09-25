@@ -1,7 +1,7 @@
 # Restricts what the assistant can reach on the local network.
 #
 # She is the one workload in this cluster that acts on untrusted input: anything arriving over
-# Telegram, and any web page a sub-agent fetches, can carry an instruction aimed at her. Without
+# Slack, and any web page a sub-agent fetches, can carry an instruction aimed at her. Without
 # this, a successful prompt injection makes outbound requests from inside the LAN, where services
 # largely authenticate by network position.
 #
