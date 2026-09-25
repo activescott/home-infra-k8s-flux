@@ -177,10 +177,9 @@ spec:
       containers:
         - name: olya
           image: olya-image
-          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
-          envFrom:
-            - configMapRef:
-                name: olya-proxy-env
+          # No olya-proxy-env here: with HTTPS_PROXY set the Slack plugin's Socket Mode
+          # WebSocket fails. Temporary, restore with the forked plugin
+          # (activescott/activeassistant#399, #403).
           env:
             # $HOME cannot stay at the image's /home/node because the root filesystem is
             # read-only. This is the per-user config tree, so it holds her credential set.
@@ -218,11 +217,10 @@ spec:
             # "Host key verification failed". Inherited by the ACP adapters and by every shell
             # command they run, which is the point -- she clones work repos at runtime.
             #
-            # The ProxyCommand sends it through the egress proxy as CONNECT host:22, so git over
-            # SSH is logged with everything else. Plain `ssh` without this variable still
-            # connects directly.
+            # No ProxyCommand while this container has no HTTPS_PROXY (ssh-proxy-connect.mts
+            # needs it). Restore it with olya-proxy-env (activescott/activeassistant#403).
             - name: GIT_SSH_COMMAND
-              value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
+              value: ssh -F $(HOME)/.ssh/config
             # The two keys openclaw.json substitutes, plus provider API keys, named
             # individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, including
