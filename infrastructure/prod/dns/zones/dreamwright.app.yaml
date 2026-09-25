@@ -1,0 +1,30 @@
+# dreamwright.app sends and receives no mail: null MX, SPF that authorizes nothing, and
+# DMARC at p=reject. There is no rua= address, so no Email Routing rule for dmarc@ exists
+# for this zone; enabling routing would also write apex MX records that contradict the null MX.
+#
+# No web records here. The other zones point their apex at k8s.activescott.com with an
+# explicit record, so the apex and www records for the landing app are a separate change.
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: dreamwright-app
+  namespace: cloudflare
+spec:
+  zoneId: d4d737894905e3ced0bc6861642492e5
+  defaults:
+    ttl: 300
+    proxied: false
+  records:
+    - key: apex-mx-null
+      name: dreamwright.app
+      type: MX
+      priority: 0
+      content: .
+    - key: apex-spf-txt
+      name: dreamwright.app
+      type: TXT
+      content: v=spf1 -all
+    - key: dmarc-txt
+      name: _dmarc.dreamwright.app
+      type: TXT
+      content: v=DMARC1; p=reject
