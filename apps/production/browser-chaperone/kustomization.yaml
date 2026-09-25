@@ -80,8 +80,9 @@ secretGenerator:
   - name: app-signin
     envs:
       - .env.secret.app-signin.encrypted
-  # One Secret for the browser, the Slack relay and the app: both clients send this token on
-  # every /internal/* call and the app refuses any call without it.
+  # One Secret for the browser, the Slack relay, the MCP gateway, the assistant's proxy and the
+  # app: every client sends this token on each /internal/* call and the app refuses any call
+  # without it.
   - name: internal-api-token
     envs:
       - .env.secret.internal-api-token.encrypted
@@ -117,3 +118,6 @@ images:
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
     newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+  - name: browser-chaperone-image-network-proxy
+    newName: ghcr.io/activescott/browser-chaperone/network-proxy # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:name"}
+    newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}
