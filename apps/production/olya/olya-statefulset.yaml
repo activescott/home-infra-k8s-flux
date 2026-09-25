@@ -94,17 +94,15 @@ spec:
             - name: tmp
               mountPath: /tmp
 
-        # Installs managed plugins from /cfg/managed-plugins.txt via
-        # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
-        # exists, and removes managed installs of packages marked "-" (slack, which now ships in
-        # the image). See managed-plugins.txt for the plugin list and pinning notes. Runs after
-        # seed-workspace because plugin commands need the seeded config in place. A failed
-        # upgrade keeps the installed version and logs "install-plugins: WARNING" instead of
-        # failing this container; .github/workflows/install-plugins.yml runs each path at the
-        # memory limit below.
-        - name: install-plugins
+        # Removes the plugin install records install-plugins left on the PV (acpx, the ClawHub
+        # diagnostics-prometheus, a stray perplexity), now that every plugin is baked into the
+        # image as bundled (activescott/activeassistant#386). A record outranks the bundled copy,
+        # so without this olya-0 keeps loading the old installs. Only removes a replaced plugin
+        # when the image has its bundled copy, never touches the seeded config, and always exits
+        # 0. One-time: delete it once a boot logs "removed; now origin bundled".
+        - name: prune-plugin-installs
           image: olya-image
-          command: ["/scripts/install-plugins.mts"]
+          command: ["/scripts/prune-plugin-installs.mts"]
           # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
           envFrom:
             - configMapRef:
@@ -114,37 +112,22 @@ spec:
               value: /state/home
             - name: OPENCLAW_STATE_DIR
               value: /state/openclaw
-            # /state/config, not /state/openclaw. Read-only in the olya container and nowhere
-            # else, which is why this initContainer can still write plugin entries to it.
-            - name: OPENCLAW_CONFIG_PATH
-              value: /state/config/openclaw.json
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          # 2Gi is load-bearing, not headroom. The skip path (`openclaw plugins inspect`)
-          # finishes in ~1s well under 256Mi, so the limit looks oversized until an OpenClaw
-          # upgrade invalidates the trust record on the PVC and this container takes the
-          # install path instead: `openclaw plugins install` runs a real npm install, which
-          # OOMKills at both 256Mi and 512Mi and completes in ~29s at 1Gi (measured against
-          # olya:main-1790035615 / OpenClaw 2026.9.5). The `--force` reinstall path (version
-          # mismatch, not just missing record) is heavier still: it OOMKilled at 1Gi after
-          # running ~5min before the kill, so it's bumped to 2Gi. Every OpenClaw major re-runs
-          # one of these paths, so do not size this back down to what a steady-state boot uses.
+          # Measured at about 200Mi on a copy of olya-0's state; uninstall runs no npm.
           resources:
             requests:
               cpu: "50m"
               memory: 64Mi
             limits:
               cpu: "1"
-              memory: 2Gi
+              memory: 1Gi
           volumeMounts:
             - name: state
               mountPath: /state
-            - name: config
-              mountPath: /cfg
-              readOnly: true
             - name: scripts
               mountPath: /scripts
               readOnly: true
@@ -386,8 +369,8 @@ spec:
             # THE enforcement boundary. Same PVC as the mount above, mounted a second time over
             # each declarative subdirectory with readOnly: true.
             #
-            # readOnly is per CONTAINER and per MOUNT ENTRY, so seed-workspace, install-plugins
-            # and instruction-sync keep writing these paths through their own read-write /state
+            # readOnly is per CONTAINER and per MOUNT ENTRY, so seed-workspace and
+            # instruction-sync keep writing these paths through their own read-write /state
             # mount while nothing in THIS container can: not her tools, not the gateway, not a
             # shell command she runs. A write here fails with EROFS, and that failure is the
             # correct outcome rather than a bug to route around.
@@ -546,9 +529,6 @@ spec:
         - name: state
           persistentVolumeClaim:
             claimName: olya-state
-        - name: config
-          configMap:
-            name: olya-config
         - name: scripts
           configMap:
             name: olya-scripts

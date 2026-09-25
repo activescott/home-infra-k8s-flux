@@ -33,7 +33,7 @@ main thing to understand before editing the StatefulSet or the scripts.
 | `/state/archive`   | read-write       | nightly audit and transcript exports          |
 
 **The read-only mounts are the control.** `volumeMounts[].readOnly` is per container and per
-mount entry, so `seed-workspace`, `install-plugins` and `instruction-sync` write those two paths
+mount entry, so `seed-workspace` and `instruction-sync` write those two paths
 through their own read-write `/state` mount while nothing in the `olya` container can. A write
 from her tools fails with `EROFS`, which is the correct outcome. `OPENCLAW_CONFIG_READONLY=1` is
 set as a second layer for a better error message, and is explicitly *not* what enforces this.

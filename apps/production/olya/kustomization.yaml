@@ -14,23 +14,12 @@ resources:
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 namespace: olya
 configMapGenerator:
-  # The gateway plugin list. seed-workspace copies the gateway config from the workspace
-  # repo into /state/config after cloning, so this ConfigMap no longer carries it. OpenClaw
-  # refuses to start on an invalid config, so validate before committing, from a checkout
-  # of activescott/activeassistant:
-  #   docker run --rm -v $PWD/openclaw.json:/cfg/openclaw.json:ro \
-  #     -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
-  #     -e OPENCLAW_GATEWAY_TOKEN=dummy -e TELEGRAM_ALLOW_FROM=1 \
-  #     ghcr.io/activescott/olya:v0.1.0 openclaw config validate
-  - name: olya-config
-    files:
-      - managed-plugins.txt
   - name: olya-scripts
     files:
       - scripts/seed-workspace.mts
       - scripts/instruction-sync.mts
       - scripts/memory-sync.mts
-      - scripts/install-plugins.mts
+      - scripts/prune-plugin-installs.mts
       - scripts/check-memory-mounts.mts
       - scripts/reconcile-automations.mts
       - scripts/ssh-proxy-connect.mts
