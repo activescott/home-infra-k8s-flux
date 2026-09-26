@@ -113,7 +113,7 @@ images:
     newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
-    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+    newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
     newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
