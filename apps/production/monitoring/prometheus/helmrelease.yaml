@@ -1638,13 +1638,35 @@ spec:
           # tinkerbell-log-health group above: these counters carry every stream
           # label Alloy had at that point in the pipeline, so an unaggregated
           # expression evaluates per pod and per node.
+          #
+          # The two Falco alerts also require Falco's own counter for the same
+          # rule to have moved (activescott/activeassistant#402). Alloy re-reads
+          # the last line of each stream when it reopens it every hour and
+          # counts it again (grafana/alloy#7192), so the Loki counter alone
+          # fired four times on 2026-09-24 with no Falco event behind it. The
+          # Loki side stays because it carries falco_ns and the line to triage
+          # from; Falco's counter only knows the rule. Falco emits a rule's
+          # series only once it has matched, so it is born at 1 like Alloy's,
+          # and increase() cannot see that first sample: the `unless ... offset
+          # 5m` arm is what catches it, per series, so a new Falco pod's first
+          # match counts too. FalcoMetricsDown covers the scrape, since without
+          # it both alerts are silent.
           - name: agent-sandbox-security
             rules:
               # Split by priority so a container escape and a shell someone
               # opened by hand do not arrive with the same severity. The rules
               # file assigns the priorities; see falco/helmrelease.yaml.
               - alert: FalcoSandboxCritical
-                expr: 'sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}[5m])) > 0'
+                expr: >-
+                  sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}[5m])) > 0
+                  and on (falco_rule)
+                  label_replace(
+                  sum by (rule_name) (
+                  increase(falcosecurity_falco_rules_matches_total[5m]) > 0
+                  or (falcosecurity_falco_rules_matches_total unless falcosecurity_falco_rules_matches_total offset 5m)
+                  ),
+                  "falco_rule", "$1", "rule_name", "(.*)"
+                  )
                 labels:
                   severity: critical
                 annotations:
@@ -1659,7 +1681,16 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcosandboxcritical
                   repo: activescott/home-infra-k8s-flux
               - alert: FalcoSandboxWarning
-                expr: 'sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}[5m])) > 0'
+                expr: >-
+                  sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}[5m])) > 0
+                  and on (falco_rule)
+                  label_replace(
+                  sum by (rule_name) (
+                  increase(falcosecurity_falco_rules_matches_total[5m]) > 0
+                  or (falcosecurity_falco_rules_matches_total unless falcosecurity_falco_rules_matches_total offset 5m)
+                  ),
+                  "falco_rule", "$1", "rule_name", "(.*)"
+                  )
                 labels:
                   severity: warning
                 annotations:
@@ -1694,6 +1725,27 @@ spec:
                     satisfying the modern eBPF probe after a TrueNAS update.
                   query: '{namespace="falco"} |= "Runtime error"'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falconotrunning
+                  repo: activescott/home-infra-k8s-flux
+              # The two alerts above need Falco's rule counter as well as the
+              # Loki one, so a scrape that stops working silences both tiers
+              # while Falco itself is healthy. The `absent` arm covers the
+              # target not existing, which is what a lost pod annotation or
+              # metrics.enabled going false looks like.
+              - alert: FalcoMetricsDown
+                expr: >-
+                  up{job="kubernetes-pods",namespace="falco"} == 0
+                  or absent(up{job="kubernetes-pods",namespace="falco"})
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Prometheus cannot scrape Falco on nas1, so FalcoSandboxCritical and FalcoSandboxWarning cannot fire.'
+                  description: >-
+                    Falco's /metrics endpoint has been down or missing for 10 minutes. Both
+                    Falco alerts require Falco's rule-match counter, so neither can fire while
+                    this is true, even though Falco may still be matching and logging to Loki.
+                  query: 'up{job="kubernetes-pods",namespace="falco"}'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcometricsdown
                   repo: activescott/home-infra-k8s-flux
               # The three below read counters that stay at zero until k3s is
               # started with audit logging, which is a node-level change on
