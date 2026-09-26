@@ -11,6 +11,7 @@ resources:
   - browser-chaperone-browser.yaml
   - browser-chaperone-slack-relay.yaml
   - browser-chaperone-mcp-gateway.yaml
+  - browser-chaperone-network-proxy.yaml
   - fernfiles-app.yaml
   - fernfiles-inference-service.yaml
   - fernfiles-worker.yaml
