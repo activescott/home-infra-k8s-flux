@@ -116,4 +116,4 @@ images:
     newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
-    newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+    newTag: v0.1.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
