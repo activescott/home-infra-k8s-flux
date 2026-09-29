@@ -13,9 +13,15 @@
 // logs an "install-plugins: ERROR" line and is written to $OPENCLAW_STATE_DIR/
 // install-plugins-failures.json for the main container to surface; a clean run removes the file.
 // Grep the init container log for "install-plugins: WARNING" and "install-plugins: ERROR".
+//
+// A line starting with "-" removes that package's managed install instead, and only when the
+// install record names that package. This is how a plugin moves into the image: a managed copy
+// is origin global and outranks the bundled one, so leaving it would shadow the image's copy.
+// On an image without that copy it is kept: inspect would reinstall it from the official
+// catalog straight away.
 import { execFileSync } from "node:child_process"
-import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
+import { copyFileSync, readFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
 const pluginsFile = "/cfg/managed-plugins.txt"
@@ -37,12 +43,17 @@ const failuresFile = join(
 // record-missing for a copy loaded from a plugins.load.paths entry, needs a managed install.
 const TRUSTED = new Set(["trusted-official", "bundled"])
 
+// Where the image's OpenClaw looks for bundled plugins.
+const BUNDLED_EXTENSIONS = "/app/dist/extensions"
+
 // failure is set when inspect could not say what is installed: it was killed (a starved
 // container OOMKills it before any install starts), or exited non-zero without a result.
 // Output from a successful inspect that doesn't parse is treated as nothing installed.
 type Inspection = {
   loadedVersion?: string
   trustReason?: string
+  origin?: string
+  installedName?: string
   installedVersion?: string
   installPath?: string
   failure?: string
@@ -75,6 +86,8 @@ function inspect(id: string): Inspection {
   return {
     loadedVersion: plugin?.version,
     trustReason: plugin?.trust?.reason,
+    origin: plugin?.origin,
+    installedName: install?.resolvedName,
     installedVersion: install?.resolvedVersion,
     installPath: install?.installPath?.replace(/^~(?=$|\/)/, homedir()),
   }
@@ -93,12 +106,64 @@ function usableVersion(id: string): string | undefined {
   return version
 }
 
+// Uninstall also strips the plugin from whatever config it is pointed at: channels.<id>, its
+// allowlist entry and its entry. The record and files live in $OPENCLAW_STATE_DIR, so it runs
+// against a throwaway copy and the seeded config is left alone.
+function removeManagedInstall(spec: string) {
+  const pkg = spec.replace(/^npm:/, "").replace(/@[\d][^@]*$/, "")
+  const id = pkg.replace(/^.*\//, "")
+  const { installedName, failure } = inspect(id)
+  if (failure !== undefined) {
+    console.log(`install-plugins: WARNING ${id} inspect failed (${failure}); not removing anything`)
+    return
+  }
+  if (installedName !== pkg) {
+    console.log(`install-plugins: ${id} has no managed ${pkg} install; nothing to remove`)
+    return
+  }
+  if (!existsSync(join(BUNDLED_EXTENSIONS, id, "openclaw.plugin.json"))) {
+    console.log(
+      `install-plugins: WARNING ${id} has no bundled copy in this image; keeping managed ${pkg}`,
+    )
+    return
+  }
+  console.log(`install-plugins: ${id} removing managed ${pkg} install`)
+  const configPath = process.env.OPENCLAW_CONFIG_PATH
+  // Its own directory, because OpenClaw writes and chmods siblings of the config file.
+  const scratchDir = mkdtempSync(join(tmpdir(), `install-plugins-${id}-`))
+  const scratchConfig = join(scratchDir, "openclaw.json")
+  try {
+    if (configPath !== undefined && existsSync(configPath)) copyFileSync(configPath, scratchConfig)
+    else writeFileSync(scratchConfig, "{}\n")
+    execFileSync("openclaw", ["plugins", "uninstall", id, "--force"], {
+      stdio: "inherit",
+      timeout: INSTALL_TIMEOUT_MS,
+      env: { ...process.env, OPENCLAW_CONFIG_PATH: scratchConfig },
+    })
+  } catch (err) {
+    const e = err as { status?: number | null; signal?: string | null }
+    const how = e.signal ? `killed by ${e.signal}` : `exit ${e.status}`
+    console.log(`install-plugins: WARNING ${id} uninstall of ${pkg} failed (${how}); it still shadows the image copy`)
+    return
+  } finally {
+    rmSync(scratchDir, { recursive: true, force: true })
+  }
+  const after = inspect(id)
+  console.log(
+    `install-plugins: ${id} removed managed ${pkg}; now origin ${after.origin ?? "none"}, trust ${after.trustReason ?? "none"}`,
+  )
+}
+
 const failures: { plugin: string; pinnedVersion?: string; cause: string; time: string }[] = []
 const lines = readFileSync(pluginsFile, "utf8").split("\n")
 
 for (const line of lines) {
   const spec = line.trim()
   if (!spec || spec.startsWith("#")) continue
+  if (spec.startsWith("-")) {
+    removeManagedInstall(spec.slice(1))
+    continue
+  }
 
   // @openclaw/acpx@2026.9.4 -> acpx
   const id = spec.replace(/@[\d].*$/, "").replace(/^.*\//, "")

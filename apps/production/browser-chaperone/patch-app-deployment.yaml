@@ -26,6 +26,10 @@
           name: slack-relay-creds
           key: RELAY_NOTIFY_TOKEN
           optional: true
+    # The standing send and receive grants on an email_address, applied at start
+    # (browser-chaperone#39): Olya can always mail an operator and read what one sends her.
+    - name: OPERATOR_EMAIL_ADDRESSES
+      value: scott@willeke.com
 - op: add
   path: /spec/template/spec/containers/0/envFrom/-
   value:

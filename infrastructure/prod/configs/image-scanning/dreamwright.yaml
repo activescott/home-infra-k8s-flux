@@ -1,0 +1,22 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-dreamwright
+spec:
+  image: ghcr.io/ping-poet/dreamwright/app
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-dreamwright
+spec:
+  imageRepositoryRef:
+    name: repo-dreamwright
+  filterTags:
+    pattern: '^v[0-9]{12}$'
+  policy:
+    alphabetical:
+      order: asc

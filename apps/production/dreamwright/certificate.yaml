@@ -1,0 +1,14 @@
+# Certificate for dreamwright.app and www.dreamwright.app
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dreamwright-app-tls
+  namespace: dreamwright-prod
+spec:
+  secretName: dreamwright-app-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - dreamwright.app
+    - www.dreamwright.app

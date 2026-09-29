@@ -38,7 +38,7 @@ const SCOPES = [
 ];
 
 const repoDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
-const relPath = "apps/production/olya/.env.secret.google-workspace";
+const relPath = "apps/production/browser-chaperone/.env.secret.mcp-gateway-google";
 const plaintextPath = join(repoDir, relPath);
 const encryptedPath = `${plaintextPath}.encrypted`;
 const CREDENTIALS_KEY = "google_workspace_credentials_json";
@@ -123,7 +123,7 @@ async function runFollowUpSteps(output) {
     fail(
       `${relPath}.encrypted does not exist. Create it first:\n` +
         `  ./scripts/onepassword-secrets.mts new ${relPath} \\\n` +
-        `    --from apps/production/olya/env.secret.google-workspace.example`
+        `    --from apps/production/browser-chaperone/env.secret.mcp-gateway-google.example`
     );
   }
 

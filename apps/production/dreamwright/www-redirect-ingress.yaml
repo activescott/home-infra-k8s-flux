@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dreamwright-www-redirect
+  namespace: dreamwright-prod
+  annotations:
+    # to reference the middleware use:  <middleware-namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: dreamwright-prod-www-redirect@kubernetescrd
+spec:
+  rules:
+    - host: "www.dreamwright.app"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dreamwright
+                port:
+                  name: web
+  tls:
+    - hosts:
+        - "www.dreamwright.app"
+      secretName: dreamwright-app-tls # same certificate as the apex
