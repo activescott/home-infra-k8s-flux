@@ -1,0 +1,11 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: www-redirect
+  namespace: dreamwright-prod
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/redirectregex/
+  redirectRegex:
+    regex: "^https?://www\\.dreamwright\\.app/(.*)"
+    replacement: "https://dreamwright.app/$1"
+    permanent: true

@@ -12,6 +12,24 @@
     # email-relay's sender map gives this exact address to browserchaperone@relay.local.
     - name: FROM_EMAIL
       value: browser-chaperone-noreply@pingpoet.com
+    # The request-waiting email links back here (browser-chaperone#16).
+    - name: APP_URL
+      value: https://chaperone.pingpoet.com
+    # The request-waiting Slack post goes through the relay (browser-chaperone#23).
+    - name: SLACK_RELAY_URL
+      value: http://slack-relay:3600
+    # The one key the app gets from the relay's Secret: the real Slack tokens stay out of this
+    # pod. Optional, and while it is missing the app logs a warning and posts nothing.
+    - name: RELAY_NOTIFY_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: slack-relay-creds
+          key: RELAY_NOTIFY_TOKEN
+          optional: true
+    # The standing send and receive grants on an email_address, applied at start
+    # (browser-chaperone#39): Olya can always mail an operator and read what one sends her.
+    - name: OPERATOR_EMAIL_ADDRESSES
+      value: scott@willeke.com
 - op: add
   path: /spec/template/spec/containers/0/envFrom/-
   value:
@@ -22,3 +40,8 @@
   value:
     secretRef:
       name: internal-api-token
+- op: add
+  path: /spec/template/spec/containers/0/envFrom/-
+  value:
+    configMapRef:
+      name: slack-notify-config

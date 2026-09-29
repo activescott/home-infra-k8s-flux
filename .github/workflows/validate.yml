@@ -47,3 +47,24 @@ jobs:
           lines=$(echo "$output" | wc -l)
           echo "infrastructure/prod/dns line count: $lines"
           [ "$lines" -gt 0 ]
+
+      # The stock self-hosted runner image does not ship yq.
+      - name: Install yq
+        run: |
+          curl -fsSL -o /tmp/yq https://github.com/mikefarah/yq/releases/download/v4.44.6/yq_linux_amd64
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+
+      # vcluster only delivers a changed Corefile under a new ConfigMap name; see the coredns
+      # comment in the HelmRelease for why.
+      - name: vcluster Corefile ConfigMap name matches its content
+        run: |
+          f=apps/production/agent-sandbox-k8s/helmrelease.yaml
+          manifests=$(yq '.spec.values.controlPlane.coredns.overwriteManifests' "$f")
+          name=$(echo "$manifests" | yq 'select(.kind == "ConfigMap" and .metadata.name == "coredns-corefile-*") | .metadata.name')
+          hash=$(echo "$manifests" | yq 'select(.kind == "ConfigMap" and .metadata.name == "coredns-corefile-*") | .data.Corefile' | sha256sum | cut -c1-10)
+          mounted=$(echo "$manifests" | yq 'select(.kind == "Deployment" and .metadata.name == "coredns") | .spec.template.spec.volumes[].projected.sources[]?.configMap.name | select(. == "coredns-corefile-*")')
+          if [ "$name" != "coredns-corefile-$hash" ] || [ "$mounted" != "coredns-corefile-$hash" ]; then
+            echo "FAIL: ConfigMap is '$name' and the Deployment mounts '$mounted', expected coredns-corefile-$hash"
+            echo "Fix: sed -i 's/$name/coredns-corefile-$hash/g' $f"
+            exit 1
+          fi
