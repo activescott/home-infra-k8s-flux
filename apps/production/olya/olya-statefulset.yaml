@@ -232,6 +232,10 @@ spec:
             # the egress proxy on every request.
             - name: DISABLE_TELEMETRY
               value: "1"
+            # Prisma CLI telemetry to checkpoint.prisma.io, denied at the egress proxy on
+            # every request.
+            - name: CHECKPOINT_DISABLE
+              value: "1"
             # The two keys openclaw.json substitutes, plus provider API keys, named
             # individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, and env is
