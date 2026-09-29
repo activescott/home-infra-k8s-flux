@@ -228,9 +228,11 @@ spec:
             # it, which seed-workspace.mts writes for the shells that lose this variable.
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
-            # Claude Code telemetry to Datadog (http-intake.logs.us5.datadoghq.com), denied at
-            # the egress proxy on every request.
+            # Claude Code telemetry and error reports to Datadog
+            # (http-intake.logs.us5.datadoghq.com), denied at the egress proxy on every request.
             - name: DISABLE_TELEMETRY
+              value: "1"
+            - name: DISABLE_ERROR_REPORTING
               value: "1"
             # Prisma CLI telemetry to checkpoint.prisma.io, denied at the egress proxy on
             # every request.
