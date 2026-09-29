@@ -93,8 +93,9 @@ secretGenerator:
     envs:
       - .env.secret.slack-relay.encrypted
   # The signing secret for the second Slack app, which verifies the v0 signature on every
-  # POST /slack/interactions (browser-chaperone#54). The committed file holds a PLACEHOLDER
-  # until the operator writes the real value; see README.md "Slack approve/deny buttons".
+  # POST /slack/interactions (browser-chaperone#54). The committed file holds it EMPTY until
+  # the operator writes the real value: an empty value disables the buttons rather than
+  # standing in as a guessable HMAC key. See README.md "Slack approve/deny buttons".
   - name: slack-signing-creds
     envs:
       - .env.secret.slack-signing.encrypted
