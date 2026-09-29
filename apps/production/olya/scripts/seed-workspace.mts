@@ -59,6 +59,23 @@ const sshDir = join(HOME_DIR, ".ssh")
 const sshConfig = join(sshDir, "config")
 const knownHosts = join(sshDir, "known_hosts")
 
+// Every ssh that reads the config below goes through the egress proxy, whatever started it
+// (activescott/activeassistant#316). GIT_SSH_COMMAND in olya-statefulset.yaml carries the same
+// ProxyCommand, but OpenClaw's claude-cli backend drops that one variable from the environment of
+// the `claude` processes it starts, so git in their shells falls back to the dotfiles'
+// core.sshCommand, `ssh -F` this file, and went direct (activescott/activeassistant#317). At the
+// top because ssh keeps the first value it finds for each option.
+const PROXY_STANZA = [
+  "# Written by seed-workspace.mts: every host through the egress proxy.",
+  "Host *",
+  "  ProxyCommand /scripts/ssh-proxy-connect.mts %h %p",
+  "",
+].join("\n")
+
+function withProxyCommand(config: string): string {
+  return config.startsWith(PROXY_STANZA) ? config : `${PROXY_STANZA}\n${config}`
+}
+
 function log(msg: string): void {
   console.log(`==> ${msg}`)
 }
@@ -118,6 +135,7 @@ chmodSync(sshDir, 0o700)
 writeFileSync(
   sshConfig,
   [
+    PROXY_STANZA,
     "Host github.com",
     "  User git",
     `  IdentityFile ${sshKey}`,
@@ -168,7 +186,7 @@ try {
     stdio: ["ignore", "pipe", "ignore"],
   })
   for (const line of resolved.split("\n")) {
-    if (/^(userknownhostsfile|stricthostkeychecking|identityfile|user) /i.test(line)) {
+    if (/^(userknownhostsfile|stricthostkeychecking|identityfile|user|proxycommand) /i.test(line)) {
       console.log(`    ${line}`)
     }
   }
@@ -251,6 +269,9 @@ execFileSync(join(HOME_DIR, "dotfiles", "script", "setup"), [], {
   env: process.env,
   stdio: "inherit",
 })
+// The dotfiles setup has just replaced the config above with its own.
+writeFileSync(sshConfig, withProxyCommand(readFileSync(sshConfig, "utf8")))
+chmodSync(sshConfig, 0o600)
 
 // Right after the dotfiles setup that installs the git identity and signing config, because this
 // is the rest of that same configuration. It writes a different file on purpose; see

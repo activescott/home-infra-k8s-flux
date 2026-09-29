@@ -121,7 +121,8 @@ spec:
           protocol: TCP
 ---
 # The assistant's proxy (olya-egress-squid.conf): reachable from olya-0 only, and out to the
-# internet but no private network. Same egress as the browser's proxy above.
+# internet but no private network, and to the approval app for its check. Same egress as the
+# browser's proxy above otherwise.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -157,6 +158,15 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16 # link-local, including cloud metadata endpoints
               - 127.0.0.0/8
+    # GET /internal/allowlist/check and POST /internal/allowlist/requests, from the helper,
+    # for every host that is not a standing one (browser-chaperone#18).
+    - to:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 3400
+          protocol: TCP
     # DNS, for the destinations and for the reverse lookup that puts the pod name in the log.
     - to:
         - namespaceSelector:
@@ -297,7 +307,8 @@ spec:
           protocol: TCP
 ---
 # The approval app holds every write route to the allowlist. In-cluster, the browser service,
-# the Slack relay and the MCP gateway call it; people reach the UI through Traefik. Ingress only: what the app
+# the Slack relay, the MCP gateway and the assistant's proxy call it; people reach the UI through
+# Traefik. Ingress only: what the app
 # itself needs to reach is decided when it is deployed.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -321,6 +332,9 @@ spec:
         - podSelector:
             matchLabels:
               app: mcp-gateway
+        - podSelector:
+            matchLabels:
+              app: olya-egress-proxy
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
