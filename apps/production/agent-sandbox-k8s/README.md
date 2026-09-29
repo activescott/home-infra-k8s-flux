@@ -117,12 +117,15 @@ kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig run privesc \
   --overrides='{"spec":{"containers":[{"name":"privesc","image":"mirror.gcr.io/library/alpine:3.20","securityContext":{"privileged":true,"capabilities":{"drop":["ALL"]}}}]}}'
 kubectl --context nas -n agent-sandbox-k8s logs -l app=vcluster --tail=50 | grep -i violat
 
-# The externalIPs denial. Expect the virtual Service to be created and the host Service to be
-# refused by agent-sandbox-k8s-service-external-ips, with the message on the syncer's events:
+# The externalIPs denial. Expect the virtual Service to be created, the patch to it to be
+# refused by agent-sandbox-k8s-service-external-ips, and the message on the syncer's events.
+# The host Service exists here because it was created before the patch; what matters is that
+# it never carries the field:
 kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig create service clusterip hijack --tcp=53:53
 kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig patch service hijack \
   -p '{"spec":{"externalIPs":["10.1.111.1"]}}'
-kubectl --context nas -n agent-sandbox-k8s get service hijack   # expect NotFound
+kubectl --context nas -n agent-sandbox-k8s get service hijack \
+  -o jsonpath='{.spec.externalIPs}{"\n"}'   # expect empty
 kubectl --context nas -n agent-sandbox-k8s logs -l app=vcluster --tail=50 | grep -i externalIPs
 
 # The capability requirement. The first pod is refused, the second runs. Both are host admission,
@@ -165,8 +168,13 @@ olya-0.
 
 3. A Service carrying `externalIPs` or `loadBalancerIP` never reaches kube-proxy. Run the
    `hijack` commands above, then repeat the patch with `loadBalancerIP`. Passes if the virtual
-   Service exists, the host Service does not, and the denial names
-   `agent-sandbox-k8s-service-external-ips`. Separate from 2 because it is a node-wide traffic
+   Service exists, the host Service never carries the field, and the denial names
+   `agent-sandbox-k8s-service-external-ips`. Whether the host Service exists at all is down to
+   ordering, and both orders pass: created with the field already set, the whole Service is
+   refused at `kubectl apply`; created plain and patched afterwards, the host copy is already
+   there and stays, with the patch refused and the field absent. kube-proxy installs a DNAT
+   for an address that reached it, so a host Service without the field is the same result as
+   no host Service. Separate from 2 because it is a node-wide traffic
    hijack needing no kernel bug, and it is what a reviewer who knows Kubernetes asks about first.
    `SandboxServiceExternalIP` is blocked on the audit log the same way.
 
