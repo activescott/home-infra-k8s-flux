@@ -91,6 +91,21 @@ spec:
       ports:
         - port: 18789
           protocol: TCP
+    # The approval app, posting each decision to the chaperone-wake plugin's
+    # /chaperone/decision route (activescott/activeassistant#543). That route takes its own
+    # token and grants nothing, but the port carries every gateway surface, and the app's pod IP
+    # is inside gateway.trustedProxies in openclaw.json, so it can send forwarded headers of its
+    # choosing. Everything else on the port still wants the gateway or hooks token.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: browser-chaperone-prod
+          podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 18789
+          protocol: TCP
 
   egress:
     # The internet, and nothing on any private network. The `except` blocks carve out all of

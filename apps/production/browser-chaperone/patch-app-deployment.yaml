@@ -30,6 +30,16 @@
     # (browser-chaperone#39): Olya can always mail an operator and read what one sends her.
     - name: OPERATOR_EMAIL_ADDRESSES
       value: scott@willeke.com
+    # After each decision the app posts the request id and the decision to the chaperone-wake
+    # plugin in olya-0, which wakes the session that raised it (activescott/activeassistant#543).
+    # olya-networkpolicy.yaml admits this pod on 18789 for it.
+    - name: AGENT_WAKE_URL
+      value: http://olya.olya.svc:18789/chaperone/decision
+    - name: AGENT_WAKE_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: agent-wake-token
+          key: chaperone_wake_token
 - op: add
   path: /spec/template/spec/containers/0/envFrom/-
   value:
