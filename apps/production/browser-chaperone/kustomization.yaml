@@ -59,13 +59,14 @@ configMapGenerator:
       - EGRESS_PROXY_URL=http://egress-proxy:3128
       - AGENT_IDENTITY=olya
       - NODE_ENV=production
-  # The operators' channel (#dream-on), where the app posts each waiting request
+  # SLACK_NOTIFY_CHANNEL is its own channel, where the app posts each waiting request
   # (browser-chaperone#23). Read by the app, which names it, and by the Slack relay, which
   # refuses the app's credential anywhere else. The OPERATOR_* ids are the app's start-up
-  # grants (browser-chaperone#34): a DM grant per operator and a post grant for the channel.
+  # grants (browser-chaperone#34): a DM grant per operator and a post grant for the
+  # operators' channel, #dream-on.
   - name: slack-notify-config
     literals:
-      - SLACK_NOTIFY_CHANNEL=C0C4YKR21DW
+      - SLACK_NOTIFY_CHANNEL=C0C5E2Z358E
       - OPERATOR_SLACK_USER_IDS=U0FS2ER1Q
       - OPERATOR_SLACK_CHANNEL_ID=C0C4YKR21DW
 secretGenerator:
