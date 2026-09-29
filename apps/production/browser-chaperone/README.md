@@ -62,6 +62,28 @@ the whole point of the relay, so do not shortcut step 4 by copying a Slack token
    `invalid_auth` on every call, with nothing else to say what went wrong.
 5. Commit both `.encrypted` files and merge. That rolls olya-0.
 
+## Slack approve/deny buttons
+
+The notice's buttons (browser-chaperone#54) need a second Slack app, with Socket Mode off,
+bot scope `chat:write`, and Interactivity on with Request URL
+`https://chaperone.pingpoet.com/slack/interactions`. Install it and invite its bot to the
+`SLACK_NOTIFY_CHANNEL` channel.
+
+Two values, in two files:
+
+1. `SLACK_NOTIFY_BOT_TOKEN` (Secret `slack-relay-creds`, read by the relay): that app's bot
+   token, added as a fifth line in the existing file:
+   `./scripts/onepassword-secrets.mts edit apps/production/browser-chaperone/.env.secret.slack-relay`
+   Left unset, the relay posts the notice as Olya's bot and the buttons do nothing.
+2. `SLACK_SIGNING_SECRET` (Secret `slack-signing-creds`, read by the app): that app's
+   signing secret, replacing the placeholder committed in
+   `.env.secret.slack-signing.encrypted`:
+   `./scripts/onepassword-secrets.mts edit apps/production/browser-chaperone/.env.secret.slack-signing`
+
+Roll out the relay (step 1) first: without `SLACK_NOTIFY_BOT_TOKEN` the app's
+`SLACK_SIGNING_SECRET` and `SLACK_APPROVER_USER_IDS` verify clicks on a notice that was
+never sent as the second app, so they do nothing.
+
 ## Slack request notice
 
 The app posts each waiting request to `SLACK_NOTIFY_CHANNEL` through the relay
