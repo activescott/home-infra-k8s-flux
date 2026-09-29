@@ -68,6 +68,32 @@ spec:
     # here, so give it a tty.
     tty: true
 
+    # A second record of every rule match, for the two Falco alerts to check
+    # the Loki-derived counter against (activescott/activeassistant#402).
+    # Alloy re-reads the last line of a log stream when it reopens it hourly
+    # (grafana/alloy#7192) and counts that line again, so the Loki counter
+    # alone can fire on a match that happened hours ago. Falco's own counter
+    # only moves when the engine matches.
+    #
+    # The chart turns on webserver.prometheus_metrics_enabled when this is
+    # enabled. Falco builds /metrics from its state on every request, so
+    # `interval` (which paces the snapshot rule and file outputs, both off
+    # here) does not delay the counter. rulesCountersEnabled is what emits
+    # falcosecurity_falco_rules_matches_total{rule_name=...}; the other
+    # counter families are the chart's defaults and are not alerted on.
+    # Scraped by the kubernetes-pods job through the annotations below, so
+    # the chart's Service is not needed.
+    metrics:
+      enabled: true
+      rulesCountersEnabled: true
+      service:
+        create: false
+
+    podAnnotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8765"
+      prometheus.io/path: "/metrics"
+
     resources:
       requests:
         cpu: 100m
@@ -720,13 +746,35 @@ spec:
         - list: nas1_kubernetes_api_addresses
           items: ['"172.17.0.1"']
 
+        # The vcluster syncer talks to nas1's API server for a living: it
+        # watches and writes every synced object there, and the
+        # vcluster-control-plane NetworkPolicy allows it. It connects on every
+        # vcluster start (19 matches after the 2026-09-24 rollout, #402).
+        #
+        # Same pin as vcluster_control_plane_own_token above: no workload can
+        # take the pod name, because the syncer gives every pod it creates a
+        # -x-<ns>-x-agent-sandbox suffix, and /vcluster alone would be a path
+        # any image can carry. Only the API server's Service address on 443 is
+        # excepted, so any other process, container or pod reaching the API
+        # server still matches, and so does the syncer itself reaching the
+        # node, the LAN or any other private address.
+        - macro: vcluster_control_plane_api_server
+          condition: >
+            (k8s.ns.name = "agent-sandbox-k8s"
+             and k8s.pod.name = "agent-sandbox-0"
+             and container.name = "syncer"
+             and proc.exepath in (vcluster_control_plane_exepaths)
+             and fd.sip = "172.17.0.1"
+             and fd.rport = 443)
+
         - rule: Agent sandbox container made an unexpected private network connection
           desc: >
             A sandbox container connected to an RFC1918 address that is neither the pod nor
             the service network, or to the cluster's own API server. That covers the node
             itself, the LAN, the firewall, and kube-apiserver: everything the sandboxes are
-            supposed to be unable to reach. Public internet egress is not matched here, it is
-            the sandbox NetworkPolicy's job.
+            supposed to be unable to reach. The vcluster syncer's own API server connection is
+            excluded by pod, container and binary path. Public internet egress is not matched
+            here, it is the sandbox NetworkPolicy's job.
           condition: >
             outbound
             and container
@@ -734,6 +782,7 @@ spec:
             and fd.snet in (rfc_1918_addresses)
             and (fd.sip in (nas1_kubernetes_api_addresses)
                  or not fd.snet in (nas1_cluster_networks))
+            and not vcluster_control_plane_api_server
           output: >
             Unexpected private network connection from a sandbox namespace
             (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name connection=%fd.name
