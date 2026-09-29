@@ -1,7 +1,8 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // ssh's ProxyCommand for git over SSH, so `git push` goes through the egress proxy and shows up
 // in its log like everything else (activescott/activeassistant#316). GIT_SSH_COMMAND in
-// olya-statefulset.yaml runs it as `ssh-proxy-connect.mts %h %p`.
+// olya-statefulset.yaml runs it as `ssh-proxy-connect.mts %h %p`, and so does the ~/.ssh/config
+// that seed-workspace.mts writes, for the shells that do not get that variable.
 //
 // It sends `CONNECT host:port` to $HTTPS_PROXY and, once the proxy answers 200, copies stdin to
 // the tunnel and the tunnel to stdout. The image has no nc or socat to do this.

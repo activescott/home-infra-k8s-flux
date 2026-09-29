@@ -1,5 +1,7 @@
 # Squid, as the assistant's forwarding proxy. See olya-egress-squid.conf for what it does and
-# does not do. Same image and shape as egress-proxy-deployment.yaml.
+# does not do. Same shape as egress-proxy-deployment.yaml. The image is browser-chaperone's
+# network-proxy, which is the same Squid with the approval check's helper in it
+# (browser-chaperone#18).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,6 +35,8 @@ spec:
               app: olya-egress-proxy
       enableServiceLinks: false
       automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: github-container-registry-secret
       securityContext:
         # The image's own non-root user (`_daemon_`), which owns its writable directories.
         runAsUser: 584792
@@ -42,15 +46,32 @@ spec:
           type: RuntimeDefault
       containers:
         - name: squid
-          image: ubuntu/squid:7.2-26.04_edge@sha256:77585a8f42b57872b96c6c10de8d0199642256b9390beeb6e99afa5de8a71e1c
-          # The image's entrypoint is pebble, which runs a script that tails log files into
+          image: browser-chaperone-image-network-proxy
+          # The ubuntu/squid entrypoint is pebble, which runs a script that tails log files into
           # stdout. squid.conf writes the log to stdout directly, so squid runs as PID 1
-          # instead. -N keeps it in the foreground; there is no cache_dir, so no -z step.
+          # instead. -N keeps it in the foreground; there is no cache_dir, so no -z step. The
+          # network-proxy image's entrypoint already does this; the command stays so the
+          # config path is visible here.
           command:
             - /usr/sbin/squid-gnutls
             - -N
             - -f
             - /etc/squid-egress/squid.conf
+          # Squid passes its environment to the helper, which is where these are read.
+          env:
+            # report_only: a host with no approval raises a request and logs a would-deny, and
+            # the connection still goes through. enforce refuses it with a 403. Enforce once the
+            # would-deny log is quiet (browser-chaperone#18).
+            - name: NETWORK_CHAPERONE_MODE
+              value: report_only
+            - name: CHAPERONE_URL
+              value: http://app:3400
+            # Named in every refusal, for the operator who approves it.
+            - name: REQUESTS_URL
+              value: https://chaperone.pingpoet.com/requests
+          envFrom:
+            - secretRef:
+                name: internal-api-token
           ports:
             - name: proxy
               containerPort: 3128
