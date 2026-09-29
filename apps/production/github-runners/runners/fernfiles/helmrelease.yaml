@@ -115,3 +115,5 @@ spec:
               - --group=$(DOCKER_GROUP_GID)
               - --exec-opt
               - native.cgroupdriver=systemd
+              # Pod network MTU is 1450 (flannel); match it so nested containers do not rely on PMTUD.
+              - --mtu=1450

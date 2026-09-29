@@ -77,11 +77,6 @@ secretGenerator:
   - name: olya-ssh
     files:
       - id_ed25519=olya-ssh.secret.encrypted
-  # Google Workspace MCP credentials. Client ID, secret, and the credential JSON
-  # from the OAuth consent flow. See env.secret.google-workspace.example.
-  - name: olya-google-workspace
-    envs:
-      - .env.secret.google-workspace.encrypted
   # Key: openclaw_hooks_token, the bearer token Alertmanager presents to the gateway's /hooks
   # endpoint. Same value as
   # monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted;
@@ -90,7 +85,14 @@ secretGenerator:
   - name: olya-hooks
     envs:
       - .env.secret.olya-hooks.public-key-encrypted.encrypted
+  # Key: mcp_gateway_token, what she presents to the MCP gateway (browser-chaperone#39). Same
+  # value as gateway_client_token in
+  # ../browser-chaperone/.env.secret.mcp-gateway-token.public-key-encrypted.encrypted; rotate
+  # both together.
+  - name: olya-mcp-gateway
+    envs:
+      - .env.secret.olya-mcp-gateway.public-key-encrypted.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790309606 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1790698612 # {"$imagepolicy": "flux-system:policy-olya:tag"}
