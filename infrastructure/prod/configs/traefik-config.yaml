@@ -41,7 +41,9 @@ spec:
       # requests a middleware refused, which never reach the app.
       #
       # Request headers are dropped (the chart default), so cookies and
-      # Authorization never reach Loki. RequestPath keeps the query string.
+      # Authorization never reach Loki. RequestPath keeps the query string;
+      # Alloy blanks the values of key, token, _wpnonce, pass and password
+      # parameters before shipping (apps/production/monitoring/alloy).
       access:
         enabled: true
         format: json
