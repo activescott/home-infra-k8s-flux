@@ -1900,13 +1900,17 @@ spec:
           # series' first sample, so the `unless ... offset 5m` arm catches the birth. Without it
           # the first event after an Alloy restart would never alert. sum by (namespace) for the
           # reason in the tinkerbell-log-health group.
+          #
+          # Only requests that reached WordPress count. With the tenant's ingress in place, an
+          # internet client asking for the REST API, wp-login.php or wp-admin gets a 403 from
+          # Traefik and appears only in Traefik's access log:
+          #   {namespace="kube-system", container="traefik"} | json | RequestHost="mmm.willeke.com"
           - name: wordpress-security
             rules:
               # A LAN editor session can legitimately use this endpoint (the block editor batches
-              # widget and menu saves), so the first question is the client address. Without the
-              # LAN allowlist in the tenant's ingress this fires most days: in September 2026
-              # internet scanners got a 2xx from it on 15 of 25 days, since WordPress answers the
-              # batch request itself with 207 even when every sub-request fails.
+              # widget and menu saves), so the first question is the client address. WordPress
+              # answers the batch request itself with 207 even when every sub-request fails, so a
+              # 2xx here does not by itself mean anything changed.
               - alert: WordPressRestBatchSucceeded
                 expr: >-
                   sum by (namespace) (increase(loki_process_custom_wordpress_rest_batch_2xx_total[5m])) > 0
@@ -1916,10 +1920,11 @@ spec:
                 annotations:
                   summary: 'WordPress in {{ $labels.namespace }} answered a REST batch request with 2xx.'
                   description: >-
-                    A request to rest_route=/batch/v1 or /wp-json/batch/v1 succeeded. The ingress
-                    allows this endpoint from the LAN only. If the client address in the log line
-                    is not a LAN address, check the ingress middlewares and wp_users for accounts
-                    nobody created.
+                    A request to rest_route=/batch/v1 or /wp-json/batch/v1 reached WordPress and
+                    got a 2xx. The ingress allows this endpoint from the LAN only; internet
+                    attempts get a 403 from Traefik and show only in Traefik's access log, never
+                    here. If the client address in this log line is not a LAN address, check the
+                    ingress middlewares and wp_users for accounts nobody created.
                   query: '{app="wordpress", container="wordpress"} |~ "(?i)(rest_route=(/|%2f)batch(/|%2f)v1|/wp-json/+batch/v1)"'
                   repo: activescott/home-infra-k8s-flux
               - alert: WordPressUserLoginWarning
@@ -1945,10 +1950,10 @@ spec:
                 annotations:
                   summary: 'Request for a .ph* path under wp-content/uploads in {{ $labels.namespace }}.'
                   description: >-
-                    Someone asked for a PHP-looking file in the uploads directory. Apache refuses
-                    to run or serve those, so on its own this is an attempt. A 200 means the file
-                    exists on the volume and something uploaded it; look at it and at the requests
-                    before it.
+                    A request for a PHP-looking file in the uploads directory reached WordPress's
+                    Apache. Apache refuses to run or serve those, so on its own this is an
+                    attempt. A 200 means the file exists on the volume and something uploaded it;
+                    look at it and at the requests before it.
                   query: '{app="wordpress", container="wordpress"} |~ "(?i)/wp-content/uploads/[^ ?]*([.]|%2e)ph"'
                   repo: activescott/home-infra-k8s-flux
 
