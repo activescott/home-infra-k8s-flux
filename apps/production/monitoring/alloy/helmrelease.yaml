@@ -866,6 +866,70 @@ spec:
               }
             }
 
+            // WordPress (apps/base/wordpress-upstream), read from the
+            // wordpress container's Apache access and PHP error log. These feed
+            // the wordpress-security alert group. Each should stay at zero; the
+            // matched phrases are WordPress's and Apache's own, so an image
+            // bump that changes the log format silences them without an error.
+            // Verify by sending a matching request once, never by silence.
+            //
+            // The REST batch endpoint answering 2xx, in either spelling:
+            //   "POST /?rest_route=/batch/v1&... HTTP/1.1" 207 ...
+            //   "POST /wp-json/batch/v1 HTTP/1.1" 200 ...
+            // [^ ]* keeps the match inside the request field, so a Referer
+            // naming the endpoint does not count.
+            stage.match {
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ [^ ]*(rest_route=(/|%2f)batch(/|%2f)v1|/wp-json/+batch/v1)[^ ]* http/[0-9.]+. 2[0-9][0-9] \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "wordpress_rest_batch_2xx_total"
+                  description = "requests to the WordPress REST batch endpoint that returned 2xx"
+                  match_all   = true
+                  action      = "inc"
+                  // Expected to be idle for months; the 5m default would
+                  // delete the series between events.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // PHP's warning from wp-includes/user.php when a user is written
+            // without a user_login field:
+            //   PHP Warning:  Undefined array key "user_login" in /var/www/html/wp-includes/user.php
+            stage.match {
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |= \"Undefined array key \\\"user_login\\\"\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "wordpress_user_login_warning_total"
+                  description = "PHP user_login warnings from wp-includes/user.php"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Any request for a path under wp-content/uploads containing
+            // ".ph", whatever the status. Nothing legitimate asks for one;
+            // Apache refuses to run or serve them (the base's
+            // configmap-apache-uploads-no-php.yaml), so this is for knowing
+            // someone tried. Only the path is matched, not the query string.
+            stage.match {
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ /+wp-content/uploads/[^ ?]*([.]|%2e)ph[^ ]* http/\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "wordpress_uploads_php_request_total"
+                  description = "requests for .ph* paths under wp-content/uploads"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 

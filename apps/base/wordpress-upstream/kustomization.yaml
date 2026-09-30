@@ -27,5 +27,7 @@ resources:
   - statefulset-mariadb.yaml
   - service-mariadb.yaml
   - configmap-php-uploads.yaml
+  - configmap-php-rest-route-guard.yaml
+  - configmap-apache-uploads-no-php.yaml
   - deployment-wordpress.yaml
   - service-wordpress.yaml

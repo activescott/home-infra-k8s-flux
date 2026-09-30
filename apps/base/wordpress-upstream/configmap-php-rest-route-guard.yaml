@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-php-rest-route-guard
+data:
+  rest-route-guard.ini: |
+    auto_prepend_file = /usr/local/etc/php/rest-route-guard.php
+  # Runs before every PHP request.
+  #
+  # The tenant's Traefik rules keep the REST API off the internet partly by
+  # matching the `rest_route` query parameter, and Traefik only sees that
+  # parameter under its literal name in the URL. WordPress also accepts it
+  # two ways Traefik cannot see:
+  #   - in a POST body: WP::parse_request reads public query vars from $_POST
+  #     before $_GET;
+  #   - under names PHP rewrites to rest_route: `rest.route`, `rest route` and
+  #     `rest[route` all arrive as $_GET['rest_route'].
+  # Both are refused here. The block editor and REST clients send it in the
+  # URL under its own name, which Traefik handles.
+  rest-route-guard.php: |
+    <?php
+    if (
+        isset($_POST['rest_route'])
+        || (isset($_GET['rest_route'])
+            && !preg_match('/(?:^|&)rest_route=/', $_SERVER['QUERY_STRING'] ?? ''))
+    ) {
+        http_response_code(403);
+        exit;
+    }

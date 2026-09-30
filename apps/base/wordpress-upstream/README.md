@@ -9,7 +9,7 @@ using the Docker official images. Replaces the legacy Bitnami chart
 
 | Resource | Image | Notes |
 |---|---|---|
-| `Deployment/wordpress` | `wordpress:6.9.1-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). |
+| `Deployment/wordpress` | `wordpress:7.1.2-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). Read-only root and core; only wp-content is writable. |
 | `Service/wordpress` | — | ClusterIP, port 80. |
 | `StatefulSet/mariadb` | `mariadb:12.2.2-noble` | 1 replica. uid:gid 999:999 (mysql). |
 | `Service/mariadb` | — | Headless, port 3306. |
@@ -50,12 +50,19 @@ In the tenant namespace:
    reliable across migrations; setting these in wp-config.php pins
    the URL deterministically per environment.
 
+   The same value must also carry the hardening constants. Core is
+   read-only, so WordPress must not try to update it, and plugins and
+   themes cannot be installed or edited from the dashboard.
+
    Example:
    ```yaml
    - name: WORDPRESS_CONFIG_EXTRA
      value: |
        define('WP_HOME',    'https://example.com');
        define('WP_SITEURL', 'https://example.com');
+       define('WP_AUTO_UPDATE_CORE', false);
+       define('DISALLOW_FILE_EDIT', true);
+       define('DISALLOW_FILE_MODS', true);
    ```
 
 ## Reference overlay

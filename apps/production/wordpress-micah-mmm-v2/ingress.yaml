@@ -1,23 +1,101 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# Routing for https://mmm.willeke.com/. NOT in kustomization.yaml's resources while the site is
+# offline; adding it there is the whole of turning the site on. As committed, the catch-all
+# route below carries lan-only, so turning it on gives a LAN-only preview. Deleting that one
+# line then opens the public site.
+#
+# An IngressRoute rather than an Ingress because the admin surface has to be matched on a query
+# parameter (`?rest_route=`), and an Ingress can only match paths. Nothing creates the
+# certificate for an IngressRoute, so the Certificate is declared here.
+#
+# Public: pages, posts, media, theme assets.
+# LAN only: wp-login.php, wp-admin, the REST API in both its forms (/wp-json/... anywhere in the
+# path, which covers /index.php/wp-json and other PATH_INFO spellings, and any request with a
+# `rest_route` query parameter).
+# Refused for everyone: xmlrpc.php.
+# `rest_route` can also reach WordPress in a POST body or under a name PHP rewrites to it, which
+# Traefik cannot see; the base's configmap-php-rest-route-guard.yaml refuses those in PHP.
+#
+# REQUIRES the LAN DNS override mmm.willeke.com -> 10.1.111.20, for the same reason as
+# olya.activescott.com: without it LAN clients hairpin through the router, arrive as its
+# address, and lan-only correctly refuses them. See "New hostname checklist" in the repo README.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mmm-willeke-com
+spec:
+  secretName: mmm-willeke-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  commonName: mmm.willeke.com
+  dnsNames:
+    - mmm.willeke.com
+---
+# Same ranges as olya-lan-only in apps/production/olya/olya-ingress.yaml, which explains why the
+# gateway and the node (.1, .10, .20) are excluded and must stay excluded: a source-address
+# regression then locks the LAN out instead of letting the internet in. Matching is on the TCP
+# source address, not X-Forwarded-For.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: lan-only
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/ipallowlist/
+  ipAllowList:
+    sourceRange:
+      - 10.1.111.5/32 # Scott's Mac
+      - 10.1.111.32/27 # .32-.63
+      - 10.1.111.64/26 # .64-.127
+      - 10.1.111.128/25 # .128-.255
+---
+# 403 for everyone, the same way as gpupoet-ops-deny in apps/production/gpupoet: nothing
+# reaches Traefik from loopback.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: deny-all
+spec:
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: wordpress
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-production
 spec:
-  ingressClassName: traefik
-  rules:
-    - host: mmm.willeke.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: wordpress
-                port:
-                  name: http
+  entryPoints:
+    - websecure
+  # Explicit priorities, highest wins. All three stay far below the default priority (rule
+  # length, 100+ characters) of cert-manager's HTTP-01 solver route, so renewals still reach the
+  # solver. The patterns are case-insensitive and allow repeated leading slashes because
+  # WordPress trims slashes and matches its rewrite rules on the trimmed path.
+  routes:
+    - kind: Rule
+      match: Host(`mmm.willeke.com`) && PathRegexp(`(?i)^/+xmlrpc\.php`)
+      priority: 30
+      middlewares:
+        - name: deny-all
+      services:
+        - name: wordpress
+          port: http
+    - kind: Rule
+      match: >-
+        Host(`mmm.willeke.com`) && (PathRegexp(`(?i)^/+wp-login\.php`) || PathRegexp(`(?i)^/+wp-admin`)
+        || PathRegexp(`(?i)/wp-json(/|$)`) || QueryRegexp(`rest_route`, `.*`))
+      priority: 20
+      middlewares:
+        - name: lan-only
+      services:
+        - name: wordpress
+          port: http
+    - kind: Rule
+      match: Host(`mmm.willeke.com`)
+      priority: 10
+      # LAN-only preview. Delete the next line to open the site to the internet.
+      middlewares: [{ name: lan-only }]
+      services:
+        - name: wordpress
+          port: http
   tls:
-    - hosts:
-        - mmm.willeke.com
-      secretName: mmm-willeke-com-tls
+    secretName: mmm-willeke-com-tls

@@ -23,6 +23,8 @@ spec:
         fsGroup: 999
         runAsUser: 999
         runAsGroup: 999
+      # MariaDB never calls the Kubernetes API.
+      automountServiceAccountToken: false
       containers:
         - name: mariadb
           # Tags: https://hub.docker.com/_/mariadb/tags

@@ -25,10 +25,53 @@ spec:
       # Official wordpress image runs Apache as www-data (uid:gid 33:33).
       securityContext:
         fsGroup: 33
+      # WordPress never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      initContainers:
+        # Core lives in the image, not on a volume, and the running container
+        # cannot change it: /var/www/html is mounted read-only below. That
+        # stops WordPress from updating itself in place, which used to mean
+        # the running version silently reverted to the image tag on every
+        # restart. A core update is now an image bump and nothing else.
+        #
+        # The image's entrypoint copies /usr/src/wordpress into
+        # /var/www/html and writes wp-config.php when index.php is missing.
+        # `docker-ensure-installed.sh` is the same script
+        # (docker-library/wordpress#969): it does that work and then execs
+        # its arguments, here `true`, instead of starting Apache. It needs
+        # one WORDPRESS_* variable to decide to write wp-config.php; the
+        # file reads everything else from the environment at request time,
+        # so the secrets stay on the main container.
+        #
+        # wp-content is mounted so the copy skips it the same way it did
+        # before, adding only bundled themes and plugins that are missing.
+        - name: install-core
+          image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+          command: ["docker-ensure-installed.sh"]
+          args: ["true"]
+          workingDir: /var/www/html
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: mariadb
+          securityContext:
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - mountPath: /var/www/html
+              name: wordpress-core
+            - mountPath: /var/www/html/wp-content
+              name: wp-content
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
       containers:
         - name: wordpress
           # Tags: https://hub.docker.com/_/wordpress/tags
-          image: wordpress:7.1.0-php8.3-apache@sha256:5a93c470ae8220fddf71f6ebe3bc94e615ddc2ae4d9810f795b830fb11c41a17
+          # Keep in step with install-core above; Renovate bumps both.
+          image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
           env:
             # In-namespace DNS name of the mariadb Service.
             - name: WORDPRESS_DB_HOST
@@ -98,12 +141,36 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          securityContext:
+            readOnlyRootFilesystem: true
           volumeMounts:
+            - mountPath: /var/www/html
+              name: wordpress-core
+              readOnly: true
             - mountPath: /var/www/html/wp-content
               name: wp-content
+            # PHP uploads, sessions and image processing.
+            - mountPath: /tmp
+              name: tmp
+            # APACHE_RUN_DIR and APACHE_LOCK_DIR from /etc/apache2/envvars:
+            # the pid file and the mutexes. Logs are symlinks to
+            # stdout/stderr and need nothing.
+            - mountPath: /var/run/apache2
+              name: apache-run
+            - mountPath: /var/lock/apache2
+              name: apache-lock
             - mountPath: /usr/local/etc/php/conf.d/uploads.ini
               subPath: uploads.ini
               name: php-uploads
+            - mountPath: /usr/local/etc/php/conf.d/zz-rest-route-guard.ini
+              subPath: rest-route-guard.ini
+              name: php-rest-route-guard
+            - mountPath: /usr/local/etc/php/rest-route-guard.php
+              subPath: rest-route-guard.php
+              name: php-rest-route-guard
+            - mountPath: /etc/apache2/conf-enabled/zz-uploads-no-php.conf
+              subPath: uploads-no-php.conf
+              name: apache-uploads-no-php
           resources:
             limits:
               memory: "1Gi"
@@ -131,6 +198,25 @@ spec:
         - name: wp-content
           persistentVolumeClaim:
             claimName: wordpress-wp-content
+        - name: wordpress-core
+          emptyDir:
+            sizeLimit: 512Mi
+        # Sized for upload_max_filesize in configmap-php-uploads.yaml.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 3Gi
+        - name: apache-run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: apache-lock
+          emptyDir:
+            sizeLimit: 16Mi
         - name: php-uploads
           configMap:
             name: wordpress-php-uploads
+        - name: php-rest-route-guard
+          configMap:
+            name: wordpress-php-rest-route-guard
+        - name: apache-uploads-no-php
+          configMap:
+            name: wordpress-apache-uploads-no-php
