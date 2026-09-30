@@ -15,7 +15,9 @@ spec:
         #   1. PostHog geo-location and IP-based analytics.
         #   2. Every Traefik `ipAllowList` middleware in this repo, currently
         #      apps/production/olya/olya-ingress.yaml, which restricts the
-        #      OpenClaw Control UI to the LAN. It matches on the TCP source
+        #      OpenClaw Control UI to the LAN, and
+        #      apps/production/wordpress-micah-mmm-v2/ingress.yaml, which does
+        #      the same for the WordPress admin. It matches on the TCP source
         #      address. Set this to Cluster and k3s's svclb MASQUERADEs, so every
         #      request arrives as the node (10.1.111.20) rather than the client.
         #
@@ -24,8 +26,49 @@ spec:
         # closed, but the symptom shows up in an unrelated app with no hint that
         # the cause is this line.
         externalTrafficPolicy: Local
+      # A ClusterIP-only Service for the `internal` entrypoint below. The chart
+      # renders one Service per key here, and a port lands on a Service only if
+      # its `expose` map names that Service, so `internal` stays off the
+      # LoadBalancer Service that LAN and WAN traffic arrives through.
+      additionalServices:
+        internal:
+          type: ClusterIP
+    logs:
+      # One JSON line per request, shipped to Loki like any pod's stdout:
+      #   {namespace="kube-system", container="traefik"} | json | RequestHost="mmm.willeke.com"
+      # Before this Traefik logged errors only, and the only request record for
+      # a site was whatever its own container chose to log. This also records
+      # requests a middleware refused, which never reach the app.
+      #
+      # Request headers are dropped (the chart default), so cookies and
+      # Authorization never reach Loki. RequestPath keeps the query string;
+      # Alloy blanks the values of key, token, _wpnonce, pass and password
+      # parameters before shipping (apps/production/monitoring/alloy).
+      access:
+        enabled: true
+        format: json
     ports:
+      # Plain HTTP for in-cluster callers, with no redirect to HTTPS. The `web`
+      # redirect below is a router bound to `web` alone, so it does not reach
+      # this entrypoint. An Ingress opts in with the annotation
+      # `traefik.ingress.kubernetes.io/router.entrypoints: internal`.
+      # activescott/activeassistant#569.
+      internal:
+        port: 8001
+        exposedPort: 8001
+        expose:
+          default: false
+          internal: true
+        protocol: TCP
       web:
+        # `asDefault` on web and websecure keeps every Ingress without a
+        # router.entrypoints annotation off `internal`. Traefik 3.3.6 attaches
+        # such routers to every non-UDP entrypoint except `traefik` unless at
+        # least one entrypoint sets asDefault (`getDefaultsEntrypoints` in
+        # cmd/traefik/traefik.go). Before this that list included `metrics`,
+        # so every Ingress was also served on :9100 inside the cluster; that
+        # stops too.
+        asDefault: true
         # Redirect every plain-HTTP request to HTTPS, for every ingress in the
         # cluster, current and future.
         #
@@ -118,3 +161,6 @@ spec:
         # StalwartServedCertExpiringSoon and the four per-domain
         # *CertExpiringSoon rules -- but only after it has already gone wrong,
         # which is why the check above is still worth running deliberately.
+      websecure:
+        # See the asDefault note on `web`.
+        asDefault: true

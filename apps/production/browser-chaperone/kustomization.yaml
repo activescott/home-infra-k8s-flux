@@ -113,6 +113,12 @@ secretGenerator:
   - name: mcp-gateway-token
     envs:
       - .env.secret.mcp-gateway-token.public-key-encrypted.encrypted
+  # Key: chaperone_wake_token, what the app presents when it wakes Olya's session on a decision
+  # (activescott/activeassistant#543). Same value as chaperone_wake_token in
+  # ../olya/.env.secret.olya-chaperone-wake.public-key-encrypted.encrypted; rotate both together.
+  - name: agent-wake-token
+    envs:
+      - .env.secret.agent-wake-token.public-key-encrypted.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
