@@ -1,8 +1,9 @@
 # Traefik 3.4+ starts a ConfigMap informer in the CRD provider unconditionally
-# (ServersTransport rootCAs), and the provider fails to start if that informer
-# cannot sync. k3s's chart 34.2.1 renders its ClusterRole for Traefik 3.3 and
-# grants no configmaps, so without this every Middleware and IngressRoute would
-# drop out, including the Authelia ForwardAuth and the ipAllowList denies.
+# (ServersTransport rootCAs). k3s's chart 34.2.1 renders its ClusterRole for
+# Traefik 3.3 and grants no configmaps, so without this the informer blocks
+# and retries forever: the reflector logs "Failed to watch" ... configmaps is
+# forbidden, and every Middleware and IngressRoute drops out, including the
+# Authelia ForwardAuth and the ipAllowList denies.
 # Delete this once k3s ships a chart whose ClusterRole includes configmaps.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
