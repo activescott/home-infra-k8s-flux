@@ -30,6 +30,20 @@
     # (browser-chaperone#39): Olya can always mail an operator and read what one sends her.
     - name: OPERATOR_EMAIL_ADDRESSES
       value: scott@willeke.com
+    # Who may click Approve or Deny on the Slack notice (browser-chaperone#54, #51).
+    # Separate from OPERATOR_SLACK_USER_IDS on purpose: that one is the standing DM grant,
+    # this one decides who a click is honored from.
+    - name: SLACK_APPROVER_USER_IDS
+      value: U0FS2ER1Q
+    # Verifies the v0 signature on POST /slack/interactions. Optional so the app starts
+    # before the operator writes it; every click gets refused, same as if the second Slack
+    # app were never created.
+    - name: SLACK_SIGNING_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: slack-signing-creds
+          key: SLACK_SIGNING_SECRET
+          optional: true
     # After each decision the app posts the request id and the decision to the chaperone-wake
     # plugin in olya-0, which wakes the session that raised it (activescott/activeassistant#543).
     # olya-networkpolicy.yaml admits this pod on 18789 for it.

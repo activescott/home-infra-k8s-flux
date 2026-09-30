@@ -28,6 +28,16 @@ secretGenerator:
   - name: app-creds
     envs:
       - .env.secret.app.encrypted
+  # Signs the short-lived cookie that binds a WebAuthn ceremony to the browser
+  # it started in; the app refuses to start in production without it
+  # (activescott/ramblefeed#113). `public-key-encrypted` because nobody ever
+  # saw it: it was piped straight into sops against the age recipient and never
+  # written to disk in the clear, so onepassword-secrets.mts skips it rather
+  # than reporting a missing backup. Replacing the file only drops the
+  # challenges in flight, which live seconds.
+  - name: passkey-challenge
+    envs:
+      - .env.secret.passkey-challenge.public-key-encrypted.encrypted
 # the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
 images:
   - name: ramblefeed-image-app

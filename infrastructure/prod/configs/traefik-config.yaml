@@ -24,8 +24,35 @@ spec:
         # closed, but the symptom shows up in an unrelated app with no hint that
         # the cause is this line.
         externalTrafficPolicy: Local
+      # A ClusterIP-only Service for the `internal` entrypoint below. The chart
+      # renders one Service per key here, and a port lands on a Service only if
+      # its `expose` map names that Service, so `internal` stays off the
+      # LoadBalancer Service that LAN and WAN traffic arrives through.
+      additionalServices:
+        internal:
+          type: ClusterIP
     ports:
+      # Plain HTTP for in-cluster callers, with no redirect to HTTPS. The `web`
+      # redirect below is a router bound to `web` alone, so it does not reach
+      # this entrypoint. An Ingress opts in with the annotation
+      # `traefik.ingress.kubernetes.io/router.entrypoints: internal`.
+      # activescott/activeassistant#569.
+      internal:
+        port: 8001
+        exposedPort: 8001
+        expose:
+          default: false
+          internal: true
+        protocol: TCP
       web:
+        # `asDefault` on web and websecure keeps every Ingress without a
+        # router.entrypoints annotation off `internal`. Traefik 3.3.6 attaches
+        # such routers to every non-UDP entrypoint except `traefik` unless at
+        # least one entrypoint sets asDefault (`getDefaultsEntrypoints` in
+        # cmd/traefik/traefik.go). Before this that list included `metrics`,
+        # so every Ingress was also served on :9100 inside the cluster; that
+        # stops too.
+        asDefault: true
         # Redirect every plain-HTTP request to HTTPS, for every ingress in the
         # cluster, current and future.
         #
@@ -118,3 +145,6 @@ spec:
         # StalwartServedCertExpiringSoon and the four per-domain
         # *CertExpiringSoon rules -- but only after it has already gone wrong,
         # which is why the check above is still worth running deliberately.
+      websecure:
+        # See the asDefault note on `web`.
+        asDefault: true
