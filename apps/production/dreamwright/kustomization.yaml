@@ -1,6 +1,7 @@
 resources:
   - namespace.yaml
   - db-pv.yaml
+  - token-keys-pv.yaml
   - ../../base/dreamwright/
   - certificate.yaml
   - www-redirect-middleware.yaml
@@ -14,6 +15,10 @@ patches:
     target:
       kind: StatefulSet
       name: db
+  - path: patch-token-keys-pvc.yaml
+    target:
+      kind: PersistentVolumeClaim
+      name: token-keys
 namespace: dreamwright-prod
 secretGenerator:
   # POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
