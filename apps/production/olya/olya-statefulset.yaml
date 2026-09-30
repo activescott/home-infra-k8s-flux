@@ -314,6 +314,13 @@ spec:
                 secretKeyRef:
                   name: olya-mcp-gateway
                   key: mcp_gateway_token
+            # The chaperone-wake plugin checks the approval app's bearer token against this on
+            # /chaperone/decision. Good for that route only; it has no operator scopes.
+            - name: CHAPERONE_WAKE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-chaperone-wake
+                  key: chaperone_wake_token
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
