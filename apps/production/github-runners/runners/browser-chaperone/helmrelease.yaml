@@ -107,9 +107,6 @@ spec:
           # specs/migrate-dev-to-kind/plan.md "Phase B execution detail"
           # and this repo's docs/specs/gha-runner-self-hosted/summary.md
           # "What would actually break the deadlock".
-          # The systemd flag is not set yet: it never took effect (see
-          # above), and turning it on lands as its own change. See
-          # activescott/browser-chaperone#59.
           #
           # Args here REPLACE the chart default; defaults come from the
           # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
@@ -120,6 +117,8 @@ spec:
               - dockerd
               - --host=unix:///var/run/docker.sock
               - --group=$(DOCKER_GROUP_GID)
+              - --exec-opt
+              - native.cgroupdriver=systemd
               # Pod network MTU is 1450 (flannel); match it so nested containers do not rely on PMTUD.
               - --mtu=1450
             env:
