@@ -746,6 +746,42 @@ spec:
                     {{ $value | printf "%.1f" }} days of validity left on
                     {{ $labels.instance }}. cert-manager normally renews at 30
                     days, so reaching 14 means renewal is not happening.
+          - name: auth-origin-probe
+            rules:
+              # Post-incident review on activescott/fernfiles#365
+              # (activescott/home-infra-k8s-flux#290): the only prod probe on
+              # any of these hosts before this was blackbox_https's GET to the
+              # site root, which never sends a POST and so never exercised the
+              # @activescott/auth origin gate. This is that missing check --
+              # one alert across every host on the shared adapter rather than
+              # one alert per app, the same way PodCrashLoopBackOff covers
+              # every namespace instead of repeating itself per app.
+              #
+              # 10m rather than the 5m the other site probes use: a rollout
+              # can blip a request or two there, and this alert's failure mode
+              # is not "the site is down", it's "every sign-in has been
+              # refused since the last deploy" -- a few extra minutes of
+              # confirmation costs nothing a user would notice.
+              - alert: AuthOriginGateProbeFailing
+                expr: 'probe_success{job="blackbox_auth_origin"} == 0'
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: >-
+                    {{ $labels.instance }} is refusing the @activescott/auth origin-gate probe.
+                  description: >-
+                    The blackbox_auth_origin probe against {{ $labels.instance }}
+                    has failed for 10 minutes. Check
+                    `probe_http_status_code{instance="{{ $labels.instance }}"}`:
+                    400 means the origin gate refused a same-origin https POST
+                    (activescott/fernfiles#365 -- check the target's server
+                    sets express `trust proxy`, or the react-router-serve
+                    equivalent, behind Traefik's TLS termination); 0 means the
+                    probe couldn't complete the request at all (DNS, TCP or
+                    TLS). Reproduce with `curl -X POST {{ $labels.instance }}
+                    -H "Origin: <the host's own https origin>"`.
+                  repo: activescott/home-infra-k8s-flux
           - name: tinkerbell-llm-providers
             rules:
               # Critical: an LLM provider rejected requests with a payment
@@ -1987,6 +2023,49 @@ spec:
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target
+          - source_labels: [__param_target]
+            target_label: instance
+          - target_label: __address__
+            replacement: blackbox-exporter.monitoring.svc:9115
+      # Blackbox probe of the @activescott/auth origin gate on every host that
+      # depends on the shared adapter (activescott/home-infra-k8s-flux#290,
+      # post-incident review on activescott/fernfiles#365). See the
+      # auth_origin_* modules in blackbox/helmrelease.yaml for what the POST
+      # actually checks and why one route works whether or not the host has
+      # passkey configured. 5m interval: only a deploy flips this, so it needs
+      # nowhere near blackbox_https's 30s cadence.
+      #
+      # One static_configs entry per host so each can carry its own `module`
+      # label -- the Origin header and the expected status differ per host,
+      # so they cannot share a module the way blackbox_https's targets do.
+      - job_name: "blackbox_auth_origin"
+        metrics_path: /probe
+        scrape_interval: 5m
+        scrape_timeout: 15s
+        static_configs:
+          - targets: ["https://fernfiles.com/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_fernfiles
+          - targets: ["https://ramblefeed.com/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_ramblefeed
+          - targets: ["https://tinkerbellbot.com/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_tinkerbell
+          - targets: ["https://job-accelerator.pingpoet.com/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_job_accelerator
+          - targets: ["https://chaperone.pingpoet.com/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_chaperone
+          - targets: ["https://dreamwright.app/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_dreamwright
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: __param_target
+          - source_labels: [module]
+            target_label: __param_module
           - source_labels: [__param_target]
             target_label: instance
           - target_label: __address__
