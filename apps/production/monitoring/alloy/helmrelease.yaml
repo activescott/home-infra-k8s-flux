@@ -158,6 +158,21 @@ spec:
               expression = ".*GET /(api/)?health/(readiness|liveness).*"
             }
 
+            // Traefik's access log records the query string in RequestPath,
+            // which puts password-reset keys, nonces and tokens from every
+            // host into Loki. Blank the values of parameters with those names.
+            // This runs before the msg fallback below copies the line into
+            // structured metadata. Traefik's JSON encoder escapes & as
+            // \u0026, so both spellings count as a parameter separator.
+            stage.match {
+              selector = "{namespace=\"kube-system\", container=\"traefik\"} |= \"\\\"RequestPath\\\"\""
+
+              stage.replace {
+                expression = `(?i)(?:[?&]|\\u0026)(?:key|token|_wpnonce|pass|password)=([^&"\\\s]+)`
+                replace    = "REDACTED"
+              }
+            }
+
             // Extract level and msg from JSON for label promotion and
             // structured metadata. Two field-name conventions in the wild:
             //   - pino (Node) and many others: "level" + "msg"
@@ -914,7 +929,7 @@ spec:
             // Any request for a path under wp-content/uploads containing
             // ".ph", whatever the status. Nothing legitimate asks for one;
             // Apache refuses to run or serve them (the base's
-            // configmap-apache-uploads-no-php.yaml), so this is for knowing
+            // configmap-apache-wp-content-no-php.yaml), so this is for knowing
             // someone tried. Only the path is matched, not the query string.
             stage.match {
               selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ /+wp-content/uploads/[^ ?]*([.]|%2e)ph[^ ]* http/\""
