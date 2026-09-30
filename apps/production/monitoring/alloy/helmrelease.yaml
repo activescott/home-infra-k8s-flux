@@ -820,6 +820,54 @@ spec:
               }
             }
 
+            // activescott/home-infra-k8s-flux#276: kustomize-controller no
+            // longer exposes gotk_reconcile_condition (confirmed absent from
+            // Prometheus on 2026-09-30 -- see the flux-reconcile-log-health
+            // group's comment in prometheus/helmrelease.yaml), so Kustomization
+            // readiness has to come from its own reconcile logs instead. It
+            // logs this on every failed reconcile attempt, repeating at the
+            // Kustomization's retry interval for as long as it stays
+            // unhealthy:
+            //   {"level":"error","msg":"Reconciliation failed after ...",
+            //    "controller":"kustomization","name":"apps",...}
+            //
+            // Two counters, one per Kustomization, rather than one filtered
+            // by an alternation: the name lives in the JSON body, not a
+            // stream label, so a combined counter could not tell a reader
+            // which Kustomization is failing -- the same reason the
+            // tinkerbell warn/error counters above are split rather than
+            // merged.
+            stage.match {
+              selector = "{namespace=\"flux-system\", app=\"kustomize-controller\", level=\"error\"} |= \"Reconciliation failed\" |= \"\\\"name\\\":\\\"apps\\\"\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "flux_apps_kustomization_reconcile_failed_total"
+                  description = "kustomize-controller reconcile failures for the apps Kustomization"
+                  match_all   = true
+                  action      = "inc"
+
+                  // Healthy stretches last for weeks; the 5m default would
+                  // delete the series between failures.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            stage.match {
+              selector = "{namespace=\"flux-system\", app=\"kustomize-controller\", level=\"error\"} |= \"Reconciliation failed\" |= \"\\\"name\\\":\\\"infra-configs\\\"\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "flux_infra_configs_kustomization_reconcile_failed_total"
+                  description = "kustomize-controller reconcile failures for the infra-configs Kustomization"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             forward_to = [loki.write.default.receiver]
           }
 

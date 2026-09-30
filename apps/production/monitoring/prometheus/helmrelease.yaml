@@ -1566,6 +1566,101 @@ spec:
                   description: >-
                     The {{ $labels.controller }} controller in flux-system has been producing
                     reconciliation errors for 15 minutes. Check its logs.
+          - name: cluster-wide
+            rules:
+              # activescott/home-infra-k8s-flux#276: every per-project group
+              # above alerts only on the app it was written for. A pod
+              # anywhere else can crash-loop indefinitely and nobody is told --
+              # which is exactly what happened to dreamwright-prod on
+              # 2026-09-29 (95 restarts over ~7 hours). This is the backstop:
+              # any namespace, any container.
+              #
+              # namespace!="fernfiles-prod" so this does not double-fire
+              # alongside FernfilesAppCrashLoopBackOff above for the one app
+              # that already has dedicated coverage -- that rule keeps a
+              # better runbook (a direct link to fernfiles' own dashboard)
+              # than this cluster-wide one can offer. Any future per-app
+              # CrashLoopBackOff alert should exclude its own namespace here
+              # the same way.
+              - alert: PodCrashLoopBackOff
+                expr: 'kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff", namespace!="fernfiles-prod"} > 0'
+                for: 1m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} in CrashLoopBackOff"
+                  description: >-
+                    Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }}
+                    is in CrashLoopBackOff. Query Loki for the crash reason --
+                    {namespace="{{ $labels.namespace }}", pod="{{ $labels.pod }}"} -- it keeps the
+                    previous container's stdout after Kubernetes has recycled the container,
+                    which `kubectl logs --previous` may no longer have by the time anyone looks.
+          # activescott/home-infra-k8s-flux#276: the flux-system group above
+          # cannot actually see a Kustomization go unhealthy. Confirmed live
+          # against Prometheus on 2026-09-30: gotk_reconcile_condition does not
+          # exist (list_prometheus_metric_names for `gotk.*` returns only
+          # _duration_seconds and the http/token-cache series, no condition
+          # gauge), so FluxKustomizationNotReady, FluxKustomizationNotReadyCritical
+          # and FluxHelmReleaseNotReady above have had nothing to evaluate for
+          # as long as this Flux version (helm-controller v2.9.5) has been
+          # deployed. That silence is how the dreamwright-prod crash loop on
+          # 2026-09-29 went unnoticed, and how the apps Kustomization has
+          # stayed not-Ready ever since without anyone being told.
+          #
+          # kustomize-controller has no replacement condition metric either,
+          # and controller_runtime_reconcile_errors_total does not count a
+          # health-check failure as a reconcile error (confirmed flat at 0 for
+          # controller="kustomization" through the entire incident window), so
+          # FluxReconcileErrors would not have caught this either. What it DOES
+          # do is log an error on every failed reconcile attempt, repeating at
+          # the Kustomization's retry interval for as long as it stays
+          # unhealthy -- confirmed live in Loki, once every ~10m since
+          # 2026-09-29 for the apps Kustomization. That log line is what the
+          # flux_apps_kustomization_reconcile_failed_total /
+          # flux_infra_configs_kustomization_reconcile_failed_total counters in
+          # alloy/helmrelease.yaml's loki.process pipeline turn into a metric.
+          #
+          # Scoped to apps and infra-configs specifically (issue #276's ask)
+          # rather than every Kustomization: doing that generically would need
+          # the Kustomization name promoted out of the log line into a label so
+          # one counter could carry many series, which is a bigger change than
+          # this issue asks for. The proper fix -- kube-state-metrics custom
+          # resource state against kustomize.toolkit.fluxcd.io, which is what
+          # upstream now recommends in gotk_reconcile_condition's place -- is
+          # left as a follow-up; it would also replace the three dead rules
+          # above.
+          - name: flux-reconcile-log-health
+            rules:
+              - alert: FluxAppsKustomizationNotReady
+                expr: 'increase(flux_apps_kustomization_reconcile_failed_total[15m]) > 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Flux apps Kustomization failing to reconcile"
+                  description: >-
+                    kustomize-controller has logged a reconciliation failure for the apps
+                    Kustomization within the last 15 minutes and keeps retrying without
+                    succeeding. Check what's failing in Loki --
+                    {namespace="flux-system", app="kustomize-controller"} |= "Reconciliation
+                    failed" |= "\"name\":\"apps\"" -- or run `flux --context nas get
+                    kustomization apps` for the live status message. Downstream workloads
+                    under apps/ stop receiving updates until this clears.
+              - alert: FluxInfraConfigsKustomizationNotReady
+                expr: 'increase(flux_infra_configs_kustomization_reconcile_failed_total[15m]) > 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "Flux infra-configs Kustomization failing to reconcile"
+                  description: >-
+                    kustomize-controller has logged a reconciliation failure for the
+                    infra-configs Kustomization within the last 15 minutes and keeps
+                    retrying without succeeding. Check what's failing in Loki --
+                    {namespace="flux-system", app="kustomize-controller"} |= "Reconciliation
+                    failed" |= "\"name\":\"infra-configs\"" -- or run `flux --context nas get
+                    kustomization infra-configs` for the live status message. Issue #32
+                    previously wedged this Kustomization on a stuck ImagePolicy.
           - name: job-accelerator
             rules:
               # Every notification send failed for a week in #178 (no APP_URL
