@@ -1,8 +1,7 @@
-# Routing for https://mmm.willeke.com/. NOT in kustomization.yaml's resources while the site is
-# offline; adding it there is the whole of turning the site on. As committed, the catch-all
-# route below carries lan-only, so turning it on gives a LAN-only preview. Deleting that one
-# line then opens the public site. The checks for both steps are under "Preview and going live"
-# in apps/base/wordpress-upstream/README.md.
+# Routing for https://mmm.willeke.com/. The catch-all route below is public; the priority-20
+# route (wp-login.php, wp-admin, the REST API) stays LAN-only via the lan-only Middleware, and
+# xmlrpc.php is refused for everyone. See "Preview and going live" in
+# apps/base/wordpress-upstream/README.md for the checks that back this.
 #
 # An IngressRoute rather than an Ingress because the admin surface has to be matched on a query
 # parameter (`?rest_route=`), and an Ingress can only match paths. Nothing creates the
@@ -98,8 +97,6 @@ spec:
     - kind: Rule
       match: Host(`mmm.willeke.com`)
       priority: 10
-      # LAN-only preview. Delete the next line to open the site to the internet.
-      middlewares: [{ name: lan-only }]
       services:
         - name: wordpress
           port: http
