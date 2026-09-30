@@ -25,14 +25,15 @@ spec:
       # Official wordpress image runs Apache as www-data (uid:gid 33:33).
       securityContext:
         fsGroup: 33
+        seccompProfile:
+          type: RuntimeDefault
       # WordPress never calls the Kubernetes API.
       automountServiceAccountToken: false
       initContainers:
         # Core lives in the image, not on a volume, and the running container
-        # cannot change it: /var/www/html is mounted read-only below. That
-        # stops WordPress from updating itself in place, which used to mean
-        # the running version silently reverted to the image tag on every
-        # restart. A core update is now an image bump and nothing else.
+        # cannot change it: /var/www/html is mounted read-only below. The
+        # running version is always the image tag, and a core update is an
+        # image bump and nothing else.
         #
         # The image's entrypoint copies /usr/src/wordpress into
         # /var/www/html and writes wp-config.php when index.php is missing.
@@ -45,6 +46,11 @@ spec:
         #
         # wp-content is mounted so the copy skips it the same way it did
         # before, adding only bundled themes and plugins that are missing.
+        # This is the only place anything writes to plugins/ and themes/.
+        #
+        # As uid 33 the entrypoint extracts with --no-overwrite-dir and as
+        # its own user, so it needs the emptyDir (0777) and a wp-content
+        # owned by 33:33, which the tenant README already requires.
         - name: install-core
           image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
           command: ["docker-ensure-installed.sh"]
@@ -54,7 +60,13 @@ spec:
             - name: WORDPRESS_DB_HOST
               value: mariadb
           securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - mountPath: /var/www/html
               name: wordpress-core
@@ -141,14 +153,42 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          # Apache's master starts as root to bind :80 and then runs its
+          # children as www-data. SETUID and SETGID are for that switch,
+          # NET_BIND_SERVICE for :80, and KILL because the master signals
+          # its children on shutdown, and without KILL root cannot signal a
+          # process that belongs to another user. Nothing chowns at start:
+          # the entrypoint skips its copy and wp-config steps because
+          # install-core already did them, and Apache listens on one port,
+          # so it creates no accept mutex file.
           securityContext:
+            allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["SETUID", "SETGID", "NET_BIND_SERVICE", "KILL"]
           volumeMounts:
             - mountPath: /var/www/html
               name: wordpress-core
               readOnly: true
             - mountPath: /var/www/html/wp-content
               name: wp-content
+            # DISALLOW_FILE_MODS means WordPress never writes these, so they
+            # are read-only here and PHP runs from nowhere writable (see
+            # configmap-apache-wp-content-no-php.yaml). A missing directory
+            # is created by the kubelet, owned by root; the pod still starts.
+            - mountPath: /var/www/html/wp-content/plugins
+              subPath: plugins
+              name: wp-content
+              readOnly: true
+            - mountPath: /var/www/html/wp-content/themes
+              subPath: themes
+              name: wp-content
+              readOnly: true
+            - mountPath: /var/www/html/wp-content/mu-plugins
+              subPath: mu-plugins
+              name: wp-content
+              readOnly: true
             # PHP uploads, sessions and image processing.
             - mountPath: /tmp
               name: tmp
@@ -162,15 +202,15 @@ spec:
             - mountPath: /usr/local/etc/php/conf.d/uploads.ini
               subPath: uploads.ini
               name: php-uploads
-            - mountPath: /usr/local/etc/php/conf.d/zz-rest-route-guard.ini
-              subPath: rest-route-guard.ini
-              name: php-rest-route-guard
-            - mountPath: /usr/local/etc/php/rest-route-guard.php
-              subPath: rest-route-guard.php
-              name: php-rest-route-guard
-            - mountPath: /etc/apache2/conf-enabled/zz-uploads-no-php.conf
-              subPath: uploads-no-php.conf
-              name: apache-uploads-no-php
+            - mountPath: /usr/local/etc/php/conf.d/zz-request-guard.ini
+              subPath: request-guard.ini
+              name: php-request-guard
+            - mountPath: /usr/local/etc/php/request-guard.php
+              subPath: request-guard.php
+              name: php-request-guard
+            - mountPath: /etc/apache2/conf-enabled/zz-wp-content-no-php.conf
+              subPath: wp-content-no-php.conf
+              name: apache-wp-content-no-php
           resources:
             limits:
               memory: "1Gi"
@@ -178,18 +218,25 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "100m"
+          # curl from inside the pod, so the request arrives from 127.0.0.1,
+          # the one non-LAN address configmap-php-request-guard.yaml lets
+          # into wp-login.php. An httpGet probe comes from the node, and
+          # letting that address in would also let in anything else that
+          # arrives as the node. `/` is no substitute: the probe's Host is the
+          # pod IP, so WordPress answers with a redirect to WP_HOME, which the
+          # kubelet records as a warning event on every probe.
           readinessProbe:
-            httpGet:
-              path: /wp-login.php
-              port: http
+            exec:
+              command:
+                ["curl", "-fsS", "-o", "/dev/null", "--max-time", "5", "http://127.0.0.1/wp-login.php"]
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
-            httpGet:
-              path: /wp-login.php
-              port: http
+            exec:
+              command:
+                ["curl", "-fsS", "-o", "/dev/null", "--max-time", "10", "http://127.0.0.1/wp-login.php"]
             initialDelaySeconds: 120
             periodSeconds: 30
             timeoutSeconds: 10
@@ -214,9 +261,9 @@ spec:
         - name: php-uploads
           configMap:
             name: wordpress-php-uploads
-        - name: php-rest-route-guard
+        - name: php-request-guard
           configMap:
-            name: wordpress-php-rest-route-guard
-        - name: apache-uploads-no-php
+            name: wordpress-php-request-guard
+        - name: apache-wp-content-no-php
           configMap:
-            name: wordpress-apache-uploads-no-php
+            name: wordpress-apache-wp-content-no-php

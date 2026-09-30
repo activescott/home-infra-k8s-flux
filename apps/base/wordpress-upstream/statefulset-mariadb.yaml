@@ -23,6 +23,8 @@ spec:
         fsGroup: 999
         runAsUser: 999
         runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       # MariaDB never calls the Kubernetes API.
       automountServiceAccountToken: false
       containers:
@@ -38,6 +40,8 @@ spec:
           ports:
             - name: mysql
               containerPort: 3306
+          securityContext:
+            allowPrivilegeEscalation: false
           volumeMounts:
             - mountPath: /var/lib/mysql
               name: mariadb-data

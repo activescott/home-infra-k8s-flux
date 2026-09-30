@@ -1,7 +1,8 @@
 # Routing for https://mmm.willeke.com/. NOT in kustomization.yaml's resources while the site is
 # offline; adding it there is the whole of turning the site on. As committed, the catch-all
 # route below carries lan-only, so turning it on gives a LAN-only preview. Deleting that one
-# line then opens the public site.
+# line then opens the public site. The checks for both steps are under "Preview and going live"
+# in apps/base/wordpress-upstream/README.md.
 #
 # An IngressRoute rather than an Ingress because the admin surface has to be matched on a query
 # parameter (`?rest_route=`), and an Ingress can only match paths. Nothing creates the
@@ -13,7 +14,9 @@
 # `rest_route` query parameter).
 # Refused for everyone: xmlrpc.php.
 # `rest_route` can also reach WordPress in a POST body or under a name PHP rewrites to it, which
-# Traefik cannot see; the base's configmap-php-rest-route-guard.yaml refuses those in PHP.
+# Traefik cannot see; the base's configmap-php-request-guard.yaml refuses those in PHP. The same
+# file refuses wp-login.php, wp-admin and xmlrpc.php to non-LAN clients, so the admin surface
+# does not rest on Traefik's reading of the path alone.
 #
 # REQUIRES the LAN DNS override mmm.willeke.com -> 10.1.111.20, for the same reason as
 # olya.activescott.com: without it LAN clients hairpin through the router, arrive as its
@@ -68,11 +71,14 @@ spec:
     - websecure
   # Explicit priorities, highest wins. All three stay far below the default priority (rule
   # length, 100+ characters) of cert-manager's HTTP-01 solver route, so renewals still reach the
-  # solver. The patterns are case-insensitive and allow repeated leading slashes because
-  # WordPress trims slashes and matches its rewrite rules on the trimmed path.
+  # solver. The patterns are case-insensitive and deliberately unanchored. Traefik matches the
+  # decoded path but forwards the original, and Apache removes dot segments only after decoding,
+  # so /%2e/wp-login.php reaches Traefik as /./wp-login.php and Apache as /wp-login.php. An
+  # anchored ^/wp-login\.php misses it. Matching these names anywhere in the path over-matches,
+  # which only makes more of the site LAN-only.
   routes:
     - kind: Rule
-      match: Host(`mmm.willeke.com`) && PathRegexp(`(?i)^/+xmlrpc\.php`)
+      match: Host(`mmm.willeke.com`) && PathRegexp(`(?i)/xmlrpc\.php`)
       priority: 30
       middlewares:
         - name: deny-all
@@ -81,7 +87,7 @@ spec:
           port: http
     - kind: Rule
       match: >-
-        Host(`mmm.willeke.com`) && (PathRegexp(`(?i)^/+wp-login\.php`) || PathRegexp(`(?i)^/+wp-admin`)
+        Host(`mmm.willeke.com`) && (PathRegexp(`(?i)/wp-login\.php`) || PathRegexp(`(?i)/wp-admin(/|$)`)
         || PathRegexp(`(?i)/wp-json(/|$)`) || QueryRegexp(`rest_route`, `.*`))
       priority: 20
       middlewares:

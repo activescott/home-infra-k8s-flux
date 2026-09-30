@@ -13,8 +13,8 @@
 # (the shape of the internet rule in apps/production/olya/olya-networkpolicy.yaml) AND drop
 # WP_HTTP_BLOCK_EXTERNAL from patch-wordpress-config-extra.yaml. Either one alone still blocks.
 #
-# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. Kubelet
-# probes come from the node and are not affected.
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. The
+# WordPress probes are exec probes that curl from inside the pod, so they need no rule.
 ---
 # cert-manager stands up its HTTP-01 solver pod in this namespace for every issuance and renewal
 # of the certificate in ingress.yaml, and the default deny below selects it too. Same shape as
@@ -95,11 +95,23 @@ spec:
     # only while mmm.willeke.com resolves to the node (the LAN DNS override that ingress.yaml
     # already requires); via the public address it would leave the cluster and be refused.
     #
-    # The node address is DNAT'd to a Traefik pod on its websecure port before kube-router's
-    # filter rules run (see the Kubernetes API rule in olya-networkpolicy.yaml), so the pod rule
-    # is the one that matches. The ipBlock is there so this does not rest on that ordering.
+    # The node's :443 is a hostPort on k3s's svclb pod for Traefik, and kube-proxy also programs
+    # the LoadBalancer address. kube-router filters after DNAT, so the destination it sees is
+    # either the svclb pod on 443 or a Traefik pod on its websecure port, 8443, depending on
+    # which NAT rule wins. Both are allowed. The node address itself never matches after DNAT,
+    # so an ipBlock for it would do nothing.
     # Reaching Traefik gives this pod nothing the internet does not already have; LAN-only hosts
     # still refuse it, since a pod address is outside every ipAllowList.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              svccontroller.k3s.cattle.io/svcname: traefik
+      ports:
+        - port: 443
+          protocol: TCP
     - to:
         - namespaceSelector:
             matchLabels:
@@ -109,12 +121,6 @@ spec:
               app.kubernetes.io/name: traefik
       ports:
         - port: 8443
-          protocol: TCP
-    - to:
-        - ipBlock:
-            cidr: 10.1.111.20/32
-      ports:
-        - port: 443
           protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
