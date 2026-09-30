@@ -71,6 +71,109 @@ spec:
             tls_config:
               server_name: mail.activescott.com
 
+        # Blackbox probe of the @activescott/auth origin gate (post-incident
+        # review on activescott/fernfiles#365, activescott/home-infra-k8s-flux#290).
+        # `@activescott/auth-adapter-react-router` 3.0.0 added an Origin check
+        # that compares scheme, and a server that forwards plain HTTP behind
+        # Traefik's TLS termination without express `trust proxy` (or the
+        # react-router-serve equivalent) makes a real same-origin https POST
+        # look cross-origin and refuse it with 400. e2e never catches this: it
+        # runs over plain http, where the schemes already match.
+        #
+        # Every module below POSTs the same body to the same route,
+        # /auth/passkey/authenticate-options, with an Origin header equal to
+        # the host's own https origin. That action only issues a challenge
+        # cookie, so the probe writes nothing. The gate runs before provider
+        # dispatch, so the result still distinguishes a refusal from a pass on
+        # a host with no passkey provider configured: a refusal is always 400;
+        # a pass is 200 where passkey is configured, 404 where it is not (the
+        # route itself doesn't exist, but only after the gate already let the
+        # request through).
+        auth_origin_fernfiles:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://fernfiles.com
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [200]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+        # ramblefeed.com is expected to answer 200 once activescott/ramblefeed#114
+        # deploys with a passkey provider configured; today it is 400, the same
+        # bug, so this probe starts red until that fix ships.
+        auth_origin_ramblefeed:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://ramblefeed.com
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [200]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+        # No passkey provider configured, so a passing gate 404s here.
+        auth_origin_tinkerbell:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://tinkerbellbot.com
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [404]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+        auth_origin_job_accelerator:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://job-accelerator.pingpoet.com
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [200]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+        # No passkey provider configured, so a passing gate 404s here.
+        auth_origin_chaperone:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://chaperone.pingpoet.com
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [404]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+        # No passkey provider configured (email only), so a passing gate 404s
+        # here. Confirmed live 2026-09-30: dreamwright.app currently answers
+        # 400, the same bug, even though its server.js sets `trust proxy` and
+        # carries a passing regression test for exactly this case -- so
+        # whatever is wrong here is not the same missing-setting bug the other
+        # hosts had. Needs its own investigation; this probe will alert on it
+        # from the moment it ships.
+        auth_origin_dreamwright:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://dreamwright.app
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [404]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+
     # The ICMP prober sends raw packets, which requires NET_RAW.
     securityContext:
       runAsUser: 1000
