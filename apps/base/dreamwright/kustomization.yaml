@@ -4,3 +4,4 @@ resources:
   - ingress.yaml
   - db-statefulset.yaml
   - db-service.yaml
+  - token-keys-pvc.yaml

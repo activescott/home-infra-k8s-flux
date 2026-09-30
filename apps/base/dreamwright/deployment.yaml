@@ -49,6 +49,11 @@ spec:
           envFrom:
             - secretRef:
                 name: app-creds
+          env:
+            # One key per customer's Slack tokens. Kept off the database's volume so that
+            # deleting a key makes that customer's tokens in a database backup unreadable.
+            - name: TOKEN_KEY_DIR
+              value: /token-keys
 
           securityContext:
             runAsNonRoot: true
@@ -57,6 +62,10 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+
+          volumeMounts:
+            - name: token-keys
+              mountPath: /token-keys
 
           resources:
             limits:
@@ -82,3 +91,7 @@ spec:
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
+      volumes:
+        - name: token-keys
+          persistentVolumeClaim:
+            claimName: token-keys

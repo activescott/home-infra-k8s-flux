@@ -73,7 +73,7 @@ spec:
           # Pinned to a digest, not a tag. This is an AGPL project created 2026-03-13 that
           # releases roughly weekly and will hold every mailbox session; an upgrade should be a
           # commit somebody reviewed, never something that happens because a pod restarted.
-          image: ghcr.io/bulwarkmail/webmail:1.9.2@sha256:0e8d1339277033b6569a76c6f8192396e6edd66fd917d64d9ed505e8b81dac6d
+          image: ghcr.io/bulwarkmail/webmail:1.11.2@sha256:655a852bbc0a24ec86e5be4440d3116016ba785cb2288af9cafae72560294730
           ports:
             - name: http
               containerPort: 3000
