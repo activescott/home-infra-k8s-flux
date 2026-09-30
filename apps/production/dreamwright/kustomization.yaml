@@ -1,6 +1,7 @@
 resources:
   - namespace.yaml
   - db-pv.yaml
+  - token-key-pv.yaml
   - ../../base/dreamwright/
   - certificate.yaml
   - www-redirect-middleware.yaml

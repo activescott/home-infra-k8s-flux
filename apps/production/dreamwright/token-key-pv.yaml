@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: dreamwright-prod-token-key-pv-data
+spec:
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    # sudo mkdir -p /mnt/thedatapool/app-data/dreamwright/prod/token-keys
+    # sudo chown 1000:1000 /mnt/thedatapool/app-data/dreamwright/prod/token-keys
+    # sudo chmod 700 /mnt/thedatapool/app-data/dreamwright/prod/token-keys
+    # node:22-alpine's node user is uid/gid 1000, and the kubelet does not chown hostPath volumes.
+    path: /mnt/thedatapool/app-data/dreamwright/prod/token-keys
+---
+# Pinned to the PV above by volumeName, the same way patch-db-statefulset.yaml binds the db's
+# volume, so this lands on the ZFS pool rather than the k3s data dir the local-path provisioner
+# would otherwise pick. Deliberately its own PV rather than a path under the db's: TOKEN_KEY_DIR
+# must stay out of the database's backups (see environment.server.ts in dreamwright).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: token-key-data
+  namespace: dreamwright-prod
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  volumeName: dreamwright-prod-token-key-pv-data
+  resources:
+    requests:
+      storage: 100Mi

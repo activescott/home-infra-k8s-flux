@@ -3,6 +3,11 @@ kind: Deployment
 metadata:
   name: dreamwright
 spec:
+  # RollingUpdate would start the new pod before the old one gives up token-key-data, and
+  # ReadWriteOnce only lets one pod hold it, deadlocking the rollout. Recreate tears the old
+  # pod down first.
+  strategy:
+    type: Recreate
   template:
     spec:
       containers:
@@ -25,3 +30,12 @@ spec:
             # SMTPD_SASL_USERS.
             - name: SMTP_USER
               value: dreamwright@relay.local
+            - name: TOKEN_KEY_DIR
+              value: /data/token-keys
+          volumeMounts:
+            - name: token-key-data
+              mountPath: /data/token-keys
+      volumes:
+        - name: token-key-data
+          persistentVolumeClaim:
+            claimName: token-key-data
