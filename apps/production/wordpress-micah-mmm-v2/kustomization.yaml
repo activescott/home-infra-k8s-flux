@@ -15,7 +15,10 @@ resources:
   - ../../base/wordpress-upstream
   - pv.yaml
   - pvc.yaml
-  - ingress.yaml
+  - networkpolicy.yaml
+  # Offline. To bring the site back, add `- ingress.yaml` here and remove
+  # patch-wordpress-offline.yaml below. That gives a LAN-only preview; see
+  # the top of ingress.yaml for opening it to the internet.
 
 secretGenerator:
   - name: wordpress-creds
@@ -29,3 +32,5 @@ patches:
   # Bitnami chart hard-coded WP_HOME/WP_SITEURL in its generated
   # wp-config.php to mask that, and the upstream image doesn't.
   - path: patch-wordpress-config-extra.yaml
+  # Site taken offline pending investigation. mariadb stays up.
+  - path: patch-wordpress-offline.yaml
