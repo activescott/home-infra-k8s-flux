@@ -15,6 +15,16 @@ spec:
         name: zot
         namespace: zot-oci-registry
       interval: 24h
+  # zot never calls the Kubernetes API, and the chart has no value for turning off the token.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: StatefulSet
+            patch: |
+              - op: add
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false
   values:
     replicaCount: 1
 
