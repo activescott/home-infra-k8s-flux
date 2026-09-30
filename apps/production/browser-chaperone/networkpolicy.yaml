@@ -277,8 +277,9 @@ spec:
           protocol: TCP
 
   egress:
-    # The Google APIs and OAuth token endpoint, and no private network. Google publishes no
-    # fixed address range to narrow this to.
+    # The Google APIs and OAuth token endpoint, and tinkerbellbot.com (browser-chaperone#44),
+    # and no private network. Google publishes no fixed address range to narrow this to, and
+    # tinkerbellbot.com is behind Cloudflare.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

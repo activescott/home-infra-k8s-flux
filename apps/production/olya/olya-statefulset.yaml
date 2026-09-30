@@ -249,9 +249,9 @@ spec:
             # Provider API keys (OPENROUTER_API_KEY) are read from the
             # environment by OpenClaw's provider plugins, not substituted in the config.
             #
-            # grafana_service_account_token and tinkerbell_api_token are delivered
-            # below, for the mcp-grafana and tinkerbell MCP servers configured in
-            # openclaw.json.
+            # grafana_service_account_token is delivered below, for the mcp-grafana MCP server
+            # configured in openclaw.json. There is no tinkerbell token here: her tinkerbell
+            # MCP server is the MCP gateway, which holds it (browser-chaperone#44).
             - name: OPENCLAW_GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -268,11 +268,6 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: grafana_service_account_token
-            - name: TINKERBELL_API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: olya-env
-                  key: tinkerbell_api_token
             # hooks.token in openclaw.json. Has to be deployed before the config references it:
             # an unresolved ${OPENCLAW_HOOKS_TOKEN} stays a literal string.
             - name: OPENCLAW_HOOKS_TOKEN
@@ -307,8 +302,9 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: relay_app_token
-            # mcp.servers.google-workspace in openclaw.json sends this as its bearer token. Good
-            # for nothing but the MCP gateway in browser-chaperone-prod (browser-chaperone#39).
+            # mcp.servers.google-workspace and mcp.servers.tinkerbell in openclaw.json send this
+            # as their bearer token. Good for nothing but the MCP gateway in
+            # browser-chaperone-prod (browser-chaperone#39, #44).
             - name: MCP_GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
