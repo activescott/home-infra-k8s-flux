@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: dreamwright
 spec:
+  # Sign-in challenges are held in memory, so a second replica would reject codes the
+  # first one issued.
   replicas: 1
   selector:
     matchLabels:
@@ -14,10 +16,39 @@ spec:
     spec:
       imagePullSecrets:
         - name: github-container-registry-secret
+      initContainers:
+        # Applies Prisma migrations from the same image before the app starts. The image
+        # carries the engines, so this runs with a read-only root filesystem.
+        - name: migrate
+          image: dreamwright-image
+          command: ["/app/node_modules/.bin/prisma", "migrate", "deploy"]
+          envFrom:
+            - secretRef:
+                name: app-creds
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+            requests:
+              cpu: "0.05"
+              memory: "128Mi"
       containers:
         - name: dreamwright
           # NOTE: this image is replaced with an images transformer in the overlay: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer
           image: dreamwright-image
+
+          envFrom:
+            - secretRef:
+                name: app-creds
 
           securityContext:
             runAsNonRoot: true
