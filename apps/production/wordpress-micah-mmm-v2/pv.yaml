@@ -14,7 +14,7 @@ spec:
   hostPath:
     # Must exist on nas before this PV binds. See
     # docs/specs/wordpress-micah-mmm-migrate-off-bitnami/host-commands.md.
-    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2-202609/mariadb
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/mariadb
     type: Directory
 ---
 apiVersion: v1
@@ -33,7 +33,7 @@ spec:
   hostPath:
     # User puts restore.sql here. Read once by mariadb container
     # on first init, then ignored on subsequent restarts.
-    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2-202609/mariadb-initdb
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/mariadb-initdb
     type: Directory
 ---
 apiVersion: v1
@@ -52,5 +52,5 @@ spec:
   hostPath:
     # User populates this with a copy of the old
     # /opt/bitnami/wordpress/wp-content/ tree, owned by uid:gid 33:33.
-    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2-202609/wp-content
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/wp-content
     type: Directory
