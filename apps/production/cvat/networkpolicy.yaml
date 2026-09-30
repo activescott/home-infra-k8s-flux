@@ -1,0 +1,115 @@
+# Default deny for the namespace, then Traefik to the frontend and the server, any CVAT pod to any
+# other, and the backend out to the internet (activescott/activeassistant#577).
+#
+# Inside the namespace everything is allowed rather than mapped pod by pod. The server and eight
+# worker kinds all reach Postgres, Redis and kvrocks, OPA polls its policy bundle from the server,
+# and the server asks OPA on every request; a missed pair breaks one worker queue quietly, and the
+# threat this addresses is the way out of the namespace, not traffic within it.
+#
+# Internet for the backend only: webhooks, cloud-storage imports and exports, and tasks created
+# from remote URLs. The LAN, the node and the rest of the cluster are refused. The originals share
+# is a hostPath, so it needs no network.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+---
+# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# which explains the failure mode.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: within-namespace
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The ingress sends /api, /admin, /static, /django-rq and /profiler to the server and the rest to
+# the frontend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: traefik
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tier
+        operator: In
+        values:
+          - frontend
+          - backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 8000
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-internet
+spec:
+  podSelector:
+    matchLabels:
+      tier: backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8
