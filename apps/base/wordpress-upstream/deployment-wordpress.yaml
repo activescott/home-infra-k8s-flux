@@ -46,7 +46,10 @@ spec:
         #
         # wp-content is mounted so the copy skips it the same way it did
         # before, adding only bundled themes and plugins that are missing.
-        # This is the only place anything writes to plugins/ and themes/.
+        # This is the only place anything writes to wp-content outside
+        # uploads/. The script then creates uploads/ if it is missing, so
+        # the kubelet finds it for the subPath mount below instead of
+        # creating it owned by root, which WordPress could not write.
         #
         # As uid 33 the entrypoint extracts with --no-overwrite-dir and as
         # its own user, so it needs the emptyDir (0777) and a wp-content
@@ -54,7 +57,7 @@ spec:
         - name: install-core
           image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
           command: ["docker-ensure-installed.sh"]
-          args: ["true"]
+          args: ["mkdir", "-p", "wp-content/uploads"]
           workingDir: /var/www/html
           env:
             - name: WORDPRESS_DB_HOST
@@ -171,24 +174,21 @@ spec:
             - mountPath: /var/www/html
               name: wordpress-core
               readOnly: true
+            # Only uploads/ is writable. WordPress includes PHP from the rest
+            # of wp-content on every request (plugins, themes, drop-ins like
+            # db.php and object-cache.php, languages/*.l10n.php), so none of
+            # it may be writable. With DISALLOW_FILE_MODS and auto-updates
+            # off, core writes nowhere else: upgrade/ and languages/ are
+            # written only by the upgrader, debug.log only with
+            # WP_DEBUG_LOG, and the Font Library writes to uploads/fonts.
+            # Temporary files go to /tmp. PHP does not run from uploads/
+            # (see configmap-apache-wp-content-no-php.yaml).
             - mountPath: /var/www/html/wp-content
               name: wp-content
-            # DISALLOW_FILE_MODS means WordPress never writes these, so they
-            # are read-only here and PHP runs from nowhere writable (see
-            # configmap-apache-wp-content-no-php.yaml). A missing directory
-            # is created by the kubelet, owned by root; the pod still starts.
-            - mountPath: /var/www/html/wp-content/plugins
-              subPath: plugins
-              name: wp-content
               readOnly: true
-            - mountPath: /var/www/html/wp-content/themes
-              subPath: themes
+            - mountPath: /var/www/html/wp-content/uploads
+              subPath: uploads
               name: wp-content
-              readOnly: true
-            - mountPath: /var/www/html/wp-content/mu-plugins
-              subPath: mu-plugins
-              name: wp-content
-              readOnly: true
             # PHP uploads, sessions and image processing.
             - mountPath: /tmp
               name: tmp

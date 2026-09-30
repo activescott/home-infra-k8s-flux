@@ -5,37 +5,21 @@ metadata:
 data:
   # Mounted into /etc/apache2/conf-enabled/, which apache2.conf includes.
   #
-  # PHP runs only from the parts of wp-content that the Deployment mounts
-  # read-only: plugins, themes and mu-plugins. Everything else in wp-content
-  # (uploads, cache, languages, upgrade) is writable by www-data, so nothing
-  # there is ever meant to run. `engine off` is a php_admin_ setting, so a
-  # planted .htaccess cannot turn PHP back on; the more specific <Directory>
-  # blocks turn it back on for the three read-only directories.
+  # uploads/ is the only part of wp-content the Deployment mounts writable,
+  # so nothing there is ever meant to run. `engine off` is a php_admin_
+  # setting, so a planted .htaccess cannot turn PHP back on.
   #
   # With the engine off, mod_php would serve a .php file's source instead, so
   # the LocationMatch refuses those names outright, with or without a trailing
   # PATH_INFO like x.php/anything. Location is merged after <Directory>,
-  # <Files> and .htaccess, so nothing under wp-content can override it. The
-  # directory names in the exclusion are case-sensitive, like the filesystem.
-  #
-  # This stops requests. It does not stop WordPress from including a drop-in
-  # (db.php, object-cache.php and the like) that sits directly in wp-content.
+  # <Files> and .htaccess, so nothing under uploads/ can override it.
   #
   # php_admin_flag is not wrapped in <IfModule>: if mod_php is ever missing
   # from the image, Apache should refuse to start rather than drop the rule.
   wp-content-no-php.conf: |
-    <Directory "/var/www/html/wp-content">
+    <Directory "/var/www/html/wp-content/uploads">
         php_admin_flag engine off
     </Directory>
-    <Directory "/var/www/html/wp-content/plugins">
-        php_admin_flag engine on
-    </Directory>
-    <Directory "/var/www/html/wp-content/themes">
-        php_admin_flag engine on
-    </Directory>
-    <Directory "/var/www/html/wp-content/mu-plugins">
-        php_admin_flag engine on
-    </Directory>
-    <LocationMatch "(?i)^/+wp-content/++(?!(?-i:plugins|themes|mu-plugins)/).*\.(php[0-9s]?|pht|phtml|phar)(/|$)">
+    <LocationMatch "(?i)^/+wp-content/+uploads/.*\.(php[0-9s]?|pht|phtml|phar)(/|$)">
         Require all denied
     </LocationMatch>

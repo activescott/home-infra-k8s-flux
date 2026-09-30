@@ -7,12 +7,12 @@ using the Docker official images. Replaces the legacy Bitnami chart
 
 ## What this base ships
 
-| Resource               | Image                           | Notes                                                                                                                                                                                         |
-| ---------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Deployment/wordpress` | `wordpress:7.1.2-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). Read-only root and core. wp-content is writable except `plugins/`, `themes/` and `mu-plugins/`, and PHP runs only from those three. |
-| `Service/wordpress`    | —                               | ClusterIP, port 80.                                                                                                                                                                           |
-| `StatefulSet/mariadb`  | `mariadb:12.2.2-noble`          | 1 replica. uid:gid 999:999 (mysql).                                                                                                                                                           |
-| `Service/mariadb`      | —                               | Headless, port 3306.                                                                                                                                                                          |
+| Resource               | Image                           | Notes                                                                                                                                                    |
+| ---------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Deployment/wordpress` | `wordpress:7.1.2-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). Read-only root and core. Only `wp-content/uploads/` is writable, and PHP does not run from it. |
+| `Service/wordpress`    | —                               | ClusterIP, port 80.                                                                                                                                      |
+| `StatefulSet/mariadb`  | `mariadb:12.2.2-noble`          | 1 replica. uid:gid 999:999 (mysql).                                                                                                                      |
+| `Service/mariadb`      | —                               | Headless, port 3306.                                                                                                                                     |
 
 Image versions are pinned in the base. All tenant overlays inherit
 the same versions; bump them here for everyone at once.
@@ -24,17 +24,15 @@ In the tenant namespace:
 1. **PVCs** with these exact names — the base mounts them by name:
    - `wordpress-mariadb-data` → mounted at `/var/lib/mysql`
    - `wordpress-mariadb-initdb` → mounted at `/docker-entrypoint-initdb.d` (read-only). Drop a `restore.sql` here for first-init DB seeding; the mariadb entrypoint will execute it before opening for connections.
-   - `wordpress-wp-content` → mounted at `/var/www/html/wp-content`,
-     with its `plugins/`, `themes/` and `mu-plugins/` mounted again
-     read-only on top. The restore must leave all three directories
-     in place, owned by 33:33 like the rest of wp-content, even if
-     `mu-plugins/` is empty. A missing one does not stop the pod: the
-     kubelet creates it, owned by root, and WordPress reads it as
-     empty, but adding one on the host then needs root. The init
-     container runs as uid 33 and fails if `plugins/` or `themes/`
-     exists and is not writable by it, since it copies the bundled
-     ones in. Plugin and theme changes happen on the host, since
-     WordPress can no longer write those directories.
+   - `wordpress-wp-content` → mounted read-only at
+     `/var/www/html/wp-content`, with its `uploads/` mounted again
+     writable on top. The restore must leave the whole tree owned
+     by 33:33, `wp-content/` itself included: the init container runs
+     as uid 33, copies any missing bundled themes and plugins into
+     `plugins/` and `themes/`, and creates `uploads/` if the restore
+     did not, and it fails if it cannot write there. Plugin, theme,
+     language and drop-in changes happen on the host, since WordPress
+     can no longer write anything outside `uploads/`.
 
 2. **`Secret/wordpress-creds`** with these 12 keys (sops-encrypted
    dotenv via `secretGenerator` is the project convention):
