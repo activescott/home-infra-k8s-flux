@@ -35,8 +35,6 @@ spec:
     # Steady-state node usage observed in Grafana is <10% CPU / <17% mem
     # over 7d, so there is ample headroom for this concurrency.
     maxRunners: 6
-    containerMode:
-      type: dind
     # Annotations on the listener pod so the existing kubernetes-pods
     # Prometheus scrape config picks up gha_* metrics from :8080/metrics
     # (also requires the controller chart's `metrics:` block to be enabled
@@ -83,19 +81,24 @@ spec:
           labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
         gha_job_execution_duration_seconds:
           labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+    # containerMode is deliberately unset. With `containerMode.type: dind`
+    # the chart renders its own dind sidecar and drops any `dind` entry
+    # given here (gha-runner-scale-set 0.13.1 through 0.14.2), so dockerd
+    # args cannot be overridden. The pod below is the chart's dind-mode
+    # spec written out, which is the chart's documented way to customize
+    # dind (values.yaml: "If any customization is required for dind ...
+    # containerMode should remain empty"). On a chart upgrade, re-diff it
+    # against `helm template` with `containerMode.type: dind`.
     template:
       spec:
-        containers:
-          - name: runner
+        initContainers:
+          - name: init-dind-externals
             image: ghcr.io/actions/actions-runner:2.337.0
-            command: ["/home/runner/run.sh"]
-            resources:
-              requests:
-                cpu: "500m"
-                memory: "1Gi"
-              limits:
-                cpu: "4"
-                memory: "6Gi"
+            command: ["cp"]
+            args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+            volumeMounts:
+              - name: dind-externals
+                mountPath: /home/runner/tmpDir
           # Override the chart-injected dind sidecar so dockerd uses the
           # systemd cgroup driver. Without this, kind clusters created
           # inside this dind cannot reach kubelet=Ready (cgroup-delegation
@@ -104,16 +107,67 @@ spec:
           # specs/migrate-dev-to-kind/plan.md "Phase B execution detail"
           # and this repo's docs/specs/gha-runner-self-hosted/summary.md
           # "What would actually break the deadlock".
+          # The systemd flag is not set yet: it never took effect (see
+          # above), and turning it on lands as its own change. See
+          # activescott/browser-chaperone#59.
           #
           # Args here REPLACE the chart default; defaults come from the
           # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
           # and `--group` flags the chart relied on.
           - name: dind
+            image: docker:dind
             args:
               - dockerd
-              - --host=unix:///run/docker/docker.sock
+              - --host=unix:///var/run/docker.sock
               - --group=$(DOCKER_GROUP_GID)
-              - --exec-opt
-              - native.cgroupdriver=systemd
               # Pod network MTU is 1450 (flannel); match it so nested containers do not rely on PMTUD.
               - --mtu=1450
+            env:
+              - name: DOCKER_GROUP_GID
+                value: "123"
+            securityContext:
+              privileged: true
+            restartPolicy: Always
+            startupProbe:
+              exec:
+                command:
+                  - docker
+                  - info
+              initialDelaySeconds: 0
+              failureThreshold: 24
+              periodSeconds: 5
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+              - name: dind-externals
+                mountPath: /home/runner/externals
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.337.0
+            command: ["/home/runner/run.sh"]
+            env:
+              - name: DOCKER_HOST
+                value: unix:///var/run/docker.sock
+              - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+                value: "120"
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "4"
+                memory: "6Gi"
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+        volumes:
+          - name: dind-sock
+            emptyDir: {}
+          - name: dind-externals
+            emptyDir: {}
+          - name: work
+            emptyDir: {}
