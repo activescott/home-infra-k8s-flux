@@ -177,6 +177,57 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+        # Runs `openclaw doctor --fix` with the gateway stopped, which is the only way OpenClaw
+        # migrates the agent databases: from 2026.9.7 the gateway exits 78 on an older agent
+        # schema instead (activescott/activeassistant#590). Upstream's 2026.9.7 image entrypoint
+        # does the same on every start, but doctor refuses to run under OPENCLAW_CONFIG_READONLY,
+        # so our image drops that entrypoint and this runs it here instead.
+        #
+        # Doctor also repairs the config file, so it gets a copy that is thrown away afterwards.
+        # /state/config keeps what seed-workspace and install-plugins wrote. The directory is
+        # cleared first because a restarted initContainer keeps the emptyDir, and doctor can
+        # restore its earlier output from the backups it left there.
+        #
+        # Last, so it sees the plugins install-plugins put in place, and before the gateway
+        # opens the databases. A failure here keeps the pod in Init, same as upstream.
+        - name: doctor
+          image: olya-image
+          command:
+            - sh
+            - -c
+            - rm -rf /doctor/config && mkdir /doctor/config && cp /state/config/openclaw.json /doctor/config/ && exec openclaw doctor --fix --non-interactive
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
+          env:
+            - name: HOME
+              value: /state/home
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /doctor/config/openclaw.json
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # Not measured. Same as install-plugins, because on 2026.9.7 doctor can run the same
+          # npm install of a managed plugin that install-plugins needed 2Gi for.
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: doctor-config
+              mountPath: /doctor
+            - name: tmp
+              mountPath: /tmp
 
       containers:
         - name: olya
@@ -554,4 +605,7 @@ spec:
             defaultMode: 0400
         # readOnlyRootFilesystem means node, npm, and git all need somewhere to write.
         - name: tmp
+          emptyDir: {}
+        # The doctor initContainer's throwaway copy of openclaw.json.
+        - name: doctor-config
           emptyDir: {}
