@@ -1585,6 +1585,7 @@ spec:
               - alert: PodCrashLoopBackOff
                 expr: 'kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff", namespace!="fernfiles-prod"} > 0'
                 for: 1m
+                keep_firing_for: 10m
                 labels:
                   severity: critical
                 annotations:
@@ -1632,7 +1633,7 @@ spec:
           - name: flux-reconcile-log-health
             rules:
               - alert: FluxAppsKustomizationNotReady
-                expr: 'increase(flux_apps_kustomization_reconcile_failed_total[15m]) > 0'
+                expr: 'increase(loki_process_custom_flux_apps_kustomization_reconcile_failed_total[15m]) > 0'
                 for: 5m
                 labels:
                   severity: critical
@@ -1647,7 +1648,7 @@ spec:
                     kustomization apps` for the live status message. Downstream workloads
                     under apps/ stop receiving updates until this clears.
               - alert: FluxInfraConfigsKustomizationNotReady
-                expr: 'increase(flux_infra_configs_kustomization_reconcile_failed_total[15m]) > 0'
+                expr: 'increase(loki_process_custom_flux_infra_configs_kustomization_reconcile_failed_total[15m]) > 0'
                 for: 5m
                 labels:
                   severity: critical

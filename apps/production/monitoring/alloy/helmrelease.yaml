@@ -834,9 +834,7 @@ spec:
             // Two counters, one per Kustomization, rather than one filtered
             // by an alternation: the name lives in the JSON body, not a
             // stream label, so a combined counter could not tell a reader
-            // which Kustomization is failing -- the same reason the
-            // tinkerbell warn/error counters above are split rather than
-            // merged.
+            // which Kustomization is failing.
             stage.match {
               selector = "{namespace=\"flux-system\", app=\"kustomize-controller\", level=\"error\"} |= \"Reconciliation failed\" |= \"\\\"name\\\":\\\"apps\\\"\""
 
