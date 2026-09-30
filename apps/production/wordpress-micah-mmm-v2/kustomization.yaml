@@ -15,6 +15,10 @@ resources:
   - ../../base/wordpress-upstream
   - pv.yaml
   - pvc.yaml
+  - networkpolicy.yaml
+  # Offline. To bring the site back, add `- ingress.yaml` here and remove
+  # patch-wordpress-offline.yaml below. That gives a LAN-only preview; see
+  # the top of ingress.yaml for opening it to the internet.
 
 secretGenerator:
   - name: wordpress-creds
