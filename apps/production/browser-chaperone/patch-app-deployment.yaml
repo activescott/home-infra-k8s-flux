@@ -46,9 +46,10 @@
           optional: true
     # After each decision the app posts the request id and the decision to the chaperone-wake
     # plugin in olya-0, which wakes the session that raised it (activescott/activeassistant#543).
-    # olya-networkpolicy.yaml admits this pod on 18789 for it.
+    # Through Traefik's cluster-internal entrypoint, not straight to olya:18789, so the gateway
+    # never sees an X-Forwarded-For this pod wrote; see ../olya/olya-wake-ingress.yaml.
     - name: AGENT_WAKE_URL
-      value: http://olya.olya.svc:18789/chaperone/decision
+      value: http://traefik-internal.kube-system.svc:8001/chaperone/decision
     - name: AGENT_WAKE_TOKEN
       valueFrom:
         secretKeyRef:

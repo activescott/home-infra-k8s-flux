@@ -8,6 +8,7 @@ resources:
   - olya-statefulset.yaml
   - olya-service.yaml
   - olya-ingress.yaml
+  - olya-wake-ingress.yaml
   - olya-networkpolicy.yaml
   - olya-memory-sync-cronjob.yaml
   # Image is private on GHCR, same as the other first-party images in this repo.

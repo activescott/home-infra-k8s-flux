@@ -63,10 +63,20 @@ spec:
     - Ingress
     - Egress
 
+  # Both peers below are inside gateway.trustedProxies in openclaw.json (the whole pod /16), so
+  # the gateway believes any X-Forwarded-For they send. A peer that forges it can fill the
+  # gateway's 10,000-entry auth limiter through the unauthenticated
+  # /api/nodes/watch/challenge, which records a failure per call, and every remote token login
+  # without an entry is then refused with the correct token. Traefik replaces the header with the
+  # caller's real address, so doing this through Traefik takes control of Traefik itself; any pod
+  # in `monitoring` can do it directly. Do not admit another peer here: route it through
+  # Traefik's `internal` entrypoint instead, as olya-wake-ingress.yaml does for the approval app
+  # (activescott/activeassistant#543).
   ingress:
-    # Traefik, for the Control UI. Traefik runs in kube-system on k3s. Narrowed to the Traefik
-    # pods rather than the whole namespace: kube-system holds several other workloads and none
-    # of them has any business reaching this port.
+    # Traefik, for the Control UI and the approval app's /chaperone/decision. Traefik runs in
+    # kube-system on k3s. Narrowed to the Traefik pods rather than the whole namespace:
+    # kube-system holds several other workloads and none of them has any business reaching this
+    # port.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -88,21 +98,6 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
-      ports:
-        - port: 18789
-          protocol: TCP
-    # The approval app, posting each decision to the chaperone-wake plugin's
-    # /chaperone/decision route (activescott/activeassistant#543). That route takes its own
-    # token and grants nothing, but the port carries every gateway surface, and the app's pod IP
-    # is inside gateway.trustedProxies in openclaw.json, so it can send forwarded headers of its
-    # choosing. Everything else on the port still wants the gateway or hooks token.
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: browser-chaperone-prod
-          podSelector:
-            matchLabels:
-              app: app
       ports:
         - port: 18789
           protocol: TCP
