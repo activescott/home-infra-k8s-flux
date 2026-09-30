@@ -162,8 +162,11 @@ spec:
           # its children on shutdown, and without KILL root cannot signal a
           # process that belongs to another user. Nothing chowns at start:
           # the entrypoint skips its copy and wp-config steps because
-          # install-core already did them, and Apache listens on one port,
-          # so it creates no accept mutex file.
+          # install-core already did them, and the accept mutex (needed even
+          # with one Listen, since Debian's apache2 opens both an IPv4 and
+          # an IPv6 socket for it) resolves to a Linux fcntl lock, which
+          # only needs an open file descriptor inherited by each child, not
+          # a chown.
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -17,8 +17,12 @@ data:
   # php_admin_flag is not wrapped in <IfModule>: if mod_php is ever missing
   # from the image, Apache should refuse to start rather than drop the rule.
   wp-content-no-php.conf: |
+    # AllowOverride/Options None so a planted .htaccess or symlink under
+    # uploads/ cannot reopen what this conf closes.
     <Directory "/var/www/html/wp-content/uploads">
         php_admin_flag engine off
+        AllowOverride None
+        Options None
     </Directory>
     <LocationMatch "(?i)^/+wp-content/+uploads/.*\.(php[0-9s]?|pht|phtml|phar)(/|$)">
         Require all denied

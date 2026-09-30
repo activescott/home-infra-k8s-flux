@@ -92,8 +92,11 @@ it admits. This must return nothing:
 ```
 
 In the preview, wp-cron must be able to reach the site through
-Traefik. Expect `200`; a hang means the NetworkPolicy does not match
-the path the request takes:
+Traefik. Expect `403`: the catch-all route is still `lan-only` and
+the pod's own address doesn't qualify, so this proves the
+NetworkPolicy path is open; a hang means it isn't. wp-cron does not
+actually run during the preview. After going live, the same request
+must return `200`:
 
 ```sh
 kubectl --context nas -n wordpress-micah-mmm-v2 exec deploy/wordpress -- \

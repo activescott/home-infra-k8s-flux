@@ -160,12 +160,15 @@ spec:
 
             // Traefik's access log records the query string in RequestPath,
             // which puts password-reset keys, nonces and tokens from every
-            // host into Loki. Blank the values of parameters with those names.
-            // This runs before the msg fallback below copies the line into
-            // structured metadata. Traefik's JSON encoder escapes & as
-            // \u0026, so both spellings count as a parameter separator.
+            // host into Loki. The wordpress container's own Apache access
+            // log carries the same query string in the request line, so it
+            // needs the same redaction. Blank the values of parameters with
+            // those names. This runs before the msg fallback below copies
+            // the line into structured metadata. Traefik's JSON encoder
+            // escapes & as \u0026, so both spellings count as a parameter
+            // separator.
             stage.match {
-              selector = "{namespace=\"kube-system\", container=\"traefik\"} |= \"\\\"RequestPath\\\"\""
+              selector = "{container=~\"traefik|wordpress\"}"
 
               stage.replace {
                 expression = `(?i)(?:[?&]|\\u0026)(?:key|token|_wpnonce|pass|password)=([^&"\\\s]+)`
