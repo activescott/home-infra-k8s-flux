@@ -56,6 +56,33 @@ nothing more, because local-path does not enforce a claim's size and the disk it
 the one k3s runs from. Use `emptyDir`, which is bounded by the ephemeral-storage limit and
 evicted by the kubelet when it is exceeded.
 
+## Building images
+
+For a docker-compose `build:` service
+([activescott/activeassistant#349](https://github.com/activescott/activeassistant/issues/349)).
+`registry.yaml` runs an anonymous registry in this namespace, and the vcluster sees it as
+`registry.default.svc.cluster.local:5000`. Build with kaniko in a pod of your own, streaming the
+context in as a tarball, then run the image under the name the node can pull,
+`sandbox.oci-registry.activescott.com/<repo>:<tag>`. Same registry, two names: the sandbox cannot
+reach the node's address, and the node will not pull over plain HTTP.
+
+```bash
+tar -C ./app -czf - . | kubectl --kubeconfig /tmp/agent-sandbox.kubeconfig run build-app -i --rm \
+  --restart=Never --image=ghcr.io/osscontainertools/kaniko:v1.28.4 \
+  --overrides='{"spec":{"containers":[{"name":"build-app","image":"ghcr.io/osscontainertools/kaniko:v1.28.4","stdin":true,"stdinOnce":true,
+    "args":["--context=tar://stdin","--destination=registry.default.svc.cluster.local:5000/app:dev","--insecure"],
+    "securityContext":{"capabilities":{"drop":["NET_RAW"]}},
+    "resources":{"requests":{"cpu":"100m","memory":"256Mi"},"limits":{"cpu":"2","memory":"2Gi"}}}]}}'
+# then, in a manifest: image: sandbox.oci-registry.activescott.com/app:dev
+```
+
+kaniko drops only NET_RAW, not ALL, because it runs the Dockerfile's `RUN` steps as root in its
+own container and they need the default capabilities to `chown` and `useradd`. Rootless BuildKit
+does not start here at all (see the comment at the top of `registry.yaml`).
+
+The registry's storage is an `emptyDir`, so a registry restart empties it and every image has to
+be pushed again.
+
 ## What is still reachable
 
 Egress to `0.0.0.0/0` on 80 and 443 includes this house's own public address, so anything

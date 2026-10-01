@@ -110,6 +110,55 @@ spec:
         - port: 5000
           protocol: TCP
 ---
+# Traefik to the sandbox registry, which is how the node pulls the images agents build
+# (registry-ingress.yaml). Ingress only: the registry has no business going out.
+#
+# The selector is a label an agent can also put on a pod inside the vcluster, since vcluster
+# copies most labels to the host pod unchanged, and that pod would then join the Service and
+# receive this traffic too. It gains nothing: the registry is already the sandbox's own, and the
+# only client on this path is the node pulling images the sandbox asked it to run.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-registry-from-traefik
+  namespace: agent-sandbox-k8s
+spec:
+  podSelector:
+    matchLabels:
+      app: sandbox-registry
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 5000
+          protocol: TCP
+---
+# cert-manager stands up its HTTP-01 solver pod in this namespace for every issuance and renewal
+# of the certificate in registry-ingress.yaml, and default-deny above selects it too. Same shape
+# as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml, which
+# explains the failure mode.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+  namespace: agent-sandbox-k8s
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
 # The control plane, which is the only pod here with any business outside the sandbox.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

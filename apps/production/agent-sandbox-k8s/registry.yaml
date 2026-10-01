@@ -1,0 +1,102 @@
+# An image registry for the sandbox, so a docker-compose `build:` service can be built inside the
+# virtual cluster and then run there (activescott/activeassistant#349). Agents build with kaniko
+# in a pod of their own and push here; the node's kubelet pulls from here through the Ingress in
+# registry-ingress.yaml. README.md has the recipe.
+#
+# Anonymous and plain HTTP inside this namespace. Everything that can reach it on 5000 is already
+# the sandbox, and the sandbox is one trust domain (networkpolicy.yaml): an agent that can push
+# here can already run whatever it likes in the vcluster.
+#
+# THE STORAGE IS AN emptyDir AND IS LOST ON EVERY RESTART. That is deliberate: the quota allows
+# no PersistentVolumeClaim beyond the control plane's own, for the reason in resourcequota.yaml,
+# and a sandbox registry holds nothing that cannot be rebuilt. The sizeLimit sits under the
+# container's ephemeral-storage limit, so a full registry is evicted and comes back empty rather
+# than filling the node's disk.
+#
+# No builder runs here. Rootless BuildKit was the plan and does not start in this namespace: the
+# node enforces containerd's default AppArmor profile, which denies mount(2), and rootlesskit
+# fails with "failed to share mount point: /: permission denied". The profile can only be lifted
+# with `appArmorProfile: Unconfined`, which Pod Security baseline (namespace.yaml) refuses. kaniko
+# needs neither mounts nor a user namespace and runs under baseline as it is.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-registry
+  namespace: agent-sandbox-k8s
+  labels:
+    app: sandbox-registry
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sandbox-registry
+  template:
+    metadata:
+      labels:
+        app: sandbox-registry
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: registry
+          image: registry:3.0.0@sha256:6c5666b861f3505b116bb9aa9b25175e71210414bd010d92035ff64018f9457e
+          env:
+            # The image's default config ships traces to localhost:4318 and logs an error for
+            # every failed export. With the exporter off it logs each span at debug instead,
+            # which is the image's default level, so raise that too.
+            - name: OTEL_TRACES_EXPORTER
+              value: none
+            - name: REGISTRY_LOG_LEVEL
+              value: info
+            # So an agent can free space with the registry API instead of waiting for an eviction.
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          ports:
+            - name: registry
+              containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: registry
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+              ephemeral-storage: 64Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+              ephemeral-storage: 10Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 9Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sandbox-registry
+  namespace: agent-sandbox-k8s
+spec:
+  selector:
+    app: sandbox-registry
+  ports:
+    - name: registry
+      port: 5000
+      targetPort: registry

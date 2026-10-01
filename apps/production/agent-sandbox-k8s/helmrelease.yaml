@@ -331,6 +331,16 @@ spec:
       context: agent-sandbox
       server: https://agent-sandbox.agent-sandbox-k8s.svc.cluster.local
 
+    # The sandbox registry (registry.yaml), as `registry.default.svc.cluster.local:5000` inside the
+    # virtual cluster. Without this a vcluster pod has no name for it: the virtual CoreDNS answers
+    # cluster.local itself and knows nothing of host Services. The syncer reads the host Service
+    # with the namespace Role it already has.
+    networking:
+      replicateServices:
+        fromHost:
+          - from: agent-sandbox-k8s/sandbox-registry
+            to: default/registry
+
     # No cluster-scoped rights for the syncer. The chart's `auto` default hands it a ClusterRole
     # with cluster-wide `persistentvolumes` read and `volumesnapshotcontents` create/delete/patch/
     # update, purely because volume-snapshot rules default on -- none of which this sandbox uses:
