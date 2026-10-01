@@ -35,10 +35,15 @@ spec:
             # wp-config.php into the emptyDir. Unlike there, wp-content is not mounted, so the
             # bundled themes and plugins land in the emptyDir and are covered by the volume
             # below. Nothing in this pod can write wp-content outside uploads/.
+            #
+            # The first pass fails at the end of its copy: tar cannot chmod the emptyDir's root
+            # as uid 33. The Deployment gets past this because the kubelet reruns the init
+            # container and the second pass, finding index.php, skips the copy and writes
+            # wp-config.php. This pod has restartPolicy Never, so it makes the second pass itself.
             - name: install-core
               image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
-              command: ["docker-ensure-installed.sh"]
-              args: ["true"]
+              command: ["sh", "-c"]
+              args: ["docker-ensure-installed.sh true || docker-ensure-installed.sh true"]
               workingDir: /var/www/html
               env:
                 - name: WORDPRESS_DB_HOST

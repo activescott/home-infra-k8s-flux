@@ -38,13 +38,12 @@ ls /mnt/thedatapool/app-data/wordpress-micah-mmm/wp-content/themes \
 Keep in `themes/` the active theme, `twentytwentyfive` (the fallback that
 Site Health does not count) and `index.php`. Keep in `plugins/` each active
 plugin's directory and `index.php`. Delete the rest, one entry at a time,
-taking a copy first:
+taking a copy first, where `<dir>` is `themes` or `plugins`:
 
 ```sh
-cd /mnt/thedatapool/app-data/wordpress-micah-mmm/wp-content
-sudo tar czf ~/mmm-removed-$(date +%Y%m%d).tar.gz themes/<name> plugins/<name>
-sudo rm -rf themes/<name>
-sudo rm -rf plugins/<name>
+cd /mnt/thedatapool/app-data/wordpress-micah-mmm/wp-content &&
+  sudo tar czf ~/mmm-removed-<dir>-<name>-$(date +%Y%m%d-%H%M%S).tar.gz <dir>/<name> &&
+  sudo rm -rf <dir>/<name>
 ```
 
 WordPress reads these directories on each request, so no restart is needed.
