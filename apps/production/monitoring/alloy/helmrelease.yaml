@@ -158,6 +158,24 @@ spec:
               expression = ".*GET /(api/)?health/(readiness|liveness).*"
             }
 
+            // Traefik's access log records the query string in RequestPath,
+            // which puts password-reset keys, nonces and tokens from every
+            // host into Loki. The wordpress container's own Apache access
+            // log carries the same query string in the request line, so it
+            // needs the same redaction. Blank the values of parameters with
+            // those names. This runs before the msg fallback below copies
+            // the line into structured metadata. Traefik's JSON encoder
+            // escapes & as \u0026, so both spellings count as a parameter
+            // separator.
+            stage.match {
+              selector = "{container=~\"traefik|wordpress\"}"
+
+              stage.replace {
+                expression = `(?i)(?:[?&]|\\u0026)(?:key|token|_wpnonce|pass|password)=([^&"\\\s]+)`
+                replace    = "REDACTED"
+              }
+            }
+
             // Extract level and msg from JSON for label promotion and
             // structured metadata. Two field-name conventions in the wild:
             //   - pino (Node) and many others: "level" + "msg"
@@ -815,6 +833,116 @@ spec:
                   // A sandbox that is behaving produces none of these for
                   // weeks. The 5m default would delete the series between
                   // matches and leave increase() nothing to measure.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // activescott/home-infra-k8s-flux#276: kustomize-controller no
+            // longer exposes gotk_reconcile_condition (confirmed absent from
+            // Prometheus on 2026-09-30 -- see the flux-reconcile-log-health
+            // group's comment in prometheus/helmrelease.yaml), so Kustomization
+            // readiness has to come from its own reconcile logs instead. It
+            // logs this on every failed reconcile attempt, repeating at the
+            // Kustomization's retry interval for as long as it stays
+            // unhealthy:
+            //   {"level":"error","msg":"Reconciliation failed after ...",
+            //    "controller":"kustomization","name":"apps",...}
+            //
+            // Two counters, one per Kustomization, rather than one filtered
+            // by an alternation: the name lives in the JSON body, not a
+            // stream label, so a combined counter could not tell a reader
+            // which Kustomization is failing.
+            stage.match {
+              selector = "{namespace=\"flux-system\", app=\"kustomize-controller\", level=\"error\"} |= \"Reconciliation failed\" |= \"\\\"name\\\":\\\"apps\\\"\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "flux_apps_kustomization_reconcile_failed_total"
+                  description = "kustomize-controller reconcile failures for the apps Kustomization"
+                  match_all   = true
+                  action      = "inc"
+
+                  // Healthy stretches last for weeks; the 5m default would
+                  // delete the series between failures.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            stage.match {
+              selector = "{namespace=\"flux-system\", app=\"kustomize-controller\", level=\"error\"} |= \"Reconciliation failed\" |= \"\\\"name\\\":\\\"infra-configs\\\"\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "flux_infra_configs_kustomization_reconcile_failed_total"
+                  description = "kustomize-controller reconcile failures for the infra-configs Kustomization"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // WordPress (apps/base/wordpress-upstream), read from the
+            // wordpress container's Apache access and PHP error log. These feed
+            // the wordpress-security alert group. Each should stay at zero; the
+            // matched phrases are WordPress's and Apache's own, so an image
+            // bump that changes the log format silences them without an error.
+            // Verify by sending a matching request once, never by silence.
+            //
+            // The REST batch endpoint answering 2xx, in either spelling:
+            //   "POST /?rest_route=/batch/v1&... HTTP/1.1" 207 ...
+            //   "POST /wp-json/batch/v1 HTTP/1.1" 200 ...
+            // [^ ]* keeps the match inside the request field, so a Referer
+            // naming the endpoint does not count.
+            stage.match {
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ [^ ]*(rest_route=(/|%2f)batch(/|%2f)v1|/wp-json/+batch/v1)[^ ]* http/[0-9.]+. 2[0-9][0-9] \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "wordpress_rest_batch_2xx_total"
+                  description = "requests to the WordPress REST batch endpoint that returned 2xx"
+                  match_all   = true
+                  action      = "inc"
+                  // Expected to be idle for months; the 5m default would
+                  // delete the series between events.
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // PHP's warning from wp-includes/user.php when a user is written
+            // without a user_login field:
+            //   PHP Warning:  Undefined array key "user_login" in /var/www/html/wp-includes/user.php
+            stage.match {
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |= \"Undefined array key \\\"user_login\\\"\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "wordpress_user_login_warning_total"
+                  description = "PHP user_login warnings from wp-includes/user.php"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Any request for a path under wp-content/uploads containing
+            // ".ph", whatever the status. Nothing legitimate asks for one;
+            // Apache refuses to run or serve them (the base's
+            // configmap-apache-wp-content-no-php.yaml), so this is for knowing
+            // someone tried. Only the path is matched, not the query string.
+            stage.match {
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ /+wp-content/uploads/[^ ?]*([.]|%2e)ph[^ ]* http/\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "wordpress_uploads_php_request_total"
+                  description = "requests for .ph* paths under wp-content/uploads"
+                  match_all   = true
+                  action      = "inc"
                   max_idle_duration = "168h"
                 }
               }

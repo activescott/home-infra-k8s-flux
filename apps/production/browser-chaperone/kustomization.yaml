@@ -113,19 +113,25 @@ secretGenerator:
   - name: mcp-gateway-token
     envs:
       - .env.secret.mcp-gateway-token.public-key-encrypted.encrypted
+  # Key: chaperone_wake_token, what the app presents when it wakes Olya's session on a decision
+  # (activescott/activeassistant#543). Same value as chaperone_wake_token in
+  # ../olya/.env.secret.olya-chaperone-wake.public-key-encrypted.encrypted; rotate both together.
+  - name: agent-wake-token
+    envs:
+      - .env.secret.agent-wake-token.public-key-encrypted.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.16.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.19.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
-    newTag: v0.6.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+    newTag: v0.7.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
-    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
   - name: browser-chaperone-image-network-proxy
     newName: ghcr.io/activescott/browser-chaperone/network-proxy # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:name"}
     newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}
