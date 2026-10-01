@@ -20,8 +20,9 @@
 #
 # That last part is what this rests on, and it fails open. Switch the Traefik Service to Cluster
 # and svclb MASQUERADEs every request onto the same bridge, so the whole internet would arrive as
-# 172.16.0.1 and could pull and push here. The security-guardrails workflow fails any PR that
-# changes it (`Traefik externalTrafficPolicy must be Local`).
+# 172.16.0.1 and could pull here. The security-guardrails workflow fails any PR that changes it
+# (`Traefik externalTrafficPolicy must be Local`). The route below matches GET and HEAD only, so
+# that failure exposes reads and never push: the node only pulls.
 #
 # The sandbox itself cannot use this name: networkpolicy.yaml denies 10.0.0.0/8, and the node's
 # address is in it. Agents push to the in-namespace Service instead (README.md).
@@ -51,29 +52,24 @@ spec:
     sourceRange:
       - 172.16.0.1/32
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# An IngressRoute rather than an Ingress because an Ingress cannot match on method. Any other
+# method gets a 404 from Traefik. Traefik v3 takes one method per Method(), so
+# `Method(`GET`, `HEAD`)` fails to parse and disables the router.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: sandbox-registry
   namespace: agent-sandbox-k8s
-  annotations:
-    # namespace-name@kubernetescrd. Nothing validates the string, and a typo drops the
-    # middleware silently, which here would publish the registry.
-    traefik.ingress.kubernetes.io/router.middlewares: agent-sandbox-k8s-sandbox-registry-node-only@kubernetescrd
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`sandbox.oci-registry.activescott.com`) && (Method(`GET`) || Method(`HEAD`))
+      middlewares:
+        - name: sandbox-registry-node-only
+      services:
+        - name: sandbox-registry
+          port: registry
   tls:
-    - hosts:
-        - sandbox.oci-registry.activescott.com
-      secretName: sandbox-oci-registry-activescott-com-tls
-  rules:
-    - host: sandbox.oci-registry.activescott.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: sandbox-registry
-                port:
-                  name: registry
+    secretName: sandbox-oci-registry-activescott-com-tls

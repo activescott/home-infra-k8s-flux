@@ -1,7 +1,7 @@
 # An image registry for the sandbox, so a docker-compose `build:` service can be built inside the
 # virtual cluster and then run there (activescott/activeassistant#349). Agents build with kaniko
-# in a pod of their own and push here; the node's kubelet pulls from here through the Ingress in
-# registry-ingress.yaml. README.md has the recipe.
+# in a pod of their own and push here; the node's kubelet pulls from here through the
+# IngressRoute in registry-ingress.yaml. README.md has the recipe.
 #
 # Anonymous and plain HTTP inside this namespace. Everything that can reach it on 5000 is already
 # the sandbox, and the sandbox is one trust domain (networkpolicy.yaml): an agent that can push

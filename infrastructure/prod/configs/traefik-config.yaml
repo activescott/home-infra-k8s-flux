@@ -25,6 +25,12 @@ spec:
         # failure is a 403 for everyone rather than a 403 for no one. It fails
         # closed, but the symptom shows up in an unrelated app with no hint that
         # the cause is this line.
+        #
+        # One does not: sandbox-registry-node-only in
+        # apps/production/agent-sandbox-k8s/registry-ingress.yaml allows only
+        # 172.16.0.1, the node's cni0 address. That file explains why Cluster
+        # would make every request arrive from it. That one fails open, and the
+        # internet could pull sandbox images.
         externalTrafficPolicy: Local
       # A ClusterIP-only Service for the `internal` entrypoint below. The chart
       # renders one Service per key here, and a port lands on a Service only if
