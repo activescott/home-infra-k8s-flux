@@ -153,16 +153,24 @@ spec:
                 secretKeyRef:
                   name: wordpress-creds
                   key: wordpress-nonce-salt
-            # No system ImageMagick package (hence no policy.xml) ships in this
-            # image, so Imagick's pixel cache is otherwise unbounded; MagickCore
-            # reads these at init instead. 128Mi/256Mi per Imagick instance caps
-            # four concurrent sub-size generations (the mmm OOM trigger) at 1Gi
-            # of mapped memory, leaving the other 1Gi of the limit above for
-            # Apache/PHP, and spills excess to /tmp disk cache instead of OOMing.
+            # /etc/ImageMagick-7/policy.xml in this image (IM 7.1.1 Q16) caps
+            # each instance at 1024MiB memory, 2048MiB map, 2GiB disk, 256MP
+            # area: too loose for this pod. IM7 clamps MAGICK_*_LIMIT env vars
+            # to min(env, policy), so these lower values still win. 64Mi memory
+            # + 128Mi map per instance is 192Mi; four concurrent sub-size
+            # generations (the mmm OOM trigger) reach ~768Mi against the 2Gi
+            # limit above, leaving the rest for Apache/PHP.
             - name: MAGICK_MEMORY_LIMIT
-              value: "128MiB"
+              value: "64MiB"
             - name: MAGICK_MAP_LIMIT
-              value: "256MiB"
+              value: "128MiB"
+            # /tmp is a 3Gi emptyDir shared with PHP's own upload temp files
+            # (upload_max_filesize=2G), and the policy above allows 2GiB disk
+            # per instance. 128Mi caps four concurrent instances' disk spill at
+            # 512Mi, so that plus one 2G upload fits under 3Gi with margin, and
+            # a huge upload errors in Imagick instead of evicting the pod.
+            - name: MAGICK_DISK_LIMIT
+              value: "128MiB"
           ports:
             - name: http
               containerPort: 80
