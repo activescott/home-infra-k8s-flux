@@ -153,24 +153,6 @@ spec:
                 secretKeyRef:
                   name: wordpress-creds
                   key: wordpress-nonce-salt
-            # Per Apache child, so per upload. The image's policy.xml allows
-            # 1024MiB memory, 2048MiB map, 2GiB disk; IM7 takes min(env,
-            # policy). Each pixel cache (6 B/px for a JPEG at Q16) goes whole
-            # to the heap if it fits what is left of MEMORY, else to a temp
-            # file in /tmp that must fit DISK, mmapped if it fits MAP. A file in /tmp counts
-            # against the emptyDir, and its pages are reclaimable page cache,
-            # so only the heap can OOM the pod. WordPress decodes the full
-            # original and samples it up to 5x a sub-size first, so a 48MP
-            # photo peaks near 1GiB: its 279MiB original must fit the heap
-            # and the rest (up to ~730MiB) spills. Four 24MP uploads use at
-            # most ~1.25GiB heap, and one 768MiB spill plus a 2G upload fits
-            # /tmp's 3Gi.
-            - name: MAGICK_MEMORY_LIMIT
-              value: "320MiB"
-            - name: MAGICK_MAP_LIMIT
-              value: "768MiB"
-            - name: MAGICK_DISK_LIMIT
-              value: "768MiB"
           ports:
             - name: http
               containerPort: 80
@@ -234,7 +216,7 @@ spec:
               name: apache-wp-content-no-php
           resources:
             limits:
-              memory: "2Gi"
+              memory: "4Gi"
               cpu: "1"
             requests:
               memory: "256Mi"
