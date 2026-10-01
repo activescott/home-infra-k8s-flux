@@ -107,9 +107,9 @@ spec:
           # specs/migrate-dev-to-kind/plan.md "Phase B execution detail"
           # and this repo's docs/specs/gha-runner-self-hosted/summary.md
           # "What would actually break the deadlock".
-          # The systemd flag is not set yet: it never took effect (see
-          # above), and turning it on lands as its own change. See
-          # activescott/browser-chaperone#59.
+          # The systemd cgroup driver is deliberately not set: docker:dind
+          # runs no systemd, so runc fails every container start when it's
+          # enabled. See activescott/home-infra-k8s-flux#304.
           #
           # Args here REPLACE the chart default; defaults come from the
           # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
