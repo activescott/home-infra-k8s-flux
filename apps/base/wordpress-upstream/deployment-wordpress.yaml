@@ -153,6 +153,16 @@ spec:
                 secretKeyRef:
                   name: wordpress-creds
                   key: wordpress-nonce-salt
+            # No system ImageMagick package (hence no policy.xml) ships in this
+            # image, so Imagick's pixel cache is otherwise unbounded; MagickCore
+            # reads these at init instead. 128Mi/256Mi per Imagick instance caps
+            # four concurrent sub-size generations (the mmm OOM trigger) at 1Gi
+            # of mapped memory, leaving the other 1Gi of the limit above for
+            # Apache/PHP, and spills excess to /tmp disk cache instead of OOMing.
+            - name: MAGICK_MEMORY_LIMIT
+              value: "128MiB"
+            - name: MAGICK_MAP_LIMIT
+              value: "256MiB"
           ports:
             - name: http
               containerPort: 80
@@ -216,7 +226,7 @@ spec:
               name: apache-wp-content-no-php
           resources:
             limits:
-              memory: "1Gi"
+              memory: "2Gi"
               cpu: "1"
             requests:
               memory: "256Mi"
