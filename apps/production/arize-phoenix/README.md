@@ -76,6 +76,20 @@ Set environment variables:
 - `PHOENIX_COLLECTOR_ENDPOINT=http://phoenix.arize-phoenix.svc.cluster.local:6006`
 - `PHOENIX_API_KEY=<api-key-from-phoenix-ui>`
 
+## Querying traces
+
+From `olya-0`, the REST API is at `http://phoenix.arize-phoenix.svc:6006/v1` with
+`Authorization: Bearer $PHOENIX_API_KEY`. The key belongs to the Viewer user `olya`, so only GET
+requests work. Project names come from `/v1/projects`; the trace endpoint takes a name or an ID.
+
+```bash
+curl -fsS -H "Authorization: Bearer $PHOENIX_API_KEY" \
+  "http://phoenix.arize-phoenix.svc:6006/v1/projects/<project-name>/traces?limit=10"
+```
+
+Add `include_spans=true` for span details, or `start_time=<ISO 8601>` to bound the window. The
+OpenAPI schema is at `/openapi.json`.
+
 ## Upgrading
 
 1. Find the latest release (the repo is a monorepo; filter by the `arize-phoenix-v` prefix):
