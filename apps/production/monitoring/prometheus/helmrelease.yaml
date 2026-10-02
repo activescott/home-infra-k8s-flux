@@ -30,10 +30,23 @@ spec:
         runAsGroup: 4030
         fsGroup: 4030
 
+      # Setting this replaces the chart default, [web.enable-lifecycle], and the
+      # configmap-reload sidecar below POSTs to /-/reload, which needs that flag.
+      # The receiver takes debeth's remote write (prometheus-remote-write-ingress.yaml).
+      extraFlags:
+        - web.enable-lifecycle
+        - web.enable-remote-write-receiver
+
+      # Working set peaked at 2005Mi against the old 2Gi limit over 7 days to
+      # 2026-10-01, before debeth's series. With no requests set, Kubernetes used
+      # the limits as requests, so these keep the request equal to the limit.
       resources:
+        requests:
+          cpu: "1"
+          memory: "4Gi"
         limits:
           cpu: "1"
-          memory: "2Gi"
+          memory: "4Gi"
 
       # Basic-auth password for the stalwart scrape job below. Mounted as a file
       # rather than written into the scrape config inline: serverFiles and
