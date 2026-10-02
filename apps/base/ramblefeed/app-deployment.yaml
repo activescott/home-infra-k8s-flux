@@ -103,6 +103,11 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: TURNSTILE_SECRET_KEY
+            - name: PASSKEY_CHALLENGE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: passkey-challenge
+                  key: PASSKEY_CHALLENGE_SECRET
           resources:
             limits:
               cpu: "2"

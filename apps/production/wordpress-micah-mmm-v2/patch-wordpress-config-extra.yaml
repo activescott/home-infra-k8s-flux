@@ -20,7 +20,23 @@ spec:
             #     wp-config.php from env vars and does NOT set these.
             # WORDPRESS_CONFIG_EXTRA gets appended into the generated
             # wp-config.php verbatim by the image's entrypoint.
+            #
+            # The rest is hardening. Core is read-only (see the base
+            # Deployment), so WordPress must not try to update it; core
+            # moves only when the image tag does. DISALLOW_FILE_MODS also
+            # removes plugin and theme installs and updates from the
+            # dashboard, so those now happen on the wp-content volume.
+            #
+            # WP_HTTP_BLOCK_EXTERNAL matches networkpolicy.yaml, which gives
+            # this pod no internet egress: WordPress refuses outbound
+            # requests at once instead of each one hanging until its timeout.
+            # Requests to the site's own host, which is how wp-cron runs,
+            # are still allowed.
             - name: WORDPRESS_CONFIG_EXTRA
               value: |
                 define('WP_HOME',    'https://mmm.willeke.com');
                 define('WP_SITEURL', 'https://mmm.willeke.com');
+                define('WP_AUTO_UPDATE_CORE', false);
+                define('DISALLOW_FILE_EDIT', true);
+                define('DISALLOW_FILE_MODS', true);
+                define('WP_HTTP_BLOCK_EXTERNAL', true);

@@ -8,6 +8,7 @@ resources:
   - olya-statefulset.yaml
   - olya-service.yaml
   - olya-ingress.yaml
+  - olya-wake-ingress.yaml
   - olya-networkpolicy.yaml
   - olya-memory-sync-cronjob.yaml
   # Image is private on GHCR, same as the other first-party images in this repo.
@@ -92,7 +93,15 @@ secretGenerator:
   - name: olya-mcp-gateway
     envs:
       - .env.secret.olya-mcp-gateway.public-key-encrypted.encrypted
+  # Key: chaperone_wake_token, what the approval app presents to the chaperone-wake plugin's
+  # /chaperone/decision route (activescott/activeassistant#543). Same value as
+  # chaperone_wake_token in
+  # ../browser-chaperone/.env.secret.agent-wake-token.public-key-encrypted.encrypted; rotate
+  # both together.
+  - name: olya-chaperone-wake
+    envs:
+      - .env.secret.olya-chaperone-wake.public-key-encrypted.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790724563 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1790909853 # {"$imagepolicy": "flux-system:policy-olya:tag"}

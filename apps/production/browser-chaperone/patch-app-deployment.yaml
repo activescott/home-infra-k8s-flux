@@ -1,3 +1,17 @@
+# Enforce mode (browser-chaperone#89, ping-poet/dreamwright#108) fails closed
+# when the app does not answer within 5s, so a rollout or a restart cannot
+# leave it unreachable: two replicas, a PDB (app-pdb.yaml) and no drop in
+# capacity while a new pod starts. The sign-in challenge the app used to hold
+# in process memory now lives in Postgres instead (packages/web-app's
+# app/lib/auth.server.ts), so a verify reaching the other replica still finds it.
+- op: replace
+  path: /spec/replicas
+  value: 2
+- op: add
+  path: /spec/strategy
+  value:
+    rollingUpdate:
+      maxUnavailable: 0
 - op: add
   path: /spec/template/spec/imagePullSecrets
   value:
@@ -44,6 +58,17 @@
           name: slack-signing-creds
           key: SLACK_SIGNING_SECRET
           optional: true
+    # After each decision the app posts the request id and the decision to the chaperone-wake
+    # plugin in olya-0, which wakes the session that raised it (activescott/activeassistant#543).
+    # Through Traefik's cluster-internal entrypoint, not straight to olya:18789, so the gateway
+    # never sees an X-Forwarded-For this pod wrote; see ../olya/olya-wake-ingress.yaml.
+    - name: AGENT_WAKE_URL
+      value: http://traefik-internal.kube-system.svc:8001/chaperone/decision
+    - name: AGENT_WAKE_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: agent-wake-token
+          key: chaperone_wake_token
 - op: add
   path: /spec/template/spec/containers/0/envFrom/-
   value:
