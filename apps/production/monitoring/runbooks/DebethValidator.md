@@ -135,3 +135,12 @@ A relay is answering with something other than 200 or 204. A 415 on
 `/eth/v1/builder/validators` means the relay rejects the registration encoding mev-boost
 sends; Titan's relays did this on 2026-10-02. Like the alert above, the fix is in
 `MEV_RELAYS` or a mev-boost version, and it costs MEV rewards, not proposals.
+
+If the fee recipient or gas limit changes, Titan needs the signed registration re-posted as
+JSON:
+
+```sh
+curl -s 'https://aestus.live/relay/v1/data/validator_registration?pubkey=0x8a1cea041e414d5186d17179ba4e684b51168066fa0b1cacc2c75614ab08574d6a42bddb4438928681bc048e903934ac' \
+  | jq -c '[.]' \
+  | curl -s -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' --data-binary @- https://global.titanrelay.xyz/eth/v1/builder/validators
+```

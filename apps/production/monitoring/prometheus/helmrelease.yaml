@@ -2272,8 +2272,14 @@ spec:
                     rewards, not proposals.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
                   repo: activescott/home-infra-private
+              # Titan's relays 415 every validator registration because mev-boost forwards
+              # Lodestar's SSZ body and Titan accepts only JSON (activescott/activeassistant#659).
+              # Drop this exclusion once mev-boost retries JSON on 415 or debeth moves to
+              # Commit-Boost, which sends JSON to every relay.
               - alert: DebethMevRelayErrors
-                expr: 'sum by (relay, http_status_code) (increase(mev_boost_relay_status_code_total{host="debeth",http_status_code!~"200|204"}[1h])) > 3'
+                expr: >-
+                  sum by (relay, http_status_code) (increase(mev_boost_relay_status_code_total{host="debeth",http_status_code!~"200|204"}[1h])
+                  unless increase(mev_boost_relay_status_code_total{relay=~".*titanrelay\\.xyz",endpoint="/eth/v1/builder/validators",http_status_code="415"}[1h])) > 3
                 for: 0m
                 labels:
                   severity: warning
