@@ -131,9 +131,18 @@ configuration to Scott.
 
 Registrations to a relay are getting no HTTP response at all, usually because the relay's
 hostname no longer resolves or it is down. Commit-Boost counts those as status code 555.
-`eth-logs` shows cb-pbs errors carrying the relay's `relay_id`. The fix is changing the relay
-list in eth-docker's `commit-boost/cb-config.toml` and `MEV_RELAYS` in `.env`, which is
-Scott's call.
+Do not expect a log line for each one: at info, cb-pbs logs `reached retry limit for validator
+registration` only when it runs out of retries, and nothing when the 3 s registration budget
+runs out first. Look at the metric instead, in Explore or the dashboard's **MEV relay status
+codes per hour** panel:
+
+```promql
+sum by (relay_id, endpoint) (increase(cb_pbs_relay_status_code_total{host="debeth",http_status_code="555"}[1h]))
+```
+
+The alert counts `endpoint="register_validator"` only. 555s on `status` or `get_header` for the
+same relay too mean it is unreachable for everything, not only registrations. The fix is changing the relay list in eth-docker's
+`commit-boost/cb-config.toml` and `MEV_RELAYS` in `.env`, which is Scott's call.
 
 ## DebethMevRelayErrors
 
