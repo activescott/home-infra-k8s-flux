@@ -175,10 +175,25 @@ if (pinned) {
   fatal("could not reach api.github.com and no known_hosts exists")
 }
 
+// Hosts other than github.com that get pinned the same way: a git-tracked file rather than
+// GitHub's API, because nothing else publishes their key over an authenticated channel. Without
+// this, every pod restart would drop them -- the rewrite above replaces the whole file, not
+// just the github.com lines (activescott/activeassistant#637). Checked for presence rather than
+// appended unconditionally so the keep-existing branch above, which never touched the file,
+// still ends up with them.
+const extraHostsFile = "/scripts/known_hosts.extra"
+const extraHosts = existsSync(extraHostsFile) ? readFileSync(extraHostsFile, "utf8") : ""
+if (extraHosts && !readFileSync(knownHosts, "utf8").includes(extraHosts.trimEnd())) {
+  writeFileSync(knownHosts, `${readFileSync(knownHosts, "utf8").trimEnd()}\n${extraHosts}`)
+  chmodSync(knownHosts, 0o600)
+}
+
 // What ssh will ACTUALLY use, as ssh resolves it, rather than what we think we wrote. Keep this:
 // it is the difference between diagnosing the problem above from one log line and diagnosing it
 // by reproducing the image locally. Every value here should be ours, not a default.
-const hostKeyCount = readFileSync(knownHosts, "utf8").trimEnd().split("\n").length
+const hostKeyCount = readFileSync(knownHosts, "utf8")
+  .split("\n")
+  .filter((line) => line.trim() && !line.trim().startsWith("#")).length
 log(`ssh setup: HOME=${HOME_DIR}, ${hostKeyCount} host keys pinned`)
 try {
   const resolved = execFileSync("ssh", ["-F", sshConfig, "-G", "github.com"], {

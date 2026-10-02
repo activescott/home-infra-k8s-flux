@@ -38,6 +38,9 @@ configMapGenerator:
       # Imported by the three above. Not a program, but it ships in the same ConfigMap because
       # all three resolve it as ./volume-layout.mts from /scripts.
       - scripts/volume-layout.mts
+      # Host keys seed-workspace.mts pins alongside GitHub's. Not a program either; same reason
+      # as volume-layout.mts above.
+      - scripts/known_hosts.extra
   # Sends her HTTP(S) through the logging proxy in browser-chaperone-prod
   # (activescott/activeassistant#316). Loaded with envFrom by every container that goes online.
   #

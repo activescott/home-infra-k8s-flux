@@ -1,0 +1,7 @@
+# Hosts other than github.com that seed-workspace.mts must pin on every boot, because it
+# otherwise only writes GitHub's keys and a restart would drop anything else pinned here
+# (activescott/activeassistant#637).
+#
+# debeth, for the SSH validator-upgrade runbook Olya runs there. Confirmed by the operator
+# (Scott) on 2026-10-02; fingerprint SHA256:UTMhUDFz29x24DOPVYr4hkyDR2xaLTqhA4pQgtILiFY.
+10.1.111.25 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIrAuiBNNOH8txQkEXWyZuK1F/+hMiKjN/zpv0MNIJeh
