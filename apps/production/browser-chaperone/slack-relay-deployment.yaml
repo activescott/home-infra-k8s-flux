@@ -66,6 +66,7 @@ spec:
             - secretRef:
                 name: slack-relay-creds
             # SLACK_NOTIFY_CHANNEL: the one channel RELAY_NOTIFY_TOKEN may post in.
+            # SLACK_OPERATOR_CHANNEL: #dream-on, where a reply to a non-operator is held.
             - configMapRef:
                 name: slack-notify-config
             # INTERNAL_API_TOKEN, the same Secret the app and the browser service read: the
