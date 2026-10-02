@@ -16,6 +16,7 @@ resources:
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
+  - app-pdb.yaml
   - app-ingress-certificate.yaml
   # /ops/* (kubelet probes) denied at the ingress; the probes reach the pod
   # directly instead.

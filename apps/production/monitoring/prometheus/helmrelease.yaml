@@ -839,6 +839,35 @@ spec:
                 annotations:
                   summary: 'OpenRouter budget exhausted for {{ $labels.app }} in {{ $labels.namespace }}, model calls are failing.'
                   description: '{{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15 minutes: that namespace''s workspace or key budget is spent and every call on it fails until the cap is raised or the month resets. Check Loki for the exact message: {namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403".'
+          - name: browser-chaperone
+            rules:
+              # The approval app runs two replicas now (browser-chaperone#89), so a rollout
+              # or a crash should never leave the egress proxy unable to reach it. Fed by
+              # chaperone_unchecked_total; see the stage.match comment in alloy/helmrelease.yaml
+              # for the log line and why it means the approval app did not answer.
+              - alert: ChaperoneApprovalUnchecked
+                expr: 'increase(loki_process_custom_chaperone_unchecked_total[5m]) > 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "The network chaperone could not reach the approval app."
+                  description: '{{ $labels.pod }} logged chaperone=unchecked in the last 5 minutes: a connection could not be checked because the approval app did not answer within 5s. In enforce mode this refuses the connection outright. Check the app Deployment in browser-chaperone-prod for a stalled rollout or a crash loop.'
+              # Threshold from the 7 days of Loki history measured for
+              # ping-poet/dreamwright#108: the chaperone= field has existed since
+              # 2026-09-29, and its worst single hour there was 284 would-denies (a
+              # telemetry-host burst), with most hours under 50. 150 in 15 minutes is
+              # over twice that worst hour, so routine refusals (expired grants,
+              # agents discovering a new registry) do not trip it, but a host stuck
+              # retrying a refusal in a loop does.
+              - alert: ChaperoneRefusalSpike
+                expr: 'increase(loki_process_custom_chaperone_refused_total[15m]) > 150'
+                for: 1m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "The network chaperone is refusing an unusual number of connections."
+                  description: '{{ $labels.pod }} logged more than 150 would-deny or denied connections in 15 minutes. Check {namespace="browser-chaperone-prod", app="olya-egress-proxy"} |= "chaperone=" in Loki for the host: a one-off burst from a new registry is normal, a single host retrying in a loop is not.'
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
