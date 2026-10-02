@@ -1,7 +1,8 @@
 # DebethValidator
 
 One file for the `debeth` alert group (activescott/activeassistant#648). debeth is Scott's
-eth-docker host running a Lodestar beacon node and validator, Besu, and mev-boost. Its Alloy
+eth-docker host running a Lodestar beacon node and validator, Besu, and Commit-Boost (`cb-pbs`,
+which replaced mev-boost on 2026-10-02, activescott/activeassistant#659). Its Alloy
 remote-writes metrics to the nas Prometheus with the label `host="debeth"`; the nas has no
 route into debeth.
 
@@ -43,20 +44,23 @@ container start before treating it as an outage.
 
 ## DebethClientDown
 
-Alloy cannot scrape the consensus or validator container. In `eth-logs`, look for the named
-container exiting, restarting, or an out-of-memory kill. A client that crash-loops after an
-update is the common case; say which version `eth-version` reports.
+Alloy cannot scrape the consensus, validator or execution container. In `eth-logs`, look for
+the named container exiting, restarting, or an out-of-memory kill. A client that crash-loops
+after an update is the common case; say which version `eth-version` reports.
 
-Besu is not covered here: Alloy's `execution` scrape has never succeeded, so its `up` is
-always 0. A stopped Besu shows up as DebethExecutionNotSynced instead.
+Besu's own metrics depend on the `execution` override in eth-docker's `custom.yml`
+(activescott/activeassistant#659). If `job="execution"` is down while
+DebethExecutionNotSynced is quiet, Besu is running and that override is missing.
 
 ## DebethExporterDown
 
-mev-boost, node-exporter or ethereum-metrics-exporter is not answering. These do not affect
+cb-pbs, node-exporter or ethereum-metrics-exporter is not answering. These do not affect
 the validator directly, but each blinds some alerts: ethereum-metrics-exporter feeds every
 execution-layer alert, node-exporter feeds disk and clock, and DebethMetricsAbsent keys off
-node-exporter. A down mev-boost does matter for proposals: Lodestar falls back to a local
-block, which costs MEV rewards.
+node-exporter. A down cb-pbs does matter for proposals: Lodestar falls back to a local
+block, which costs MEV rewards. If cb-pbs runs but its scrape is down, the `cb-pbs` block in
+eth-docker's `custom.yml` that sets `CB_METRICS_PORT` is missing, and the two MEV relay alerts
+are blind.
 
 ## DebethBeaconNotSynced
 
@@ -126,12 +130,16 @@ configuration to Scott.
 ## DebethMevRelayUnreachable
 
 Registrations to a relay are getting no HTTP response at all, usually because the relay's
-hostname no longer resolves or it is down. `eth-logs` shows the mev-boost error for the relay.
-The fix is changing `MEV_RELAYS` in eth-docker's `.env`, which is Scott's call.
+hostname no longer resolves or it is down. Commit-Boost counts those as status code 555.
+`eth-logs` shows cb-pbs errors carrying the relay's `relay_id`. The fix is changing the relay
+list in eth-docker's `commit-boost/cb-config.toml` and `MEV_RELAYS` in `.env`, which is
+Scott's call.
 
 ## DebethMevRelayErrors
 
-A relay is answering with something other than 200 or 204. A 415 on
-`/eth/v1/builder/validators` means the relay rejects the registration encoding mev-boost
-sends; Titan's relays did this on 2026-10-02. Like the alert above, the fix is in
-`MEV_RELAYS` or a mev-boost version, and it costs MEV rewards, not proposals.
+A relay is answering with something other than 200 or 204. cb-pbs logs each failed
+registration as `failed registration` with the relay's `relay_id` and response. Under
+mev-boost, Titan's relays answered every registration with 415 because mev-boost forwarded
+Lodestar's SSZ body (activescott/activeassistant#659); Commit-Boost sends JSON. Like the alert
+above, the fix is in the relay list or a Commit-Boost version, and it costs MEV rewards, not
+proposals.

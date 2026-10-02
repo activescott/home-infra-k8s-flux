@@ -667,7 +667,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "MEV relay status codes per hour",
-      "description": "HTTP answers from each relay over the trailing hour. A relay that gives no HTTP answer (DNS or TCP failure) records nothing here; DebethMevRelayUnreachable covers that. DebethMevRelayErrors fires above 3 non-2xx.",
+      "description": "HTTP answers from each relay over the trailing hour, from Commit-Boost (cb-pbs). 555 is Commit-Boost's code for no HTTP answer (DNS, TCP or timeout); DebethMevRelayUnreachable fires on it. DebethMevRelayErrors fires above 3 other non-2xx.",
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -709,9 +709,9 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum by (relay, http_status_code) (increase(mev_boost_relay_status_code_total{host=\"debeth\"}[1h]))",
+          "expr": "sum by (relay_id, http_status_code) (increase(cb_pbs_relay_status_code_total{host=\"debeth\"}[1h]))",
           "refId": "A",
-          "legendFormat": "{{relay}} {{http_status_code}}"
+          "legendFormat": "{{relay_id}} {{http_status_code}}"
         }
       ]
     },
@@ -719,7 +719,7 @@
       "id": 11,
       "type": "timeseries",
       "title": "MEV relay mean latency",
-      "description": "Mean request latency per relay and endpoint. mev-boost records milliseconds into the default seconds-sized histogram buckets, so quantiles are meaningless and only sum/count is shown.",
+      "description": "Mean request latency per relay and endpoint, from Commit-Boost (cb-pbs), which records seconds.",
       "datasource": {
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
@@ -732,7 +732,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
+          "unit": "s",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 0,
@@ -761,9 +761,9 @@
             "type": "prometheus",
             "uid": "PBFA97CFB590B2093"
           },
-          "expr": "sum by (relay, endpoint) (rate(mev_boost_relay_latency_sum{host=\"debeth\"}[$__rate_interval])) / sum by (relay, endpoint) (rate(mev_boost_relay_latency_count{host=\"debeth\"}[$__rate_interval]))",
+          "expr": "sum by (relay_id, endpoint) (rate(cb_pbs_relay_latency_sum{host=\"debeth\"}[$__rate_interval])) / sum by (relay_id, endpoint) (rate(cb_pbs_relay_latency_count{host=\"debeth\"}[$__rate_interval]))",
           "refId": "A",
-          "legendFormat": "{{relay}} {{endpoint}}"
+          "legendFormat": "{{relay_id}} {{endpoint}}"
         }
       ]
     },
