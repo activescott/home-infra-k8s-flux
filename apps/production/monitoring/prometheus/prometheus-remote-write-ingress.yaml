@@ -1,0 +1,32 @@
+# debeth's Alloy pushes metrics here (activescott/activeassistant#648). A second Ingress for
+# the same host because middleware annotations are per-Ingress. Traefik prefers the longer
+# rule, so Path(`/api/v1/write`) wins over prometheus-ingress's PathPrefix(`/`): the read
+# credential cannot write, and the debeth credential works on this one path only.
+#
+# Middleware order is the annotation's order: the allowlist first, so a request from anywhere
+# but debeth gets a 403 before any password is checked.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-remote-write-ingress
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd. Nothing validates the string: a
+    # typo drops the middleware silently rather than erroring.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-prometheus-remote-write-lan@kubernetescrd,monitoring-prometheus-remote-write-auth@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - prometheus.activescott.com
+      # must match certificate.yaml's secretName
+      secretName: prometheus-activescott-com-tls
+  rules:
+    - host: prometheus.activescott.com
+      http:
+        paths:
+          - path: /api/v1/write
+            pathType: Exact
+            backend:
+              service:
+                name: prometheus-server
+                port:
+                  number: 80
