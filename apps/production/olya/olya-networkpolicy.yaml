@@ -29,8 +29,9 @@
 # LAN 10.1.111.0/24.
 ---
 # cert-manager stands up a short-lived HTTP-01 solver pod IN THIS NAMESPACE for every issuance
-# and renewal. The policy below uses `podSelector: {}`, which selects it too -- so without this,
-# Traefik cannot reach the solver on 8089 and the challenge hangs.
+# and renewal. It carries its own label, not `app: olya`, so the `olya` policy below does not
+# reach it -- this policy is what admits Traefik to the solver on 8089, and without it the
+# challenge hangs.
 #
 # The symptom is confusing: the app answers normally (a fast 401 from basicAuth on /), while
 # only the /.well-known/acme-challenge/ path times out, and the Certificate sits `pending` with
@@ -61,9 +62,14 @@ metadata:
   name: olya
   namespace: olya
 spec:
-  # Selects EVERY pod in the namespace, including cert-manager's HTTP-01 solver pods. See the
-  # companion policy above, which is what keeps ACME working.
-  podSelector: {}
+  # Scoped to olya-0 only. The hourly olya-memory-sync CronJob pod (app=olya-memory-sync) in
+  # this namespace is deliberately NOT covered: it clones over HTTPS with no proxy env, and the
+  # egress proxy's ingress only admits app=olya, so a podSelector: {} here would cut its egress
+  # with nothing logged (activescott/activeassistant#317). Left unrestricted pending a separate
+  # change.
+  podSelector:
+    matchLabels:
+      app: olya
   policyTypes:
     - Ingress
     - Egress
