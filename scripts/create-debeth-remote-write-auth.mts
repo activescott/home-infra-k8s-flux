@@ -3,12 +3,12 @@
 // https://prometheus.activescott.com/api/v1/write (activescott/activeassistant#648).
 //
 // Generates a random password, writes its bcrypt htpasswd line sops-encrypted to the age
-// recipient, and prints the password once on stdout for the operator to put on debeth. Run it
+// recipient, and prints the password once on stdout, piped straight to debeth. Run it
 // yourself, never through an agent: the printed password is the only copy, and the encrypted
 // file holds only the hash.
 //
 // Usage:
-//   ./scripts/create-debeth-remote-write-auth.mts
+//   ./scripts/create-debeth-remote-write-auth.mts | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'
 //
 // Needs sops and htpasswd (macOS ships /usr/sbin/htpasswd; on Linux, apache2-utils or
 // httpd-tools). No private key: encrypting needs only the recipient.
@@ -123,12 +123,12 @@ function main(): void {
         `  git add ${SECRET_FILE}`,
         '  git commit -m "Rotate debeth remote-write credential"',
         "",
-        "The password is below and is printed only this once. On debeth, as Scott, run the",
-        "following, paste the password, press Enter and then Ctrl-D:",
-        `  sudo install -D -m 0400 -o <alloy-uid> /dev/stdin ${DEBETH_PASSWORD_FILE}`,
+        "The password on stdout is never shown: pipe this script straight into debeth instead",
+        "of running it bare:",
+        `  ./scripts/create-debeth-remote-write-auth.mts | ssh debeth 'sudo install -m 0400 /dev/stdin ${DEBETH_PASSWORD_FILE}'`,
         "",
-        "<alloy-uid> is the one hosts/debeth/install.sh in home-infra-private prints. Once Flux",
-        "applies the new file, a password debeth had before stops working.",
+        "Rerunning rotates it. Once Flux applies the new file, a password debeth had before",
+        "stops working.",
         "",
       ].join("\n"),
     )
