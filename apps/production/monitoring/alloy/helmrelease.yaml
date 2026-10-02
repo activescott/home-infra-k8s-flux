@@ -790,6 +790,44 @@ spec:
               }
             }
 
+            // The network chaperone's access log (browser-chaperone#89,
+            // ping-poet/dreamwright#108): olya-egress-squid.conf's "egress"
+            // logformat writes chaperone=%ea on every connection, where %ea is
+            // the helper's outcome. `unchecked` means the approval app did not
+            // answer in time, which in enforce mode refuses the connection
+            // instead of asking; it should never happen in a healthy rollout.
+            stage.match {
+              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |= \"chaperone=unchecked\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "chaperone_unchecked_total"
+                  description = "connections the network chaperone could not check because the approval app did not answer"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // would_deny is today's outcome for a refused connection
+            // (NETWORK_CHAPERONE_MODE=report_only); the same check in enforce
+            // mode logs denied instead. Matching both now means this counter
+            // does not need to change when that flips.
+            stage.match {
+              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |~ \"chaperone=(would_deny|denied)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "chaperone_refused_total"
+                  description = "connections the network chaperone refused or would have refused"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             // Falco (activescott/activeassistant#348). Falco writes one JSON
             // object per rule match to stdout, so it arrives here like any
             // other pod's logs and needs no separate source.
