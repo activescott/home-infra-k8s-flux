@@ -18,6 +18,7 @@ spec:
         app: home-assistant
         role: zwavejs
     spec:
+      automountServiceAccountToken: false
       containers:
         # docs at https://zwave-js.github.io/zwave-js-ui/#/
         # repo at https://github.com/zwave-js/zwave-js-ui

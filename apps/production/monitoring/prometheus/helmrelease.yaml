@@ -78,6 +78,9 @@ spec:
     alertmanager:
       enabled: true
 
+      # Never calls the Kubernetes API; its configmap-reload sidecar watches the mounted file.
+      automountServiceAccountToken: false
+
       persistence:
         enabled: false
 
