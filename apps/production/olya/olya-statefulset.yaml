@@ -349,6 +349,15 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: tinkerbell_api_token
+            # Phoenix REST API key of the Viewer user `olya` (activescott/activeassistant#225).
+            # Optional so the pod still starts before Scott adds phoenix_api_key to olya-env;
+            # until then the variable is unset and Phoenix answers 401.
+            - name: PHOENIX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: olya-env
+                  key: phoenix_api_key
+                  optional: true
             # hooks.token in openclaw.json. Has to be deployed before the config references it:
             # an unresolved ${OPENCLAW_HOOKS_TOKEN} stays a literal string.
             - name: OPENCLAW_HOOKS_TOKEN

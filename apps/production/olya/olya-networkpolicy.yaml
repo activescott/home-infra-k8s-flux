@@ -170,6 +170,21 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
 
+    # Phoenix's REST API, for reading LLM traces (activescott/activeassistant#225). The Phoenix
+    # pod only, not Postgres next to it. Her PHOENIX_API_KEY belongs to a Viewer user, which
+    # Phoenix limits to GET on the REST API. Use http://phoenix.arize-phoenix.svc:6006; the
+    # public hostname works too, but by hairpin through the edge.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: arize-phoenix
+          podSelector:
+            matchLabels:
+              app: phoenix
+      ports:
+        - port: 6006
+          protocol: TCP
+
     # The browser service's drive API (activescott/activeassistant#229). The browser pod's own
     # policy in apps/production/browser-chaperone admits her on this port and nothing else.
     - to:
