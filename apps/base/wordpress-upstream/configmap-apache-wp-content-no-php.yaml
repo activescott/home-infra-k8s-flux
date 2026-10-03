@@ -18,11 +18,14 @@ data:
   # from the image, Apache should refuse to start rather than drop the rule.
   wp-content-no-php.conf: |
     # AllowOverride/Options None so a planted .htaccess or symlink under
-    # uploads/ cannot reopen what this conf closes.
+    # uploads/ cannot reopen what this conf closes. uploads/ only serves
+    # static files, and with Options None the root .htaccess's inherited
+    # RewriteRules would otherwise make Apache refuse every request here.
     <Directory "/var/www/html/wp-content/uploads">
         php_admin_flag engine off
         AllowOverride None
         Options None
+        RewriteEngine Off
     </Directory>
     <LocationMatch "(?i)^/+wp-content/+uploads/.*\.(php[0-9s]?|pht|phtml|phar)(/|$)">
         Require all denied

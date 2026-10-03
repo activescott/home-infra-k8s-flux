@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: wordpress-micah-mmm-v2-mariadb-data-pv
+  name: wordpress-micah-mmm-v2-202609-mariadb-data-pv
 spec:
   accessModes: ["ReadWriteOnce"]
   capacity:
@@ -10,17 +10,17 @@ spec:
   storageClassName: ""
   claimRef:
     namespace: wordpress-micah-mmm-v2
-    name: wordpress-mariadb-data
+    name: wordpress-mariadb-data-202609
   hostPath:
     # Must exist on nas before this PV binds. See
     # docs/specs/wordpress-micah-mmm-migrate-off-bitnami/host-commands.md.
-    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/mariadb
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/mariadb
     type: Directory
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: wordpress-micah-mmm-v2-mariadb-initdb-pv
+  name: wordpress-micah-mmm-v2-202609-mariadb-initdb-pv
 spec:
   accessModes: ["ReadWriteOnce"]
   capacity:
@@ -29,17 +29,17 @@ spec:
   storageClassName: ""
   claimRef:
     namespace: wordpress-micah-mmm-v2
-    name: wordpress-mariadb-initdb
+    name: wordpress-mariadb-initdb-202609
   hostPath:
     # User puts restore.sql here. Read once by mariadb container
     # on first init, then ignored on subsequent restarts.
-    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/mariadb-initdb
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/mariadb-initdb
     type: Directory
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: wordpress-micah-mmm-v2-wp-content-pv
+  name: wordpress-micah-mmm-v2-202609-wp-content-pv
 spec:
   accessModes: ["ReadWriteOnce"]
   capacity:
@@ -48,9 +48,9 @@ spec:
   storageClassName: ""
   claimRef:
     namespace: wordpress-micah-mmm-v2
-    name: wordpress-wp-content
+    name: wordpress-wp-content-202609
   hostPath:
     # User populates this with a copy of the old
     # /opt/bitnami/wordpress/wp-content/ tree, owned by uid:gid 33:33.
-    path: /mnt/thedatapool/app-data/wordpress-micah-mmm-v2/wp-content
+    path: /mnt/thedatapool/app-data/wordpress-micah-mmm/wp-content
     type: Directory
