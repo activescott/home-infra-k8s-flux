@@ -397,6 +397,19 @@ spec:
                 secretKeyRef:
                   name: olya-chaperone-wake
                   key: chaperone_wake_token
+            # psql's defaults, so a bare `psql` reaches GPU Poet's production Postgres as the
+            # read-only olya_ro role (activescott/activeassistant#705).
+            - name: PGHOST
+              value: db.gpupoet-prod.svc.cluster.local
+            - name: PGDATABASE
+              value: gpu_agent
+            - name: PGUSER
+              value: olya_ro
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-db
+                  key: gpupoet_ro_password
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
