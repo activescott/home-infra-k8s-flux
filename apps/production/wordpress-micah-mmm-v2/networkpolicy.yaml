@@ -1,5 +1,5 @@
 # Default deny for the namespace, then the three paths the site needs: Traefik to WordPress,
-# WordPress to MariaDB, and DNS. Everything else, including every other namespace, the LAN and
+# WordPress (the site and the wp-cron job) to MariaDB, and DNS. Everything else, including every other namespace, the LAN and
 # the internet, is refused.
 #
 # No internet egress, deliberately. What WordPress loses:
@@ -94,6 +94,9 @@ spec:
     # https://mmm.willeke.com/wp-cron.php, so it has to reach the site's own ingress. This works
     # only while mmm.willeke.com resolves to the node (the LAN DNS override that ingress.yaml
     # already requires); via the public address it would leave the cluster and be refused.
+    # DISABLE_WP_CRON now stops that request and the wp-cron CronJob runs the events instead;
+    # the rule stays for WordPress's other requests to its own site, such as Site Health's
+    # loopback test.
     #
     # The node's :443 is a hostPort on k3s's svclb pod for Traefik, and kube-proxy also programs
     # the LoadBalancer address. kube-router filters after DNAT, so the destination it sees is
@@ -144,6 +147,43 @@ spec:
             matchLabels:
               app: wordpress
               role: web
+        - podSelector:
+            matchLabels:
+              app: wordpress
+              role: cron
       ports:
         - port: 3306
+          protocol: TCP
+---
+# The wp-cron CronJob's pods: MariaDB and DNS, nothing else. Unlike the site, it does not reach
+# Traefik, since it runs events in PHP directly instead of requesting wp-cron.php. No ingress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wp-cron
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+      role: cron
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: wordpress
+              role: mariadb
+      ports:
+        - port: 3306
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
           protocol: TCP
