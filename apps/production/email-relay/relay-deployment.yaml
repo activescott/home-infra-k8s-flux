@@ -70,7 +70,7 @@ spec:
             # each owns one full address instead. A full-address key is looked up before
             # `@domain`, so no login can send as another.
             - name: POSTFIX_smtpd_sender_login_maps
-              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, browser-chaperone-noreply@pingpoet.com=browserchaperone@relay.local, dreamwright-noreply@pingpoet.com=dreamwright@relay.local, @productpoet.com=test@relay.local}"
+              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, browser-chaperone-noreply@pingpoet.com=browserchaperone@relay.local, chaperone-signin@pingpoet.com=browserchaperone@relay.local, dreamwright-noreply@pingpoet.com=dreamwright@relay.local, @productpoet.com=test@relay.local}"
             - name: POSTFIX_smtpd_sender_restrictions
               value: reject_sender_login_mismatch,reject_unknown_sender_domain
             - name: SMTPD_SASL_USERS

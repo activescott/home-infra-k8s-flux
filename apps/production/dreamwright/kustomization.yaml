@@ -33,4 +33,4 @@ secretGenerator:
 images:
   - name: dreamwright-image
     newName: ghcr.io/ping-poet/dreamwright/app # {"$imagepolicy": "flux-system:policy-dreamwright:name"}
-    newTag: v202609300541 # {"$imagepolicy": "flux-system:policy-dreamwright:tag"}
+    newTag: v202610030759 # {"$imagepolicy": "flux-system:policy-dreamwright:tag"}

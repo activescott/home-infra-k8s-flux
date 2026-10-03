@@ -158,6 +158,15 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16 # link-local, including cloud metadata endpoints
               - 127.0.0.0/8
+    # debeth, for the SSH validator-upgrade runbook Olya runs there
+    # (activescott/activeassistant#637). Matches the standing exception in
+    # olya-egress-squid.conf; this policy is what lets Squid's own connection out.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.25/32
+      ports:
+        - port: 22
+          protocol: TCP
     # GET /internal/allowlist/check and POST /internal/allowlist/requests, from the helper,
     # for every host that is not a standing one (browser-chaperone#18).
     - to:
