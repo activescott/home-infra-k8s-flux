@@ -15,6 +15,7 @@ resources:
   - ../../base/wordpress-upstream
   - pv.yaml
   - pvc.yaml
+  - networkpolicy.yaml
   - ingress.yaml
 
 secretGenerator:
@@ -29,3 +30,4 @@ patches:
   # Bitnami chart hard-coded WP_HOME/WP_SITEURL in its generated
   # wp-config.php to mask that, and the upstream image doesn't.
   - path: patch-wordpress-config-extra.yaml
+  - path: patch-storage-claims.yaml

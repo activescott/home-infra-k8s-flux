@@ -16,6 +16,7 @@ resources:
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
+  - app-pdb.yaml
   - app-ingress-certificate.yaml
   # /ops/* (kubelet probes) denied at the ingress; the probes reach the pod
   # directly instead.
@@ -59,13 +60,17 @@ configMapGenerator:
       - EGRESS_PROXY_URL=http://egress-proxy:3128
       - AGENT_IDENTITY=olya
       - NODE_ENV=production
-  # The operators' channel (#dream-on), where the app posts each waiting request
+  # SLACK_NOTIFY_CHANNEL is its own channel, where the app posts each waiting request
   # (browser-chaperone#23). Read by the app, which names it, and by the Slack relay, which
-  # refuses the app's credential anywhere else. The OPERATOR_* ids are the app's start-up
-  # grants (browser-chaperone#34): a DM grant per operator and a post grant for the channel.
+  # refuses the app's credential anywhere else. SLACK_OPERATOR_CHANNEL is the operators'
+  # own channel, #dream-on, where the relay holds a reply to anyone who is not an operator
+  # (browser-chaperone#48, #69); it used to be wired from SLACK_NOTIFY_CHANNEL, which held
+  # the wrong channel since the two differ. The OPERATOR_* ids are the app's start-up
+  # grants (browser-chaperone#34): a DM grant per operator and a post grant for #dream-on.
   - name: slack-notify-config
     literals:
-      - SLACK_NOTIFY_CHANNEL=C0C4YKR21DW
+      - SLACK_NOTIFY_CHANNEL=C0C5E2Z358E
+      - SLACK_OPERATOR_CHANNEL=C0C4YKR21DW
       - OPERATOR_SLACK_USER_IDS=U0FS2ER1Q
       - OPERATOR_SLACK_CHANNEL_ID=C0C4YKR21DW
 secretGenerator:
@@ -93,6 +98,13 @@ secretGenerator:
   - name: slack-relay-creds
     envs:
       - .env.secret.slack-relay.encrypted
+  # The signing secret for the second Slack app, which verifies the v0 signature on every
+  # POST /slack/interactions (browser-chaperone#54). The committed file holds it EMPTY until
+  # the operator writes the real value: an empty value disables the buttons rather than
+  # standing in as a guessable HMAC key. See README.md "Slack approve/deny buttons".
+  - name: slack-signing-creds
+    envs:
+      - .env.secret.slack-signing.encrypted
   # The Google credential for Olya's account (browser-chaperone#39). The committed file holds
   # PLACEHOLDERS until the operator writes the real values; see
   # env.secret.mcp-gateway-google.example.
@@ -105,19 +117,25 @@ secretGenerator:
   - name: mcp-gateway-token
     envs:
       - .env.secret.mcp-gateway-token.public-key-encrypted.encrypted
+  # Key: chaperone_wake_token, what the app presents when it wakes Olya's session on a decision
+  # (activescott/activeassistant#543). Same value as chaperone_wake_token in
+  # ../olya/.env.secret.olya-chaperone-wake.public-key-encrypted.encrypted; rotate both together.
+  - name: agent-wake-token
+    envs:
+      - .env.secret.agent-wake-token.public-key-encrypted.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.16.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.20.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
-    newTag: v0.6.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+    newTag: v0.7.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
-    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
   - name: browser-chaperone-image-network-proxy
     newName: ghcr.io/activescott/browser-chaperone/network-proxy # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:name"}
-    newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}
+    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}

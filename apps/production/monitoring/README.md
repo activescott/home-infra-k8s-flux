@@ -270,6 +270,29 @@ OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are availa
 
 Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
+### debeth remote write
+
+debeth's eth-docker Alloy pushes a subset of its metrics here, so the nas can alert on the validator without any route into debeth (activescott/activeassistant#648). The Alloy side lives in `hosts/debeth/` in the private repo.
+
+```
+debeth Alloy --HTTPS POST--> Traefik prometheus.activescott.com/api/v1/write --> prometheus-server (--web.enable-remote-write-receiver)
+```
+
+- `prometheus/prometheus-remote-write-ingress.yaml` routes only that exact path, through `prometheus-remote-write-lan` (allows `10.1.111.25/32`), `prometheus-remote-write-inflight` (4 concurrent requests), `prometheus-remote-write-auth` (basic auth, user `debeth`) and `prometheus-remote-write-body-limit` (4 MiB). Everything else on the host stays on `prometheus-ingress.yaml` and Scott's read credential, which cannot write.
+- debeth resolves the name to `10.1.111.20` through the LAN DNS override, so its source address survives to the allowlist. Publicly the name resolves to the WAN address, which is why the path has an allowlist and not only a password.
+- `scripts/create-debeth-remote-write-auth.mts` creates and rotates the credential. Scott runs it piped straight into debeth over ssh (`./scripts/create-debeth-remote-write-auth.mts | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'`, with the secrets directory created first; see `hosts/debeth/README.md` in the private repo for the full order). It writes the bcrypt line into `.env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted`; the password is never shown, only piped. Nothing else keeps a copy; if it is lost, rerun the whole line, which rotates it. The file first committed is a placeholder whose hash Traefik rejects for every password.
+- Every series debeth sends carries `host="debeth"`.
+
+The receiver also accepts writes on the in-cluster Service from any pod that can reach it; Traefik's allowlist does not apply there.
+
+After Flux applies, from a LAN host other than debeth, `curl -X POST https://prometheus.activescott.com/api/v1/write` gets a 403. From debeth, the same request gets a 401 without the credential and with Scott's read credential.
+
+The check with Scott's read credential is mandatory after every change to the remote-write Ingress or its middlewares. If the Ingress names a middleware that does not exist, Traefik 3.3.6 drops the whole `/api/v1/write` router and the path falls through to `prometheus-ingress.yaml`, where the read credential can write. Nothing else reports this: debeth's writes fail with a 401 either way. Run it from debeth and expect 401 (curl prompts for the password):
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -u '<read user>' https://prometheus.activescott.com/api/v1/write
+```
+
 ## Kubernetes audit log
 
 **k3s on nas1 does not write one today.** Checked by looking for the stream in Loki: the only

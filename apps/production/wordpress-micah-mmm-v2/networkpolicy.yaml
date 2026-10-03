@@ -1,0 +1,149 @@
+# Default deny for the namespace, then the three paths the site needs: Traefik to WordPress,
+# WordPress to MariaDB, and DNS. Everything else, including every other namespace, the LAN and
+# the internet, is refused.
+#
+# No internet egress, deliberately. What WordPress loses:
+#   - oEmbed for NEW embeds. Existing embeds keep rendering, because WP_Embed serves its cached
+#     HTML on page views however old it is and only refetches when a post is saved. Pasting a
+#     new YouTube link in the editor produces a plain link instead of a player.
+#   - Update checks, the dashboard news widget, and the plugin/theme directory. DISALLOW_FILE_MODS
+#     turns those off anyway.
+#   - Outbound mail. There is no sendmail in the image, so that never worked.
+# If embeds are wanted back, add a rule allowing TCP 443 to 0.0.0.0/0 minus the private ranges
+# (the shape of the internet rule in apps/production/olya/olya-networkpolicy.yaml) AND drop
+# WP_HTTP_BLOCK_EXTERNAL from patch-wordpress-config-extra.yaml. Either one alone still blocks.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. The
+# WordPress probes are exec probes that curl from inside the pod, so they need no rule.
+---
+# cert-manager stands up its HTTP-01 solver pod in this namespace for every issuance and renewal
+# of the certificate in ingress.yaml, and the default deny below selects it too. Same shape as
+# `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml, which explains
+# the failure mode.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+      role: web
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Traefik, narrowed to its pods rather than all of kube-system.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 80
+          protocol: TCP
+
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: wordpress
+              role: mariadb
+      ports:
+        - port: 3306
+          protocol: TCP
+
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # wp-cron. WordPress runs scheduled posts and its other jobs by POSTing to its own
+    # https://mmm.willeke.com/wp-cron.php, so it has to reach the site's own ingress. This works
+    # only while mmm.willeke.com resolves to the node (the LAN DNS override that ingress.yaml
+    # already requires); via the public address it would leave the cluster and be refused.
+    #
+    # The node's :443 is a hostPort on k3s's svclb pod for Traefik, and kube-proxy also programs
+    # the LoadBalancer address. kube-router filters after DNAT, so the destination it sees is
+    # either the svclb pod on 443 or a Traefik pod on its websecure port, 8443, depending on
+    # which NAT rule wins. Both are allowed. The node address itself never matches after DNAT,
+    # so an ipBlock for it would do nothing.
+    # Reaching Traefik gives this pod nothing the internet does not already have; LAN-only hosts
+    # still refuse it, since a pod address is outside every ipAllowList.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              svccontroller.k3s.cattle.io/svcname: traefik
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 8443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mariadb
+spec:
+  podSelector:
+    matchLabels:
+      app: wordpress
+      role: mariadb
+  policyTypes:
+    - Ingress
+  # Only WordPress connects. The probes are `exec mariadb-admin ping`, and `kubectl exec` for a
+  # dump runs inside the pod, so neither needs a rule. A backup job added later does. No egress
+  # rule: default-deny covers it, and the image runs with skip-name-resolve, so it does not
+  # even need DNS.
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wordpress
+              role: web
+      ports:
+        - port: 3306
+          protocol: TCP
