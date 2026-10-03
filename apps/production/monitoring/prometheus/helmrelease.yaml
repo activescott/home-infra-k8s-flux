@@ -2137,11 +2137,12 @@ spec:
           # so nothing here scrapes it and a dead pipeline looks like silence:
           # DebethMetricsAbsent is the dead-man for every rule below.
           #
-          # Alloy's `execution` job has never scraped Besu successfully (up has
-          # been 0 since the first sample on 2026-10-02), so it is left out of
-          # DebethClientDown. Execution-layer health comes from
-          # ethereum-metrics-exporter's eth_exe_* series instead: a stopped Besu
-          # freezes the block number and fires DebethExecutionNotSynced.
+          # Alloy's `execution` job scrapes Besu only because of an override in
+          # eth-docker's custom.yml on debeth (activescott/activeassistant#659);
+          # without it eth-docker switches Besu to OpenTelemetry and up stays 0.
+          # Execution-layer sync still comes from ethereum-metrics-exporter's
+          # eth_exe_* series: a stopped Besu freezes the block number and fires
+          # DebethExecutionNotSynced.
           #
           # Triage runs on debeth through the read-only wrappers only; the
           # runbook names the commands that must never be run from triage.
@@ -2163,7 +2164,7 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmetricsabsent
                   repo: activescott/home-infra-private
               - alert: DebethClientDown
-                expr: 'up{host="debeth",job=~"consensus|validator"} == 0'
+                expr: 'up{host="debeth",job=~"consensus|validator|execution"} == 0'
                 for: 5m
                 labels:
                   severity: critical
@@ -2177,7 +2178,7 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclientdown
                   repo: activescott/home-infra-private
               - alert: DebethExporterDown
-                expr: 'up{host="debeth",job=~"mev-boost|node-exporter|ethereum-metrics-exporter"} == 0'
+                expr: 'up{host="debeth",job=~"mev-boost|cb-pbs|node-exporter|ethereum-metrics-exporter"} == 0'
                 for: 10m
                 labels:
                   severity: warning
@@ -2346,38 +2347,34 @@ spec:
                     Attestations are slot-timed, so drift turns into late or missed votes.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclockunsynced
                   repo: activescott/home-infra-private
-              # mev-boost counts a status code only when a relay answers, so a DNS
-              # or TCP failure shows up only as latency samples without one. This
-              # counts registration attempts (one per epoch, about nine an hour)
-              # that got no HTTP response. The `or ... * 0` arm keeps a relay that
-              # has never answered from dropping out of the subtraction.
+              # Commit-Boost (cb-pbs, which replaced mev-boost) records a request
+              # that got no HTTP response, a DNS, TCP or timeout failure, as
+              # http_status_code 555 (TIMEOUT_ERROR_CODE in commit-boost-client
+              # v0.10.1). Registration runs once per epoch, about nine times an hour.
+              # cb-pbs serves these only with CB_METRICS_PORT set, from the
+              # custom.yml override in home-infra-private hosts/debeth.
               - alert: DebethMevRelayUnreachable
-                expr: >-
-                  sum by (relay) (increase(mev_boost_relay_latency_count{host="debeth",endpoint="/eth/v1/builder/validators"}[1h]))
-                  - (
-                  sum by (relay) (increase(mev_boost_relay_status_code_total{host="debeth",endpoint="/eth/v1/builder/validators"}[1h]))
-                  or sum by (relay) (increase(mev_boost_relay_latency_count{host="debeth",endpoint="/eth/v1/builder/validators"}[1h])) * 0
-                  ) > 0
+                expr: 'sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h])) > 0'
                 for: 1h
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'debeth cannot reach MEV relay {{ $labels.relay }}'
+                  summary: 'debeth cannot reach MEV relay {{ $labels.relay_id }}'
                   description: >-
-                    Validator registrations to {{ $labels.relay }} have been getting no HTTP
+                    Validator registrations to {{ $labels.relay_id }} have been getting no HTTP
                     response for an hour. Lodestar falls back to local blocks, so this costs MEV
                     rewards, not proposals.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
                   repo: activescott/home-infra-private
               - alert: DebethMevRelayErrors
-                expr: 'sum by (relay, http_status_code) (increase(mev_boost_relay_status_code_total{host="debeth",http_status_code!~"200|204"}[1h])) > 3'
+                expr: 'sum by (relay_id, http_status_code) (increase(cb_pbs_relay_status_code_total{host="debeth",http_status_code!~"200|204|555"}[1h])) > 3'
                 for: 0m
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'MEV relay {{ $labels.relay }} answered debeth with HTTP {{ $labels.http_status_code }}'
+                  summary: 'MEV relay {{ $labels.relay_id }} answered debeth with HTTP {{ $labels.http_status_code }}'
                   description: >-
-                    More than three non-2xx answers from {{ $labels.relay }} in an hour. Lodestar
+                    More than three non-2xx answers from {{ $labels.relay_id }} in an hour. Lodestar
                     falls back to local blocks, so this costs MEV rewards, not proposals.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayerrors
                   repo: activescott/home-infra-private
