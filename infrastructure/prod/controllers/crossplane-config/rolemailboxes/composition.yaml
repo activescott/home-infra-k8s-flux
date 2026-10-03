@@ -12,7 +12,10 @@
 # The default destination address is read at compose time from the SOPS-encrypted
 # Secret cloudflare/email-routing-destination (key `destination`), via
 # ExtraResources. It is not in any manifest in this repo. An alias may name its
-# own `destination` instead, which is only for addresses DNS already publishes.
+# own `destination` instead, which is only for addresses DNS already publishes,
+# or add `extraDestinations` to also forward to other addresses on top of the
+# base one -- see the comment on `actions` below for why that renders as
+# multiple actions rather than one.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -51,7 +54,7 @@ spec:
             */ -}}
             {{- $entries := list -}}
             {{- range $mailbox := $mailboxes -}}
-            {{- $entries = append $entries (dict "localPart" $mailbox "ruleName" $mailbox "priority" 10 "destination" "") -}}
+            {{- $entries = append $entries (dict "localPart" $mailbox "ruleName" $mailbox "priority" 10 "destination" "" "extraDestinations" list) -}}
             {{- end -}}
             {{- range $alias := ($xr.spec.aliases | default list) -}}
             {{- if has $alias.localPart $mailboxes -}}
@@ -65,7 +68,7 @@ spec:
             */ -}}
             {{- $priority := 10 -}}
             {{- if hasKey $alias "priority" -}}{{- $priority = $alias.priority -}}{{- end -}}
-            {{- $entries = append $entries (dict "localPart" $alias.localPart "ruleName" ($alias.ruleName | default $alias.localPart) "priority" $priority "destination" ($alias.destination | default "")) -}}
+            {{- $entries = append $entries (dict "localPart" $alias.localPart "ruleName" ($alias.ruleName | default $alias.localPart) "priority" $priority "destination" ($alias.destination | default "") "extraDestinations" ($alias.extraDestinations | default list)) -}}
             {{- end -}}
             {{- $adopt := $xr.spec.adopt | default dict -}}
             ---
@@ -145,15 +148,29 @@ spec:
                   - type: literal
                     field: to
                     value: {{ printf "%s@%s" $entry.localPart $xr.spec.zoneName | quote }}
+                # The Secret's address unless the alias named its own in
+                # `destination`, plus one more action per `extraDestinations`
+                # entry. An override or an extra has to be verified on the
+                # Cloudflare account first; until it is, Cloudflare refuses
+                # the update and this rule keeps delivering to whatever it
+                # delivered to before, which is the failure worth having.
+                #
+                # One action per address, not one action with a longer value
+                # list: the provider's own schema caps a single action's
+                # value at one address ("Currently limited to a single
+                # value"), and this is also how a mailbox reaches a second
+                # inbox without writing the Secret's address into this
+                # manifest to do it -- the base action keeps pulling it from
+                # the Secret while only the extra actions are literal here.
                 actions:
                   - type: forward
                     value:
-                      # The Secret's address unless the alias named its own. An
-                      # override has to be verified on the Cloudflare account
-                      # first; until it is, Cloudflare refuses the update and
-                      # this rule keeps delivering to whatever it delivered to
-                      # before, which is the failure worth having.
                       - {{ $entry.destination | default $destination | quote }}
+                  {{- range $d := $entry.extraDestinations }}
+                  - type: forward
+                    value:
+                      - {{ $d | quote }}
+                  {{- end }}
             {{- end }}
             {{- end }}
     - step: auto-ready
