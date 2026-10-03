@@ -210,10 +210,18 @@ spec:
                 annotations:
                   summary: Crossplane is using over half the Cloudflare API budget
                   description: >-
-                    Over 600 Cloudflare API calls in 5 minutes; the limit is 1200 per token,
-                    after which every call 429s for 5 minutes and Crossplane stops reconciling.
-                    Raise --poll in provider-cloudflare-runtimeconfig.yaml. Do NOT set
-                    --max-reconcile-rate, which silently stops controllers.
+                    Known cause so far: a DNS or network outage makes every failed read requeue
+                    with error backoff instead of waiting out --poll, so reconcile attempts spike
+                    even though calls reaching Cloudflare drop to zero. Confirm with the query
+                    below -- if the increase is all operation="connect" with create/update flat,
+                    this is the retry-storm pattern, not real usage nearing the budget. See
+                    activescott/home-infra-k8s-flux#237. Anything that doesn't match is a new
+                    failure and does mean the budget is genuinely close: raise --poll in
+                    provider-cloudflare-runtimeconfig.yaml. Do NOT set --max-reconcile-rate,
+                    which silently stops controllers.
+                  query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgethigh
+                  repo: activescott/home-infra-k8s-flux
               - alert: CloudflareAPIBudgetCritical
                 expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 1000'
                 for: 2m
@@ -222,8 +230,18 @@ spec:
                 annotations:
                   summary: Crossplane is about to exhaust the Cloudflare API budget
                   description: >-
-                    Over 1000 Cloudflare API calls in 5 minutes against a 1200 limit. At the
-                    limit every call 429s for 5 minutes and no managed resource can be observed.
+                    Known cause so far: same retry-storm pattern as CloudflareAPIBudgetHigh, past
+                    the second threshold. On 2026-09-24 this fired for 12 minutes during Ziply
+                    Fiber's planned maintenance -- CoreDNS returned SERVFAIL for
+                    api.cloudflare.com, so every read requeued with error backoff instead of
+                    waiting out --poll, and the reconcile-attempt counter hit 1200/5m with
+                    essentially zero calls reaching Cloudflare. See
+                    activescott/home-infra-k8s-flux#237. Anything that doesn't match -- no
+                    DNS/network trouble in the same window, or create/update actually rising --
+                    is a new failure and means the budget is genuinely exhausted.
+                  query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgetcritical
+                  repo: activescott/home-infra-k8s-flux
               # The symptom rather than the cause: resources that cannot sync.
               # Catches throttling, credential problems and dead controllers
               # alike, which is the point -- on 2026-08-28 all three looked
@@ -376,8 +394,16 @@ spec:
                   summary: >-
                     gpupoet.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app) -- gpupoet-prod also logged ErrImagePull failures
+                    resolving registry-1.docker.io in the same window. See
+                    activescott/gpu-poet#75. Confirm with the query below: if other sites are
+                    down at the same time, this is the shared outage, not an app or ingress
+                    problem. Anything that doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#gpupoetsiteprobefailing
+                  repo: activescott/gpu-poet
               - alert: GpupoetCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://gpupoet.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -718,10 +744,16 @@ spec:
                   summary: >-
                     ramblefeed.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes. Could be a pod/ingress problem, or Cloudflare's
-                    SSL/TLS mode drifting away from Full -- see
-                    tinkerbellbot.com's 2026-08-30 incident.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app), not Cloudflare's SSL/TLS mode drifting off Full as
+                    first suspected -- DNS kept resolving correctly throughout. See
+                    activescott/ramblefeed#112. Confirm with the query below: if other sites are
+                    down at the same time, this is the shared outage. Anything that doesn't
+                    match -- only this site down, or a pod/ingress problem -- is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#ramblefeedsiteprobefailing
+                  repo: activescott/ramblefeed
               - alert: RamblefeedCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -743,10 +775,16 @@ spec:
                   summary: >-
                     tinkerbellbot.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes. Could be a pod/ingress problem, or Cloudflare's
-                    SSL/TLS mode drifting away from Full -- see the
-                    2026-08-30 flexible-mode redirect-loop incident.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app), a connection-level failure rather than an HTTP
+                    error, which rules out an app or ingress-specific cause like the 2026-08-30
+                    flexible-mode redirect loop. See activescott/tinkerbell#197. Confirm with
+                    the query below: if other sites are down at the same time, this is the
+                    shared outage. Anything that doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#tinkerbellbotsiteprobefailing
+                  repo: activescott/tinkerbell
               - alert: TinkerbellbotCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -851,7 +889,20 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'OpenRouter budget exhausted for {{ $labels.app }} in {{ $labels.namespace }}, model calls are failing.'
-                  description: '{{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15 minutes: that namespace''s workspace or key budget is spent and every call on it fails until the cap is raised or the month resets. Check Loki for the exact message: {namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403".'
+                  description: >-
+                    {{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in
+                    the last 15 minutes: that namespace's workspace or key budget is spent and
+                    every call on it fails until the cap is raised or the month resets. Known
+                    cause so far: this alert exists because Olya's OpenClaw workspace ($50/month
+                    cap, namespace olya) hit its budget silently with nothing surfacing it until
+                    noticed by hand; Job Accelerator holds a separate $100/month key in
+                    job-accelerator-prod and can exhaust independently. See
+                    activescott/home-infra-k8s-flux#220. There is no in-cluster fix -- raise the
+                    cap in the OpenRouter dashboard for the workspace/key named by the firing
+                    labels, or wait for the monthly reset.
+                  query: '{namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OpenRouterBudgetExceeded.md
+                  repo: activescott/job-accelerator (namespace job-accelerator-prod) or activescott/activeassistant (namespace olya)
           - name: browser-chaperone
             rules:
               # The approval app runs two replicas now (browser-chaperone#89), so a rollout
@@ -1162,7 +1213,16 @@ spec:
                     addresses at TCP accept, so there is no request log to find. Confirm with the
                     "In-cluster addresses blocked" panel on the Email dashboard. If only
                     /api/health is failing, mail delivery is unaffected and nothing else will
-                    alert; that is the webmail alone.
+                    alert; that is the webmail alone. Known cause so far: on 2026-09-24 every
+                    blackbox_https target failed together for 12 minutes during Ziply Fiber's
+                    planned maintenance, not a Stalwart ban -- three unrelated backends failing
+                    and recovering in lockstep rules that out. See
+                    activescott/home-infra-k8s-flux#238. Confirm with the query below: if other
+                    sites are down at the same time, this is the shared outage. Anything that
+                    doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#stalwartwebsurfacedown
+                  repo: activescott/home-infra-k8s-flux
               - alert: StalwartBlockingClusterAddress
                 # The direct detector for that ban, rather than its 502 symptom.
                 # Bans never expire here (no *BanPeriod is set), so one occurrence
@@ -1574,7 +1634,21 @@ spec:
                   severity: warning
                 annotations:
                   summary: 'WAN gateway monitor alarmed (loss/latency/down) on the edge firewall.'
-                  description: 'One or more gateway-monitor alarm transitions in the last 10 minutes — upstream packet loss or outage even though igb0 carrier held. Pull details in Grafana Explore with {host="theshield"} |= "MONITOR:".'
+                  description: >-
+                    One or more gateway-monitor alarm transitions in the last 10 minutes —
+                    upstream packet loss or outage even though igb0 carrier held. Known cause so
+                    far: fired 2026-09-24 during Ziply Fiber's planned maintenance -- the
+                    upstream gateway alarmed none -> loss -> down and was unreachable for 12m29s,
+                    then alarmed back through down -> loss -> none as it recovered. The blackbox
+                    site probes and the Cloudflare API budget alerts fired from the same outage
+                    in the same window. It fired again 2026-09-25 on a single 40s loss alarm with
+                    no down transition, outside the announced maintenance window -- compare
+                    against home-infra-private docs/specs/wan-link-flapping-ziply/ before
+                    assuming it's the same known cause. See
+                    activescott/home-infra-k8s-flux#239.
+                  query: '{host="theshield"} |= "MONITOR:"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/WanGatewayDegraded.md#wangatewaydegraded
+                  repo: activescott/home-infra-k8s-flux
               - alert: WanGatewayDegradedBurst
                 expr: 'sum(increase(loki_process_custom_wan_gateway_alarm_total[1h])) > 3'
                 for: 0m
@@ -1582,7 +1656,18 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'WAN gateway monitor alarming repeatedly on the edge firewall.'
-                  description: 'More than 3 gateway-monitor alarm transitions in the last hour, matching the dense-burst outage signature from the ongoing ISP investigation. Capture the timestamps for the ticket.'
+                  description: >-
+                    More than 3 gateway-monitor alarm transitions in the last hour, matching the
+                    dense-burst outage signature from the ongoing ISP investigation. Same counter
+                    and triage path as WanGatewayDegraded (activescott/home-infra-k8s-flux#239) at
+                    a higher bar: pull theshield's MONITOR: lines for the firing window and
+                    check whether the transitions cluster inside an announced Ziply maintenance
+                    window or match a pattern already recorded in home-infra-private
+                    docs/specs/wan-link-flapping-ziply/. Capture the timestamps for the ticket
+                    either way.
+                  query: '{host="theshield"} |= "MONITOR:"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/WanGatewayDegraded.md#wangatewaydegradedburst
+                  repo: activescott/home-infra-k8s-flux
               # Meta-alert: if the firewall stops shipping syslog, the two
               # alerts above go silent instead of firing. The firewall logs
               # continuously, so a 15m gap means the feed is broken (Alloy
@@ -1643,7 +1728,19 @@ spec:
                   summary: "Flux controller {{ $labels.controller }} has sustained errors"
                   description: >-
                     The {{ $labels.controller }} controller in flux-system has been producing
-                    reconciliation errors for 15 minutes. Check its logs.
+                    reconciliation errors for 15 minutes. Known cause so far: fired 2026-09-24
+                    for the gitrepository controller during Ziply Fiber's planned maintenance --
+                    source-controller logged 10 errors in 6 minutes failing to reach GitHub (a
+                    dial tcp i/o timeout, then lookup github.com ... server misbehaving), then
+                    recovered on its own once DNS came back. WanGatewayDegraded and the site
+                    probe alerts fired from the same outage in the same window. This is a
+                    10-minute rate window, so a genuine blip like this clears itself. See
+                    activescott/activeassistant#378. Anything that doesn't match -- no DNS or
+                    network error in the named controller's logs, or errors that don't stop once
+                    network access is restored -- is a new failure; check its logs.
+                  query: '{namespace="flux-system"} |~ "i/o timeout|server misbehaving"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/FluxReconcileErrors.md
+                  repo: activescott/home-infra-k8s-flux
           - name: cluster-wide
             rules:
               # activescott/home-infra-k8s-flux#276: every per-project group
