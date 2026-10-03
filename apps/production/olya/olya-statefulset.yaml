@@ -94,6 +94,82 @@ spec:
             - name: tmp
               mountPath: /tmp
 
+        # Runs `openclaw doctor --fix` with the gateway stopped, which is the only way OpenClaw
+        # migrates the agent databases: from 2026.9.7 the gateway exits 78 on an older agent
+        # schema instead (activescott/activeassistant#590). Upstream's 2026.9.7 image entrypoint
+        # does the same on every start, but doctor refuses to run under OPENCLAW_CONFIG_READONLY,
+        # so our image drops that entrypoint and this runs it here instead.
+        #
+        # Doctor also repairs the config file, so it gets a copy that is thrown away afterwards.
+        # /state/config keeps what seed-workspace wrote; install-plugins writes its plugin
+        # entries into it afterward, once doctor has already run. The /doctor/config directory is
+        # cleared first because a restarted initContainer keeps the emptyDir, and doctor can
+        # otherwise restore its earlier output from the backups it left there.
+        #
+        # Right after seed-workspace, which is what first writes /state/config/openclaw.json, and
+        # before install-plugins or anything else that invokes the openclaw CLI or opens the
+        # state/agent databases, matching upstream's 2026.9.7 entrypoint order: doctor before
+        # anything touches state. The `.pre-startup-migration-*.bak` files doctor writes next to
+        # each database are only a usable rollback to 2026.9.5 if nothing has migrated those
+        # databases yet, and install-plugins' own openclaw CLI calls migrate the state DB (17 to
+        # 19) same as the gateway would. A failure here always exits 0 instead of keeping the pod
+        # in Init, including 2026.9.7's behavior where a plugin that fails to load fails doctor:
+        # Scott decided on 2026-09-24 (scripts/install-plugins.mts) that a broken plugin must
+        # never wedge the pod. A failure logs a "doctor: ERROR" line with doctor's exit code,
+        # grepped the same way as "install-plugins: ERROR". A failed DB migration still leaves the
+        # gateway exiting 78 on the old schema, so that case is not hidden.
+        - name: doctor
+          image: olya-image
+          command:
+            - sh
+            - -c
+            - 'rm -rf /doctor/config && mkdir /doctor/config && cp /state/config/openclaw.json /doctor/config/ && openclaw doctor --fix --non-interactive; code=$?; if [ "$code" -ne 0 ]; then echo "doctor: ERROR exit $code"; fi; exit 0'
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
+          env:
+            - name: HOME
+              value: /state/home
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /doctor/config/openclaw.json
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # Not measured. Same as install-plugins, because on 2026.9.7 doctor can run the same
+          # npm install of a managed plugin that install-plugins needed 2Gi for.
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            # Same overlays as the olya container's enforcement boundary below: doctor's
+            # conditional writers under the workspace (TOOLS.md migration, HEARTBEAT.md rename,
+            # MEMORY.md/memory.md merge, plugin manifest rewrites) and any config repair must not
+            # reach the checkout or /state/config. It reads /state/config/openclaw.json once,
+            # below, to seed its own throwaway copy; that read still works read-only.
+            - name: state
+              mountPath: /state/workspace
+              subPath: workspace
+              readOnly: true
+            - name: state
+              mountPath: /state/config
+              subPath: config
+              readOnly: true
+            - name: doctor-config
+              mountPath: /doctor
+            - name: tmp
+              mountPath: /tmp
+
         # Installs managed plugins from /cfg/managed-plugins.txt via
         # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
         # exists, and removes managed installs of packages marked "-" (slack, which now ships in
@@ -321,6 +397,19 @@ spec:
                 secretKeyRef:
                   name: olya-chaperone-wake
                   key: chaperone_wake_token
+            # psql's defaults, so a bare `psql` reaches GPU Poet's production Postgres as the
+            # read-only olya_ro role (activescott/activeassistant#705).
+            - name: PGHOST
+              value: db.gpupoet-prod.svc.cluster.local
+            - name: PGDATABASE
+              value: gpu_agent
+            - name: PGUSER
+              value: olya_ro
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-db
+                  key: gpupoet_ro_password
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
@@ -554,4 +643,7 @@ spec:
             defaultMode: 0400
         # readOnlyRootFilesystem means node, npm, and git all need somewhere to write.
         - name: tmp
+          emptyDir: {}
+        # The doctor initContainer's throwaway copy of openclaw.json.
+        - name: doctor-config
           emptyDir: {}

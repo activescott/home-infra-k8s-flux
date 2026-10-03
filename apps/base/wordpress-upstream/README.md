@@ -7,12 +7,13 @@ using the Docker official images. Replaces the legacy Bitnami chart
 
 ## What this base ships
 
-| Resource               | Image                           | Notes                                                                                                                                                    |
-| ---------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Deployment/wordpress` | `wordpress:7.1.2-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). Read-only root and core. Only `wp-content/uploads/` is writable, and PHP does not run from it. |
-| `Service/wordpress`    | —                               | ClusterIP, port 80.                                                                                                                                      |
-| `StatefulSet/mariadb`  | `mariadb:12.2.2-noble`          | 1 replica. uid:gid 999:999 (mysql).                                                                                                                      |
-| `Service/mariadb`      | —                               | Headless, port 3306.                                                                                                                                     |
+| Resource               | Image                           | Notes                                                                                                                                                                         |
+| ---------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Deployment/wordpress` | `wordpress:7.1.2-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). Read-only root and core. Only `wp-content/uploads/` is writable, and PHP does not run from it.                      |
+| `Service/wordpress`    | —                               | ClusterIP, port 80.                                                                                                                                                           |
+| `CronJob/wp-cron`      | `wordpress:7.1.2-php8.3-apache` | Every 5 minutes, `php wp-cron.php` runs due scheduled events without HTTP. uid:gid 33:33. Mounts the wp-content claim alongside the Deployment, which RWO allows on one node. |
+| `StatefulSet/mariadb`  | `mariadb:12.2.2-noble`          | 1 replica. uid:gid 999:999 (mysql).                                                                                                                                           |
+| `Service/mariadb`      | —                               | Headless, port 3306.                                                                                                                                                          |
 
 Image versions are pinned in the base. All tenant overlays inherit
 the same versions; bump them here for everyone at once.
@@ -74,7 +75,13 @@ In the tenant namespace:
        define('WP_AUTO_UPDATE_CORE', false);
        define('DISALLOW_FILE_EDIT', true);
        define('DISALLOW_FILE_MODS', true);
+       define('DISABLE_WP_CRON', true);
    ```
+
+   `DISABLE_WP_CRON` hands scheduled events to `CronJob/wp-cron`. That
+   job needs the same env as the `wordpress` container, so the overlay
+   copies it with a `replacements` entry; see the reference overlay's
+   `kustomization.yaml`.
 
 ## Preview and going live
 
