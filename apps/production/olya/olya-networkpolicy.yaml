@@ -258,3 +258,18 @@ spec:
       ports:
         - port: 3128
           protocol: TCP
+
+    # GPU Poet's production Postgres, for the monthly market report
+    # (activescott/activeassistant#705). She logs in as olya_ro, a read-only role, with the
+    # PGHOST and PGPASSWORD set in olya-statefulset.yaml. The db pod's own policy in
+    # apps/production/gpupoet admits her on this port and nothing else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gpupoet-prod
+          podSelector:
+            matchLabels:
+              app: db
+      ports:
+        - port: 5432
+          protocol: TCP
