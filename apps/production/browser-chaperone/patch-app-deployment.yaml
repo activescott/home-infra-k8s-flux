@@ -1,3 +1,17 @@
+# Enforce mode (browser-chaperone#89, ping-poet/dreamwright#108) fails closed
+# when the app does not answer within 5s, so a rollout or a restart cannot
+# leave it unreachable: two replicas, a PDB (app-pdb.yaml) and no drop in
+# capacity while a new pod starts. The sign-in challenge the app used to hold
+# in process memory now lives in Postgres instead (packages/web-app's
+# app/lib/auth.server.ts), so a verify reaching the other replica still finds it.
+- op: replace
+  path: /spec/replicas
+  value: 2
+- op: add
+  path: /spec/strategy
+  value:
+    rollingUpdate:
+      maxUnavailable: 0
 - op: add
   path: /spec/template/spec/imagePullSecrets
   value:

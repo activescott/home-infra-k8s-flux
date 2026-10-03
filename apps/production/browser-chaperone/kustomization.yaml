@@ -16,6 +16,7 @@ resources:
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
+  - app-pdb.yaml
   - app-ingress-certificate.yaml
   # /ops/* (kubelet probes) denied at the ingress; the probes reach the pod
   # directly instead.
@@ -61,12 +62,15 @@ configMapGenerator:
       - NODE_ENV=production
   # SLACK_NOTIFY_CHANNEL is its own channel, where the app posts each waiting request
   # (browser-chaperone#23). Read by the app, which names it, and by the Slack relay, which
-  # refuses the app's credential anywhere else. The OPERATOR_* ids are the app's start-up
-  # grants (browser-chaperone#34): a DM grant per operator and a post grant for the
-  # operators' channel, #dream-on.
+  # refuses the app's credential anywhere else. SLACK_OPERATOR_CHANNEL is the operators'
+  # own channel, #dream-on, where the relay holds a reply to anyone who is not an operator
+  # (browser-chaperone#48, #69); it used to be wired from SLACK_NOTIFY_CHANNEL, which held
+  # the wrong channel since the two differ. The OPERATOR_* ids are the app's start-up
+  # grants (browser-chaperone#34): a DM grant per operator and a post grant for #dream-on.
   - name: slack-notify-config
     literals:
       - SLACK_NOTIFY_CHANNEL=C0C5E2Z358E
+      - SLACK_OPERATOR_CHANNEL=C0C4YKR21DW
       - OPERATOR_SLACK_USER_IDS=U0FS2ER1Q
       - OPERATOR_SLACK_CHANNEL_ID=C0C4YKR21DW
 secretGenerator:
@@ -122,16 +126,16 @@ secretGenerator:
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.17.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.20.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
-    newTag: v0.7.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+    newTag: v0.7.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
-    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
   - name: browser-chaperone-image-network-proxy
     newName: ghcr.io/activescott/browser-chaperone/network-proxy # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:name"}
-    newTag: v0.1.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}
+    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}

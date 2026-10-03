@@ -30,10 +30,23 @@ spec:
         runAsGroup: 4030
         fsGroup: 4030
 
+      # Setting this replaces the chart default, [web.enable-lifecycle], and the
+      # configmap-reload sidecar below POSTs to /-/reload, which needs that flag.
+      # The receiver takes debeth's remote write (prometheus-remote-write-ingress.yaml).
+      extraFlags:
+        - web.enable-lifecycle
+        - web.enable-remote-write-receiver
+
+      # Working set peaked at 2005Mi against the old 2Gi limit over 7 days to
+      # 2026-10-01, before debeth's series. With no requests set, Kubernetes used
+      # the limits as requests, so these keep the request equal to the limit.
       resources:
+        requests:
+          cpu: "1"
+          memory: "4Gi"
         limits:
           cpu: "1"
-          memory: "2Gi"
+          memory: "4Gi"
 
       # Basic-auth password for the stalwart scrape job below. Mounted as a file
       # rather than written into the scrape config inline: serverFiles and
@@ -197,10 +210,18 @@ spec:
                 annotations:
                   summary: Crossplane is using over half the Cloudflare API budget
                   description: >-
-                    Over 600 Cloudflare API calls in 5 minutes; the limit is 1200 per token,
-                    after which every call 429s for 5 minutes and Crossplane stops reconciling.
-                    Raise --poll in provider-cloudflare-runtimeconfig.yaml. Do NOT set
-                    --max-reconcile-rate, which silently stops controllers.
+                    Known cause so far: a DNS or network outage makes every failed read requeue
+                    with error backoff instead of waiting out --poll, so reconcile attempts spike
+                    even though calls reaching Cloudflare drop to zero. Confirm with the query
+                    below -- if the increase is all operation="connect" with create/update flat,
+                    this is the retry-storm pattern, not real usage nearing the budget. See
+                    activescott/home-infra-k8s-flux#237. Anything that doesn't match is a new
+                    failure and does mean the budget is genuinely close: raise --poll in
+                    provider-cloudflare-runtimeconfig.yaml. Do NOT set --max-reconcile-rate,
+                    which silently stops controllers.
+                  query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgethigh
+                  repo: activescott/home-infra-k8s-flux
               - alert: CloudflareAPIBudgetCritical
                 expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 1000'
                 for: 2m
@@ -209,8 +230,18 @@ spec:
                 annotations:
                   summary: Crossplane is about to exhaust the Cloudflare API budget
                   description: >-
-                    Over 1000 Cloudflare API calls in 5 minutes against a 1200 limit. At the
-                    limit every call 429s for 5 minutes and no managed resource can be observed.
+                    Known cause so far: same retry-storm pattern as CloudflareAPIBudgetHigh, past
+                    the second threshold. On 2026-09-24 this fired for 12 minutes during Ziply
+                    Fiber's planned maintenance -- CoreDNS returned SERVFAIL for
+                    api.cloudflare.com, so every read requeued with error backoff instead of
+                    waiting out --poll, and the reconcile-attempt counter hit 1200/5m with
+                    essentially zero calls reaching Cloudflare. See
+                    activescott/home-infra-k8s-flux#237. Anything that doesn't match -- no
+                    DNS/network trouble in the same window, or create/update actually rising --
+                    is a new failure and means the budget is genuinely exhausted.
+                  query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgetcritical
+                  repo: activescott/home-infra-k8s-flux
               # The symptom rather than the cause: resources that cannot sync.
               # Catches throttling, credential problems and dead controllers
               # alike, which is the point -- on 2026-08-28 all three looked
@@ -363,8 +394,16 @@ spec:
                   summary: >-
                     gpupoet.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app) -- gpupoet-prod also logged ErrImagePull failures
+                    resolving registry-1.docker.io in the same window. See
+                    activescott/gpu-poet#75. Confirm with the query below: if other sites are
+                    down at the same time, this is the shared outage, not an app or ingress
+                    problem. Anything that doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#gpupoetsiteprobefailing
+                  repo: activescott/gpu-poet
               - alert: GpupoetCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://gpupoet.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -705,10 +744,16 @@ spec:
                   summary: >-
                     ramblefeed.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes. Could be a pod/ingress problem, or Cloudflare's
-                    SSL/TLS mode drifting away from Full -- see
-                    tinkerbellbot.com's 2026-08-30 incident.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app), not Cloudflare's SSL/TLS mode drifting off Full as
+                    first suspected -- DNS kept resolving correctly throughout. See
+                    activescott/ramblefeed#112. Confirm with the query below: if other sites are
+                    down at the same time, this is the shared outage. Anything that doesn't
+                    match -- only this site down, or a pod/ingress problem -- is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#ramblefeedsiteprobefailing
+                  repo: activescott/ramblefeed
               - alert: RamblefeedCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -730,10 +775,16 @@ spec:
                   summary: >-
                     tinkerbellbot.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes. Could be a pod/ingress problem, or Cloudflare's
-                    SSL/TLS mode drifting away from Full -- see the
-                    2026-08-30 flexible-mode redirect-loop incident.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app), a connection-level failure rather than an HTTP
+                    error, which rules out an app or ingress-specific cause like the 2026-08-30
+                    flexible-mode redirect loop. See activescott/tinkerbell#197. Confirm with
+                    the query below: if other sites are down at the same time, this is the
+                    shared outage. Anything that doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#tinkerbellbotsiteprobefailing
+                  repo: activescott/tinkerbell
               - alert: TinkerbellbotCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -838,7 +889,49 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'OpenRouter budget exhausted for {{ $labels.app }} in {{ $labels.namespace }}, model calls are failing.'
-                  description: '{{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15 minutes: that namespace''s workspace or key budget is spent and every call on it fails until the cap is raised or the month resets. Check Loki for the exact message: {namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403".'
+                  description: >-
+                    {{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in
+                    the last 15 minutes: that namespace's workspace or key budget is spent and
+                    every call on it fails until the cap is raised or the month resets. Known
+                    cause so far: this alert exists because Olya's OpenClaw workspace ($50/month
+                    cap, namespace olya) hit its budget silently with nothing surfacing it until
+                    noticed by hand; Job Accelerator holds a separate $100/month key in
+                    job-accelerator-prod and can exhaust independently. See
+                    activescott/home-infra-k8s-flux#220. There is no in-cluster fix -- raise the
+                    cap in the OpenRouter dashboard for the workspace/key named by the firing
+                    labels, or wait for the monthly reset.
+                  query: '{namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OpenRouterBudgetExceeded.md
+                  repo: activescott/job-accelerator (namespace job-accelerator-prod) or activescott/activeassistant (namespace olya)
+          - name: browser-chaperone
+            rules:
+              # The approval app runs two replicas now (browser-chaperone#89), so a rollout
+              # or a crash should never leave the egress proxy unable to reach it. Fed by
+              # chaperone_unchecked_total; see the stage.match comment in alloy/helmrelease.yaml
+              # for the log line and why it means the approval app did not answer.
+              - alert: ChaperoneApprovalUnchecked
+                expr: 'increase(loki_process_custom_chaperone_unchecked_total[5m]) > 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "The network chaperone could not reach the approval app."
+                  description: '{{ $labels.pod }} logged chaperone=unchecked in the last 5 minutes: a connection could not be checked because the approval app did not answer within 5s. In enforce mode this refuses the connection outright. Check the app Deployment in browser-chaperone-prod for a stalled rollout or a crash loop.'
+              # Threshold from the 7 days of Loki history measured for
+              # ping-poet/dreamwright#108: the chaperone= field has existed since
+              # 2026-09-29, and its worst single hour there was 284 would-denies (a
+              # telemetry-host burst), with most hours under 50. 150 in 15 minutes is
+              # over twice that worst hour, so routine refusals (expired grants,
+              # agents discovering a new registry) do not trip it, but a host stuck
+              # retrying a refusal in a loop does.
+              - alert: ChaperoneRefusalSpike
+                expr: 'increase(loki_process_custom_chaperone_refused_total[15m]) > 150'
+                for: 1m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: "The network chaperone is refusing an unusual number of connections."
+                  description: '{{ $labels.pod }} logged more than 150 would-deny or denied connections in 15 minutes. Check {namespace="browser-chaperone-prod", app="olya-egress-proxy"} |= "chaperone=" in Loki for the host: a one-off burst from a new registry is normal, a single host retrying in a loop is not.'
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
@@ -1120,7 +1213,16 @@ spec:
                     addresses at TCP accept, so there is no request log to find. Confirm with the
                     "In-cluster addresses blocked" panel on the Email dashboard. If only
                     /api/health is failing, mail delivery is unaffected and nothing else will
-                    alert; that is the webmail alone.
+                    alert; that is the webmail alone. Known cause so far: on 2026-09-24 every
+                    blackbox_https target failed together for 12 minutes during Ziply Fiber's
+                    planned maintenance, not a Stalwart ban -- three unrelated backends failing
+                    and recovering in lockstep rules that out. See
+                    activescott/home-infra-k8s-flux#238. Confirm with the query below: if other
+                    sites are down at the same time, this is the shared outage. Anything that
+                    doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#stalwartwebsurfacedown
+                  repo: activescott/home-infra-k8s-flux
               - alert: StalwartBlockingClusterAddress
                 # The direct detector for that ban, rather than its 502 symptom.
                 # Bans never expire here (no *BanPeriod is set), so one occurrence
@@ -1532,7 +1634,21 @@ spec:
                   severity: warning
                 annotations:
                   summary: 'WAN gateway monitor alarmed (loss/latency/down) on the edge firewall.'
-                  description: 'One or more gateway-monitor alarm transitions in the last 10 minutes — upstream packet loss or outage even though igb0 carrier held. Pull details in Grafana Explore with {host="theshield"} |= "MONITOR:".'
+                  description: >-
+                    One or more gateway-monitor alarm transitions in the last 10 minutes —
+                    upstream packet loss or outage even though igb0 carrier held. Known cause so
+                    far: fired 2026-09-24 during Ziply Fiber's planned maintenance -- the
+                    upstream gateway alarmed none -> loss -> down and was unreachable for 12m29s,
+                    then alarmed back through down -> loss -> none as it recovered. The blackbox
+                    site probes and the Cloudflare API budget alerts fired from the same outage
+                    in the same window. It fired again 2026-09-25 on a single 40s loss alarm with
+                    no down transition, outside the announced maintenance window -- compare
+                    against home-infra-private docs/specs/wan-link-flapping-ziply/ before
+                    assuming it's the same known cause. See
+                    activescott/home-infra-k8s-flux#239.
+                  query: '{host="theshield"} |= "MONITOR:"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/WanGatewayDegraded.md#wangatewaydegraded
+                  repo: activescott/home-infra-k8s-flux
               - alert: WanGatewayDegradedBurst
                 expr: 'sum(increase(loki_process_custom_wan_gateway_alarm_total[1h])) > 3'
                 for: 0m
@@ -1540,7 +1656,18 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'WAN gateway monitor alarming repeatedly on the edge firewall.'
-                  description: 'More than 3 gateway-monitor alarm transitions in the last hour, matching the dense-burst outage signature from the ongoing ISP investigation. Capture the timestamps for the ticket.'
+                  description: >-
+                    More than 3 gateway-monitor alarm transitions in the last hour, matching the
+                    dense-burst outage signature from the ongoing ISP investigation. Same counter
+                    and triage path as WanGatewayDegraded (activescott/home-infra-k8s-flux#239) at
+                    a higher bar: pull theshield's MONITOR: lines for the firing window and
+                    check whether the transitions cluster inside an announced Ziply maintenance
+                    window or match a pattern already recorded in home-infra-private
+                    docs/specs/wan-link-flapping-ziply/. Capture the timestamps for the ticket
+                    either way.
+                  query: '{host="theshield"} |= "MONITOR:"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/WanGatewayDegraded.md#wangatewaydegradedburst
+                  repo: activescott/home-infra-k8s-flux
               # Meta-alert: if the firewall stops shipping syslog, the two
               # alerts above go silent instead of firing. The firewall logs
               # continuously, so a 15m gap means the feed is broken (Alloy
@@ -1601,7 +1728,19 @@ spec:
                   summary: "Flux controller {{ $labels.controller }} has sustained errors"
                   description: >-
                     The {{ $labels.controller }} controller in flux-system has been producing
-                    reconciliation errors for 15 minutes. Check its logs.
+                    reconciliation errors for 15 minutes. Known cause so far: fired 2026-09-24
+                    for the gitrepository controller during Ziply Fiber's planned maintenance --
+                    source-controller logged 10 errors in 6 minutes failing to reach GitHub (a
+                    dial tcp i/o timeout, then lookup github.com ... server misbehaving), then
+                    recovered on its own once DNS came back. WanGatewayDegraded and the site
+                    probe alerts fired from the same outage in the same window. This is a
+                    10-minute rate window, so a genuine blip like this clears itself. See
+                    activescott/activeassistant#378. Anything that doesn't match -- no DNS or
+                    network error in the named controller's logs, or errors that don't stop once
+                    network access is restored -- is a new failure; check its logs.
+                  query: '{namespace="flux-system"} |~ "i/o timeout|server misbehaving"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/FluxReconcileErrors.md
+                  repo: activescott/home-infra-k8s-flux
           - name: cluster-wide
             rules:
               # activescott/home-infra-k8s-flux#276: every per-project group
@@ -1992,6 +2131,256 @@ spec:
                     look at it and at the requests before it.
                   query: '{app="wordpress", container="wordpress"} |~ "(?i)/wp-content/uploads/[^ ?]*([.]|%2e)ph"'
                   repo: activescott/home-infra-k8s-flux
+
+          # Scott's eth-docker validator host. Its Alloy remote-writes to this
+          # Prometheus with external label host="debeth" (activescott/activeassistant#648),
+          # so nothing here scrapes it and a dead pipeline looks like silence:
+          # DebethMetricsAbsent is the dead-man for every rule below.
+          #
+          # Alloy's `execution` job has never scraped Besu successfully (up has
+          # been 0 since the first sample on 2026-10-02), so it is left out of
+          # DebethClientDown. Execution-layer health comes from
+          # ethereum-metrics-exporter's eth_exe_* series instead: a stopped Besu
+          # freezes the block number and fires DebethExecutionNotSynced.
+          #
+          # Triage runs on debeth through the read-only wrappers only; the
+          # runbook names the commands that must never be run from triage.
+          - name: debeth
+            rules:
+              - alert: DebethMetricsAbsent
+                expr: 'absent_over_time(up{host="debeth",job="node-exporter"}[10m])'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: No metrics from debeth for 10 minutes
+                  description: >-
+                    The nas has received nothing from debeth's Alloy for 10 minutes, so every
+                    other debeth alert is blind. Either debeth is down, Alloy on it is down, or
+                    the remote-write path (Traefik ingress, basic auth, IP allowlist) is
+                    rejecting it.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmetricsabsent
+                  repo: activescott/home-infra-private
+              - alert: DebethClientDown
+                expr: 'up{host="debeth",job=~"consensus|validator"} == 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'debeth {{ $labels.job }} client is not answering scrapes'
+                  description: >-
+                    Alloy on debeth has failed to scrape the {{ $labels.job }} container for 5
+                    minutes. The container is down or restarting, and the validator is likely
+                    missing duties.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclientdown
+                  repo: activescott/home-infra-private
+              - alert: DebethExporterDown
+                expr: 'up{host="debeth",job=~"mev-boost|node-exporter|ethereum-metrics-exporter"} == 0'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'debeth {{ $labels.job }} is not answering scrapes'
+                  description: >-
+                    Alloy on debeth has failed to scrape {{ $labels.job }} for 10 minutes. The
+                    alerts fed by it are blind until it returns; for ethereum-metrics-exporter
+                    that is every execution-layer alert.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethexporterdown
+                  repo: activescott/home-infra-private
+              # lodestar_sync_status: 0 Stalled, 1 SyncingFinalized, 2 SyncingHead, 3 Synced.
+              - alert: DebethBeaconNotSynced
+                expr: >-
+                  max(lodestar_sync_status{host="debeth"}) < 3
+                  or (max(beacon_clock_slot{host="debeth"}) - max(beacon_head_slot{host="debeth"})) > 8
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: debeth's beacon node is not synced
+                  description: >-
+                    Lodestar reports a sync state other than Synced, or its head is more than 8
+                    slots behind the wall clock, for 10 minutes. The validator cannot attest
+                    correctly from a node that is behind.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethbeaconnotsynced
+                  repo: activescott/home-infra-private
+              - alert: DebethBeaconLowPeers
+                expr: 'max(libp2p_peers{host="debeth"}) < 20'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'debeth beacon node has {{ $value }} peers'
+                  description: >-
+                    Lodestar has had fewer than 20 peers for 15 minutes; it normally holds
+                    50 to 60. Usually a p2p port or network problem on debeth's side.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethbeaconlowpeers
+                  repo: activescott/home-infra-private
+              - alert: DebethExecutionNotSynced
+                expr: >-
+                  max(eth_exe_sync_is_syncing{host="debeth"}) == 1
+                  or max(changes(eth_exe_block_most_recent_number{host="debeth"}[5m])) == 0
+                for: 10m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: debeth's execution client is not synced
+                  description: >-
+                    Besu reports it is syncing, or its latest block number has not moved in 5
+                    minutes, for 10 minutes. Blocks arrive every 12 seconds, so a flat block
+                    number means the execution client is stuck.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethexecutionnotsynced
+                  repo: activescott/home-infra-private
+              - alert: DebethExecutionLowPeers
+                expr: 'max(eth_exe_net_peer_count{host="debeth"}) < 5'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'debeth execution client has {{ $value }} peers'
+                  description: >-
+                    Besu has had fewer than 5 peers for 15 minutes; it normally holds about 25.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethexecutionlowpeers
+                  repo: activescott/home-infra-private
+              # One target vote per validator per 6.4-minute epoch. A reboot or
+              # `ethd up` costs one or two epochs, which stays under both thresholds.
+              - alert: DebethMissedAttestations
+                expr: 'sum(increase(validator_monitor_prev_epoch_on_chain_target_attester_miss_total{host="debeth"}[1h])) > 2'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'debeth missed {{ $value | printf "%.0f" }} target attestations in the last hour'
+                  description: >-
+                    More than two target votes missed on chain in an hour. The validator is
+                    running but attesting late or on the wrong head.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmissedattestations
+                  repo: activescott/home-infra-private
+              # 30 minutes is about five epochs in a row. Also catches an exited
+              # or slashed validator, which has no metric of its own.
+              - alert: DebethValidatorNotAttesting
+                expr: 'sum(increase(validator_monitor_prev_epoch_on_chain_target_attester_hit_total{host="debeth"}[30m])) < 1'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: debeth has had no target attestation on chain for 30 minutes
+                  description: >-
+                    No target vote from debeth's validator landed on chain in 30 minutes, about
+                    five epochs. The validator is offline, cannot reach a synced beacon node,
+                    or is no longer active.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatornotattesting
+                  repo: activescott/home-infra-private
+              - alert: DebethValidatorNotActive
+                expr: >-
+                  max(validator_monitor_validators{host="debeth"}) < 1
+                  or max(vc_indices_count{host="debeth"}) < 1
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: debeth's validator key is not loaded or not resolved on chain
+                  description: >-
+                    The beacon node monitors no validators, or the validator client has no
+                    validator index, for 15 minutes. The keys are not loaded or the client
+                    cannot resolve them on chain.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatornotactive
+                  repo: activescott/home-infra-private
+              # vc_beacon_health: 0 READY, 1 SYNCING, 2 ERROR.
+              - alert: DebethValidatorBeaconUnhealthy
+                expr: 'max(vc_beacon_health{host="debeth"}) > 0'
+                for: 5m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: debeth's validator client sees its beacon node as unhealthy
+                  description: >-
+                    The validator client reports its beacon node as syncing (1) or erroring (2)
+                    for 5 minutes. Current value {{ $value }}.
+                  query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatorbeaconunhealthy
+                  repo: activescott/home-infra-private
+              # The docker volumes are on /, which sat at 82% on 2026-10-02.
+              - alert: DebethDiskFull
+                expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} / node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.90'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'debeth / is {{ $value | humanizePercentage }} full'
+                  description: >-
+                    The root filesystem on debeth, which holds the chain databases, is over 90%
+                    full. The clients stop when it fills.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+                  repo: activescott/home-infra-private
+              - alert: DebethDiskFull
+                expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} / node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.95'
+                for: 15m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'debeth / is {{ $value | humanizePercentage }} full'
+                  description: >-
+                    The root filesystem on debeth, which holds the chain databases, is over 95%
+                    full. The clients stop when it fills.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+                  repo: activescott/home-infra-private
+              - alert: DebethClockUnsynced
+                expr: 'max(node_timex_sync_status{host="debeth"}) == 0'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: debeth's clock is not NTP-synchronised
+                  description: >-
+                    The kernel on debeth has reported its clock unsynchronised for 15 minutes.
+                    Attestations are slot-timed, so drift turns into late or missed votes.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclockunsynced
+                  repo: activescott/home-infra-private
+              # mev-boost counts a status code only when a relay answers, so a DNS
+              # or TCP failure shows up only as latency samples without one. This
+              # counts registration attempts (one per epoch, about nine an hour)
+              # that got no HTTP response. The `or ... * 0` arm keeps a relay that
+              # has never answered from dropping out of the subtraction.
+              - alert: DebethMevRelayUnreachable
+                expr: >-
+                  sum by (relay) (increase(mev_boost_relay_latency_count{host="debeth",endpoint="/eth/v1/builder/validators"}[1h]))
+                  - (
+                  sum by (relay) (increase(mev_boost_relay_status_code_total{host="debeth",endpoint="/eth/v1/builder/validators"}[1h]))
+                  or sum by (relay) (increase(mev_boost_relay_latency_count{host="debeth",endpoint="/eth/v1/builder/validators"}[1h])) * 0
+                  ) > 0
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'debeth cannot reach MEV relay {{ $labels.relay }}'
+                  description: >-
+                    Validator registrations to {{ $labels.relay }} have been getting no HTTP
+                    response for an hour. Lodestar falls back to local blocks, so this costs MEV
+                    rewards, not proposals.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
+                  repo: activescott/home-infra-private
+              - alert: DebethMevRelayErrors
+                expr: 'sum by (relay, http_status_code) (increase(mev_boost_relay_status_code_total{host="debeth",http_status_code!~"200|204"}[1h])) > 3'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'MEV relay {{ $labels.relay }} answered debeth with HTTP {{ $labels.http_status_code }}'
+                  description: >-
+                    More than three non-2xx answers from {{ $labels.relay }} in an hour. Lodestar
+                    falls back to local blocks, so this costs MEV rewards, not proposals.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayerrors
+                  repo: activescott/home-infra-private
 
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |

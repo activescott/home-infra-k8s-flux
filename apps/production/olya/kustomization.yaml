@@ -101,7 +101,13 @@ secretGenerator:
   - name: olya-chaperone-wake
     envs:
       - .env.secret.olya-chaperone-wake.public-key-encrypted.encrypted
+  # Key: gpupoet_ro_password, the password of olya_ro, the read-only role on GPU Poet's
+  # production Postgres (activescott/activeassistant#705). The role itself was created by hand
+  # in db-0 with the same value; rotate both together.
+  - name: olya-gpupoet-db
+    envs:
+      - .env.secret.olya-gpupoet-db.public-key-encrypted.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790724563 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1790936642 # {"$imagepolicy": "flux-system:policy-olya:tag"}

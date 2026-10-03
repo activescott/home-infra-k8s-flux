@@ -64,6 +64,11 @@ spec:
             # would-deny log is quiet (browser-chaperone#18).
             - name: NETWORK_CHAPERONE_MODE
               value: report_only
+            # Refused as in enforce while the mode is report_only, to rehearse a refusal and the
+            # wake that resumes the coding session on approval (browser-chaperone#88). No traffic
+            # went to example.org in the week before. Drop it once that has been watched working.
+            - name: NETWORK_CHAPERONE_ENFORCE_HOSTS
+              value: example.org
             - name: CHAPERONE_URL
               value: http://app:3400
             # Named in every refusal, for the operator who approves it.
