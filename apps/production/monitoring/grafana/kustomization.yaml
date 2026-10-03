@@ -96,3 +96,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-debeth
+    namespace: monitoring
+    files:
+      - dashboards/debeth.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true

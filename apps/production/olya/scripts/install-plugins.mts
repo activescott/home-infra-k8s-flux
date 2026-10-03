@@ -20,7 +20,16 @@
 // On an image without that copy it is kept: inspect would reinstall it from the official
 // catalog straight away.
 import { execFileSync } from "node:child_process"
-import { copyFileSync, readFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -34,10 +43,8 @@ if (!existsSync(pluginsFile)) {
 // finish at 2Gi, short enough that a hung npm doesn't hold the pod in Init indefinitely.
 const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
 
-const failuresFile = join(
-  process.env.OPENCLAW_STATE_DIR ?? join(homedir(), ".openclaw"),
-  "install-plugins-failures.json",
-)
+const stateDir = process.env.OPENCLAW_STATE_DIR ?? join(homedir(), ".openclaw")
+const failuresFile = join(stateDir, "install-plugins-failures.json")
 
 // Trust reasons that mean the loaded copy is the one openKeyedStore accepts. Anything else, e.g.
 // record-missing for a copy loaded from a plugins.load.paths entry, needs a managed install.
@@ -152,6 +159,18 @@ function removeManagedInstall(spec: string) {
   console.log(
     `install-plugins: ${id} removed managed ${pkg}; now origin ${after.origin ?? "none"}, trust ${after.trustReason ?? "none"}`,
   )
+}
+
+// A killed install leaves its staging directory behind, holding zero-byte package.json files.
+// OpenClaw's peer-link repair scans every directory under npm/projects, so one abandoned stage
+// makes it throw "failed to parse package.json" and skip every managed plugin on each boot.
+const projectsDir = join(stateDir, "npm", "projects")
+const stages = existsSync(projectsDir)
+  ? readdirSync(projectsDir).filter((name) => name.startsWith(".openclaw-install-stage-"))
+  : []
+for (const name of stages) rmSync(join(projectsDir, name), { recursive: true, force: true })
+if (stages.length > 0) {
+  console.log(`install-plugins: removed ${stages.length} abandoned install staging dir(s)`)
 }
 
 const failures: { plugin: string; pinnedVersion?: string; cause: string; time: string }[] = []
