@@ -27,3 +27,17 @@ spec:
         - name: wp-content
           persistentVolumeClaim:
             claimName: wordpress-wp-content-202609
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wp-cron
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+            - name: wp-content
+              persistentVolumeClaim:
+                claimName: wordpress-wp-content-202609
