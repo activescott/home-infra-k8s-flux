@@ -23,7 +23,7 @@ In the tenant namespace:
 
 1. **PVCs** with these exact names — the base mounts them by name:
    - `wordpress-mariadb-data` → mounted at `/var/lib/mysql`
-   - `wordpress-mariadb-initdb` → mounted at `/docker-entrypoint-initdb.d` (read-only). Drop a `restore.sql` here for first-init DB seeding; the mariadb entrypoint will execute it before opening for connections.
+   - `wordpress-mariadb-initdb` → mounted at `/docker-entrypoint-initdb.d` (read-only). Drop a `restore.sql` here for first-init DB seeding; the mariadb entrypoint will execute it before opening for connections. By then it has created the database and user named in `wordpress-creds`, so a dump of the WordPress database alone is enough.
    - `wordpress-wp-content` → mounted read-only at
      `/var/www/html/wp-content`, with its `uploads/` mounted again
      writable on top. The restore must leave the whole tree owned

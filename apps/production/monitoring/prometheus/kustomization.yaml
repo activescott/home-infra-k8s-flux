@@ -4,6 +4,8 @@ resources:
   - ./prometheus-pv.yaml
   - ./helmrelease.yaml
   - ./basic-auth-middleware.yaml
+  - ./prometheus-remote-write-ingress.yaml
+  - ./remote-write-middleware.yaml
 
 secretGenerator:
   - name: alertmanager-secrets
@@ -45,3 +47,12 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted
+  # htpasswd line for the debeth user on the remote-write path (remote-write-middleware.yaml).
+  # Written by scripts/create-debeth-remote-write-auth.mts, which prints the password once for
+  # debeth and keeps no copy. Until that has run, the committed file holds a hash too short to
+  # be bcrypt, which Traefik rejects for any password, so the path denies every write.
+  - name: prometheus-remote-write-auth
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted
