@@ -192,6 +192,20 @@ To confirm from Alertmanager's side, this Loki query shows no failures after tha
 {namespace="monitoring", pod="prometheus-alertmanager-0"} |= "olya-hook"
 ```
 
+## Capturing a diagnostic report during a stall
+
+`NODE_OPTIONS` on the `olya` container carries `--report-on-signal --report-signal=SIGUSR2
+--report-directory=/state/openclaw`, so a main-thread stall like
+activescott/activeassistant#722 can be captured without killing the pod:
+
+```bash
+kubectl --context nas -n olya exec olya-0 -c olya -- pgrep -f openclaw
+kubectl --context nas -n olya exec olya-0 -c olya -- kill -USR2 <gateway pid>
+```
+
+The report lands as `/state/openclaw/report.<timestamp>.<pid>.<seq>.json`, with the JS and
+native stack, heap summary, and event loop and libuv handle info at the moment of the signal.
+
 ## Things that will bite
 
 - **`env` and `openclaw.json` must agree.** The container names each substituted key
