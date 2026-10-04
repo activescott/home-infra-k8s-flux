@@ -2,6 +2,10 @@
 # Service, and this pod holds the Google credential for her account (browser-chaperone#39,
 # docs/mcp-gateway.md in activescott/browser-chaperone for what it checks and refuses).
 #
+# It is tinkerbell as she reaches it too: her `mcp.servers.tinkerbell` entry points at
+# /tinkerbell/mcp on this Service, and this pod holds the only tinkerbell token she can use
+# (browser-chaperone#44). Every web_fetch URL and web_search query needs a grant.
+#
 # Same shape as the Slack relay: every gated call is a question to the approval app on
 # app:3400, nothing is cached. google-workspace-mcp runs inside this container as the
 # gateway's stdio child. Not in the base: browser-chaperone's k8s/base has no manifest for
@@ -100,6 +104,15 @@ spec:
                 secretKeyRef:
                   name: mcp-gateway-creds
                   key: google_workspace_client_secret
+            # tinkerbell's public endpoint, reached over this pod's internet egress rule. The
+            # token is sent there and nowhere else.
+            - name: TINKERBELL_URL
+              value: https://tinkerbellbot.com/mcp
+            - name: TINKERBELL_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mcp-gateway-tinkerbell
+                  key: tinkerbell_api_token
             # AUDIT_URL is deliberately unset, as on the relay: the log is the only sink.
           envFrom:
             # INTERNAL_API_TOKEN, the same Secret the app, the browser service and the relay
