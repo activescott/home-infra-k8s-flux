@@ -7,12 +7,13 @@ using the Docker official images. Replaces the legacy Bitnami chart
 
 ## What this base ships
 
-| Resource | Image | Notes |
-|---|---|---|
-| `Deployment/wordpress` | `wordpress:6.9.1-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). |
-| `Service/wordpress` | — | ClusterIP, port 80. |
-| `StatefulSet/mariadb` | `mariadb:12.2.2-noble` | 1 replica. uid:gid 999:999 (mysql). |
-| `Service/mariadb` | — | Headless, port 3306. |
+| Resource               | Image                           | Notes                                                                                                                                                                         |
+| ---------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Deployment/wordpress` | `wordpress:7.1.2-php8.3-apache` | RWO PVC → `strategy: Recreate`. uid:gid 33:33 (www-data). Read-only root and core. Only `wp-content/uploads/` is writable, and PHP does not run from it.                      |
+| `Service/wordpress`    | —                               | ClusterIP, port 80.                                                                                                                                                           |
+| `CronJob/wp-cron`      | `wordpress:7.1.2-php8.3-apache` | Every 5 minutes, `php wp-cron.php` runs due scheduled events without HTTP. uid:gid 33:33. Mounts the wp-content claim alongside the Deployment, which RWO allows on one node. |
+| `StatefulSet/mariadb`  | `mariadb:12.2.2-noble`          | 1 replica. uid:gid 999:999 (mysql).                                                                                                                                           |
+| `Service/mariadb`      | —                               | Headless, port 3306.                                                                                                                                                          |
 
 Image versions are pinned in the base. All tenant overlays inherit
 the same versions; bump them here for everyone at once.
@@ -23,11 +24,20 @@ In the tenant namespace:
 
 1. **PVCs** with these exact names — the base mounts them by name:
    - `wordpress-mariadb-data` → mounted at `/var/lib/mysql`
-   - `wordpress-mariadb-initdb` → mounted at `/docker-entrypoint-initdb.d` (read-only). Drop a `restore.sql` here for first-init DB seeding; the mariadb entrypoint will execute it before opening for connections.
-   - `wordpress-wp-content` → mounted at `/var/www/html/wp-content`
+   - `wordpress-mariadb-initdb` → mounted at `/docker-entrypoint-initdb.d` (read-only). Drop a `restore.sql` here for first-init DB seeding; the mariadb entrypoint will execute it before opening for connections. By then it has created the database and user named in `wordpress-creds`, so a dump of the WordPress database alone is enough.
+   - `wordpress-wp-content` → mounted read-only at
+     `/var/www/html/wp-content`, with its `uploads/` mounted again
+     writable on top. The restore must leave the whole tree owned
+     by 33:33, `wp-content/` itself included: the init container runs
+     as uid 33, copies any missing bundled themes and plugins into
+     `plugins/` and `themes/`, and creates `uploads/` if the restore
+     did not, and it fails if it cannot write there. Plugin, theme,
+     language and drop-in changes happen on the host, since WordPress
+     can no longer write anything outside `uploads/`.
 
 2. **`Secret/wordpress-creds`** with these 12 keys (sops-encrypted
    dotenv via `secretGenerator` is the project convention):
+
    ```
    mariadb-root-password
    wordpress-db-user, wordpress-db-password, wordpress-db-name
@@ -36,6 +46,7 @@ In the tenant namespace:
    wordpress-auth-salt, wordpress-secure-auth-salt,
    wordpress-logged-in-salt, wordpress-nonce-salt
    ```
+
    The 8 WP key/salt values should be fresh-random per tenant; WP
    uses them to sign cookies and nonces. The official image does not
    generate defaults, so omitting any of them breaks login.
@@ -50,13 +61,65 @@ In the tenant namespace:
    reliable across migrations; setting these in wp-config.php pins
    the URL deterministically per environment.
 
+   The same value must also carry the hardening constants. Core is
+   read-only, so WordPress must not try to update it, and plugins and
+   themes cannot be installed or edited from the dashboard.
+
    Example:
+
    ```yaml
    - name: WORDPRESS_CONFIG_EXTRA
      value: |
        define('WP_HOME',    'https://example.com');
        define('WP_SITEURL', 'https://example.com');
+       define('WP_AUTO_UPDATE_CORE', false);
+       define('DISALLOW_FILE_EDIT', true);
+       define('DISALLOW_FILE_MODS', true);
+       define('DISABLE_WP_CRON', true);
    ```
+
+   `DISABLE_WP_CRON` hands scheduled events to `CronJob/wp-cron`. That
+   job needs the same env as the `wordpress` container, so the overlay
+   copies it with a `replacements` entry; see the reference overlay's
+   `kustomization.yaml`.
+
+## Preview and going live
+
+For `apps/production/wordpress-micah-mmm-v2/`. The preview is
+`ingress.yaml` added to `resources` with the offline patch removed;
+going live is deleting the marked `lan-only` line in `ingress.yaml`.
+
+After each apply, before going further, check Traefik's log in Loki
+for a router it could not build. A rule Traefik cannot parse drops
+only that router, and the catch-all then serves wp-admin to whoever
+it admits. This must return nothing:
+
+```logql
+{namespace="kube-system", container="traefik"} |= "error while parsing rule"
+```
+
+In the preview, wp-cron must be able to reach the site through
+Traefik. Expect `403`: the catch-all route is still `lan-only` and
+the pod's own address doesn't qualify, so this proves the
+NetworkPolicy path is open; a hang means it isn't. wp-cron does not
+actually run during the preview. After going live, the same request
+must return `200`:
+
+```sh
+kubectl --context nas -n wordpress-micah-mmm-v2 exec deploy/wordpress -- \
+  curl -sS -o /dev/null -w '%{http_code}\n' https://mmm.willeke.com/wp-cron.php
+```
+
+After going live, from a machine off the LAN, each of these must
+return `403`, and `/` must return `200`. They spell the admin paths
+with encoded dot segments, which Traefik and Apache read differently:
+
+```sh
+for p in /%2e/wp-login.php /a/%2e%2e/wp-login.php /%2e/xmlrpc.php \
+         /x/%2e%2e/wp-admin/admin-ajax.php /; do
+  printf '%s %s\n' "$(curl -sS -o /dev/null -w '%{http_code}' --path-as-is "https://mmm.willeke.com$p")" "$p"
+done
+```
 
 ## Reference overlay
 

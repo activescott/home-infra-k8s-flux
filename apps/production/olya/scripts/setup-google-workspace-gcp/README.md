@@ -18,12 +18,12 @@ an unregistered scope fails at the consent screen, not at token exchange.
 
 ### 2. First time only: create the secret
 
-Skip this if `apps/production/olya/.env.secret.google-workspace.encrypted` already exists;
+Skip this if `apps/production/browser-chaperone/.env.secret.mcp-gateway-google.encrypted` already exists;
 it is the only copy, and `new` refuses to overwrite it.
 
 ```bash
-./scripts/onepassword-secrets.mts new apps/production/olya/.env.secret.google-workspace \
-  --from apps/production/olya/env.secret.google-workspace.example
+./scripts/onepassword-secrets.mts new apps/production/browser-chaperone/.env.secret.mcp-gateway-google \
+  --from apps/production/browser-chaperone/env.secret.mcp-gateway-google.example
 ```
 
 Fill in the client ID and client secret in the editor, and leave
@@ -39,14 +39,14 @@ Enter the client ID and client secret when prompted. Open the printed URL, sign 
 olya@pingpoet.com, grant access. The script catches the redirect, exchanges the code,
 and prints the credentials JSON. After a `[y/N]` prompt it replaces the
 `google_workspace_credentials_json=` line in
-`.env.secret.google-workspace.encrypted`: it decrypts with `onepassword-secrets.mts show`,
+`.env.secret.mcp-gateway-google.encrypted`: it decrypts with `onepassword-secrets.mts show`,
 changes that one line in memory, and re-encrypts, so no plaintext file is written and the
 other values are kept. Answer `n` and it prints the `edit` command to paste the JSON by hand.
 
 Run this yourself, not via the agent: the JSON it prints is a live refresh token.
 
-Commit `apps/production/olya/.env.secret.google-workspace.encrypted` yourself afterwards.
+Commit `apps/production/browser-chaperone/.env.secret.mcp-gateway-google.encrypted` yourself afterwards.
 
 ### 4. What happens next
 
-Olya will configure the MCP server in openclaw.json, add the secret mounts to the statefulset, and test the newly-enabled scopes (Docs, Drive, Chat, People, Slides, Sheets).
+Olya reaches the credential through the MCP gateway, so nothing is added to the olya statefulset. Test the newly-enabled scopes (Docs, Drive, Chat, People, Slides, Sheets).

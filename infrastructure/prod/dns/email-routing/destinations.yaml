@@ -35,3 +35,21 @@ spec:
   forProvider:
     accountId: c88dfb5cc7256dd4a215040b01182eaa
     email: olya@pingpoet.com
+
+---
+# The Google Group that dreamwright.app's `it` and `aws-root` aliases forward to, since
+# Cloudflare allows only one forward destination per rule. See
+# ../../controllers/crossplane-config/rolemailboxes/composition.yaml.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingAddress
+metadata:
+  name: scottandolya-pingpoet-com
+  namespace: cloudflare
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: email-routing
+  forProvider:
+    accountId: c88dfb5cc7256dd4a215040b01182eaa
+    email: scottandolya@pingpoet.com

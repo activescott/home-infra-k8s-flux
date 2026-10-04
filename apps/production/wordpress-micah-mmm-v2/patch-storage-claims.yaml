@@ -1,0 +1,43 @@
+# The base mounts its claims by fixed name. These are the tenant's claims since the move to
+# new storage in 2026-09: a PVC cannot be rebound to a different PV, so moving meant new
+# PVCs, and new names for them.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariadb
+spec:
+  template:
+    spec:
+      volumes:
+        - name: mariadb-data
+          persistentVolumeClaim:
+            claimName: wordpress-mariadb-data-202609
+        - name: mariadb-initdb
+          persistentVolumeClaim:
+            claimName: wordpress-mariadb-initdb-202609
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  template:
+    spec:
+      volumes:
+        - name: wp-content
+          persistentVolumeClaim:
+            claimName: wordpress-wp-content-202609
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wp-cron
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          volumes:
+            - name: wp-content
+              persistentVolumeClaim:
+                claimName: wordpress-wp-content-202609

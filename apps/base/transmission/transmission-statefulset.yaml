@@ -18,6 +18,7 @@ spec:
         app: transmission
         role: app
     spec:
+      automountServiceAccountToken: false
       containers:
       # image docs: https://github.com/linuxserver/docker-transmission
       - name: transmission

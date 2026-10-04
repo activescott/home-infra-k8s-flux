@@ -1,9 +1,9 @@
 # AgentSandboxSecurityAlerts
 
-One file for the six alerts in the `agent-sandbox-security` group, rather than the
+One file for the seven alerts in the `agent-sandbox-security` group, rather than the
 one-file-per-alert shape the other runbooks use. They share a subject (activeassistant#348,
-part of #345), share a triage path, and none of them has fired yet, so six files would be
-six copies of the same three commands.
+part of #345), share a triage path, and none of them has fired yet, so seven files would be
+seven copies of the same three commands.
 
 Nothing here is a diagnosis of an alert anybody has had to work. It is the mechanical part:
 where the evidence is, and how to tell a rule that needs tuning from a sandbox that got out.
@@ -63,10 +63,11 @@ turn off, because that container holds `CAP_NET_ADMIN` on a 5.15 kernel whose nf
 backports nobody has confirmed. The fix is the authorization plugin in #347, not an exception
 here.
 
-An empty `falco_ns` is not a sandbox at all: that is `Falco internal: syscall event drop`,
-which means the ring buffer overflowed. Either the node is busy or something is trying to
-flood Falco into missing an event. Check the node's load first, then what was running in the
-sandboxes at that timestamp.
+A syscall drop does not fire this alert, whatever the comment on `syscall_event_drops` in the
+Falco HelmRelease says. Falco logs `Falco internal: syscall event drop` at Debug, below the
+Alloy selector, and it is not a rule, so it never has a
+`falcosecurity_falco_rules_matches_total` series to pass the gate below. That is a detection
+gap the triage on #402 left for its own issue.
 
 A `Kubernetes credential read` match from `agent-sandbox-docker` means a service account token
 or Secret was read in a pod that mounts neither; check `automountServiceAccountToken` on the
@@ -127,13 +128,35 @@ switched on.
 `Agent sandbox container made an unexpected private network connection` means the sandbox
 reached the node, the LAN, or kube-apiserver. Public internet egress is not matched, so this
 is never an image pull. The NetworkPolicy on the sandbox namespace is the control that should
-have stopped it; this rule is the check that the control works.
+have stopped it; this rule is the check that the control works. The vcluster syncer's own
+connection to the API server (`agent-sandbox-0`, container `syncer`, `/vcluster`, to
+`172.17.0.1:443`) is excluded, since it makes one on every start; the syncer reaching any other
+private address still matches.
 
 Its silence needs reading carefully. The `outbound` macro requires the `connect` to have
 returned 0 or `EINPROGRESS`, so a blocking connect to an address the NetworkPolicy blackholes
 sits until `ETIMEDOUT` and never matches: non-blocking clients (curl, anything in Go) match,
 `nc` and `bash /dev/tcp` do not. The rule reports destinations that were reachable, not
 destinations that were tried, and that is upstream's shape rather than ours.
+
+## Why both Falco alerts also read Falco's counter
+
+The Loki counter is not enough on its own. Alloy reopens every log stream hourly and re-reads
+the last line it saw ([grafana/alloy#7192](https://github.com/grafana/alloy/issues/7192)).
+Loki drops the duplicate but the counter has already counted it, so whenever Falco's last line
+is a match the alert fires again on the hour with nothing new behind it. That is what the four
+short episodes after 21:07Z on 2026-09-24 were (activeassistant#402).
+
+So each expression also requires `falcosecurity_falco_rules_matches_total` for the same rule to
+have moved in the last 5 minutes. That counter comes from the Falco engine and only moves on a
+match. It has no namespace label, so the gate is per rule; `falco_ns` and the evidence still
+come from Loki. Falco emits a rule's series only after its first match, at 1, which
+`increase()` cannot see, so the gate has an `unless ... offset 5m` arm for a series that did not
+exist 5 minutes ago.
+
+For triage this means a Loki line with no alert can be a re-read, and an alert means Falco
+counted a match. If the two disagree the other way (Falco's counter moved and no line reached
+Loki), the log pipeline is the problem, not the rule.
 
 ## FalcoNotRunning
 
@@ -168,6 +191,21 @@ the DaemonSet still reports ready:
 
 A healthy start logs `Loaded plugin 'container@<version>'` and one line per enabled runtime
 socket. If those are missing, the rules are loaded and blind.
+
+## FalcoMetricsDown
+
+Prometheus has not scraped Falco's `/metrics` for 10 minutes, or the target is gone. Both Falco
+alerts need that counter, so neither can fire while this is true, even with Falco healthy and
+logging matches to Loki. Read Loki directly until it is fixed:
+
+```logql
+{namespace="falco", falco_priority=~"Warning|Error|Critical|Alert|Emergency"} | json
+```
+
+The target comes from the `prometheus.io/*` annotations on the Falco pod and the `metrics`
+block in `apps/production/falco/helmrelease.yaml`, which also turns on the webserver's
+endpoint on port 8765. A chart bump that renames either is the likely cause. If
+`FalcoNotRunning` is firing too, start there.
 
 ## SandboxPodSecurityDenied
 

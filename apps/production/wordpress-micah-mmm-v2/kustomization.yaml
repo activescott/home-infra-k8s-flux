@@ -15,6 +15,7 @@ resources:
   - ../../base/wordpress-upstream
   - pv.yaml
   - pvc.yaml
+  - networkpolicy.yaml
   - ingress.yaml
 
 secretGenerator:
@@ -29,3 +30,21 @@ patches:
   # Bitnami chart hard-coded WP_HOME/WP_SITEURL in its generated
   # wp-config.php to mask that, and the upstream image doesn't.
   - path: patch-wordpress-config-extra.yaml
+  - path: patch-storage-claims.yaml
+  - path: patch-bundled-content.yaml
+
+# wp-cron runs WordPress with the site's env, WORDPRESS_CONFIG_EXTRA included, so the hardening
+# constants hold for scheduled events too. Copied rather than repeated so the two cannot drift.
+replacements:
+  - source:
+      kind: Deployment
+      name: wordpress
+      fieldPath: spec.template.spec.containers.[name=wordpress].env
+    targets:
+      - select:
+          kind: CronJob
+          name: wp-cron
+        fieldPaths:
+          - spec.jobTemplate.spec.template.spec.containers.[name=wp-cron].env
+        options:
+          create: true

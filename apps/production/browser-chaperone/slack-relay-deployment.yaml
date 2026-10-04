@@ -56,12 +56,17 @@ spec:
             # AUDIT_URL is deliberately unset: the approval app has nowhere to put audit
             # records yet, so the log is the only sink and Loki is where they are read.
           envFrom:
-            # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, RELAY_BOT_TOKEN, RELAY_APP_TOKEN, and
-            # RELAY_NOTIFY_TOKEN once it is added. The service refuses to start if a relay
-            # credential equals one of the real tokens.
+            # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, RELAY_BOT_TOKEN, RELAY_APP_TOKEN,
+            # RELAY_NOTIFY_TOKEN, and SLACK_NOTIFY_BOT_TOKEN once each is added. The service
+            # refuses to start if a relay credential equals one of the real tokens.
+            # SLACK_NOTIFY_BOT_TOKEN is the bot token of the second Slack app that owns the
+            # notice's buttons (browser-chaperone#54, docs/slack-relay.md). Left out of the
+            # Secret, the notify credential goes upstream as Olya's bot instead, so the relay
+            # starts and posts notices with no buttons rather than refusing to start.
             - secretRef:
                 name: slack-relay-creds
             # SLACK_NOTIFY_CHANNEL: the one channel RELAY_NOTIFY_TOKEN may post in.
+            # SLACK_OPERATOR_CHANNEL: #dream-on, where a reply to a non-operator is held.
             - configMapRef:
                 name: slack-notify-config
             # INTERNAL_API_TOKEN, the same Secret the app and the browser service read: the

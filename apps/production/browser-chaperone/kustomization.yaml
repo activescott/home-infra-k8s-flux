@@ -7,12 +7,16 @@ resources:
   # Not in the base: browser-chaperone's k8s/base has no manifest for this package.
   - slack-relay-deployment.yaml
   - slack-relay-service.yaml
+  # Same: no manifest in the base.
+  - mcp-gateway-deployment.yaml
+  - mcp-gateway-service.yaml
   - olya-egress-proxy-deployment.yaml
   - olya-egress-proxy-service.yaml
   - olya-egress-proxy-pdb.yaml
   - networkpolicy.yaml
   - db-pv.yaml
   - ../../base/browser-chaperone/
+  - app-pdb.yaml
   - app-ingress-certificate.yaml
   # /ops/* (kubelet probes) denied at the ingress; the probes reach the pod
   # directly instead.
@@ -56,13 +60,17 @@ configMapGenerator:
       - EGRESS_PROXY_URL=http://egress-proxy:3128
       - AGENT_IDENTITY=olya
       - NODE_ENV=production
-  # The operators' channel (#dream-on), where the app posts each waiting request
+  # SLACK_NOTIFY_CHANNEL is its own channel, where the app posts each waiting request
   # (browser-chaperone#23). Read by the app, which names it, and by the Slack relay, which
-  # refuses the app's credential anywhere else. The OPERATOR_* ids are the app's start-up
-  # grants (browser-chaperone#34): a DM grant per operator and a post grant for the channel.
+  # refuses the app's credential anywhere else. SLACK_OPERATOR_CHANNEL is the operators'
+  # own channel, #dream-on, where the relay holds a reply to anyone who is not an operator
+  # (browser-chaperone#48, #69); it used to be wired from SLACK_NOTIFY_CHANNEL, which held
+  # the wrong channel since the two differ. The OPERATOR_* ids are the app's start-up
+  # grants (browser-chaperone#34): a DM grant per operator and a post grant for #dream-on.
   - name: slack-notify-config
     literals:
-      - SLACK_NOTIFY_CHANNEL=C0C4YKR21DW
+      - SLACK_NOTIFY_CHANNEL=C0C5E2Z358E
+      - SLACK_OPERATOR_CHANNEL=C0C4YKR21DW
       - OPERATOR_SLACK_USER_IDS=U0FS2ER1Q
       - OPERATOR_SLACK_CHANNEL_ID=C0C4YKR21DW
 secretGenerator:
@@ -77,8 +85,9 @@ secretGenerator:
   - name: app-signin
     envs:
       - .env.secret.app-signin.encrypted
-  # One Secret for the browser, the Slack relay and the app: both clients send this token on
-  # every /internal/* call and the app refuses any call without it.
+  # One Secret for the browser, the Slack relay, the MCP gateway, the assistant's proxy and the
+  # app: every client sends this token on each /internal/* call and the app refuses any call
+  # without it.
   - name: internal-api-token
     envs:
       - .env.secret.internal-api-token.encrypted
@@ -89,13 +98,51 @@ secretGenerator:
   - name: slack-relay-creds
     envs:
       - .env.secret.slack-relay.encrypted
+  # The signing secret for the second Slack app, which verifies the v0 signature on every
+  # POST /slack/interactions (browser-chaperone#54). The committed file holds it EMPTY until
+  # the operator writes the real value: an empty value disables the buttons rather than
+  # standing in as a guessable HMAC key. See README.md "Slack approve/deny buttons".
+  - name: slack-signing-creds
+    envs:
+      - .env.secret.slack-signing.encrypted
+  # The Google credential for Olya's account (browser-chaperone#39). The committed file holds
+  # PLACEHOLDERS until the operator writes the real values; see
+  # env.secret.mcp-gateway-google.example.
+  - name: mcp-gateway-creds
+    envs:
+      - .env.secret.mcp-gateway-google.encrypted
+  # Key: tinkerbell_api_token, the gateway's own tinkerbell token (browser-chaperone#44). The
+  # committed file holds a PLACEHOLDER until the operator writes a new token; see
+  # env.secret.mcp-gateway-tinkerbell.example. A Secret of its own because two SOPS files
+  # cannot share a generator.
+  - name: mcp-gateway-tinkerbell
+    envs:
+      - .env.secret.mcp-gateway-tinkerbell.encrypted
+  # Key: gateway_client_token, the token Olya presents to the gateway. Same value as
+  # mcp_gateway_token in ../olya/.env.secret.olya-mcp-gateway.public-key-encrypted.encrypted;
+  # rotate both together. A Secret of its own because two SOPS files cannot share a generator.
+  - name: mcp-gateway-token
+    envs:
+      - .env.secret.mcp-gateway-token.public-key-encrypted.encrypted
+  # Key: chaperone_wake_token, what the app presents when it wakes Olya's session on a decision
+  # (activescott/activeassistant#543). Same value as chaperone_wake_token in
+  # ../olya/.env.secret.olya-chaperone-wake.public-key-encrypted.encrypted; rotate both together.
+  - name: agent-wake-token
+    envs:
+      - .env.secret.agent-wake-token.public-key-encrypted.encrypted
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.9.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.24.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
-    newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
+    newTag: v0.7.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
-    newTag: v0.3.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+    newTag: v0.8.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+  - name: browser-chaperone-image-mcp-gateway
+    newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
+    newTag: v0.8.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+  - name: browser-chaperone-image-network-proxy
+    newName: ghcr.io/activescott/browser-chaperone/network-proxy # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:name"}
+    newTag: v0.3.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}

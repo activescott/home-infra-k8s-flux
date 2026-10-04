@@ -36,7 +36,7 @@ spec:
         # emptyDir volumes below.
         fsGroup: 1000
 
-      # Both initContainers repeat the container securityContext below. Pod-level settings do
+      # The initContainers repeat the container securityContext below. Pod-level settings do
       # NOT include the container-level ones, so without this an initContainer runs with
       # allowPrivilegeEscalation defaulting to true, no dropped capabilities, and a writable
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
@@ -94,6 +94,83 @@ spec:
             - name: tmp
               mountPath: /tmp
 
+        # Runs `openclaw doctor --fix` with the gateway stopped, which is the only way OpenClaw
+        # migrates the agent databases: from 2026.9.7 the gateway exits 78 on an older agent
+        # schema instead (activescott/activeassistant#590). Upstream's 2026.9.7 image entrypoint
+        # does the same on every start, but doctor refuses to run under OPENCLAW_CONFIG_READONLY,
+        # so our image drops that entrypoint and this runs it here instead.
+        #
+        # Doctor also repairs the config file, so it gets a copy that is thrown away afterwards.
+        # /state/config keeps what seed-workspace wrote; prune-plugin-installs never touches it,
+        # unlike install-plugins before it. The /doctor/config directory is cleared first because
+        # a restarted initContainer keeps the emptyDir, and doctor can otherwise restore its
+        # earlier output from the backups it left there.
+        #
+        # Right after seed-workspace, which is what first writes /state/config/openclaw.json, and
+        # before prune-plugin-installs or anything else that invokes the openclaw CLI or opens the
+        # state/agent databases, matching upstream's 2026.9.7 entrypoint order: doctor before
+        # anything touches state. The `.pre-startup-migration-*.bak` files doctor writes next to
+        # each database are only a usable rollback to 2026.9.5 if nothing has migrated those
+        # databases yet, and prune-plugin-installs' own openclaw CLI calls migrate the state DB
+        # (17 to 19) same as the gateway would. A failure here always exits 0 instead of keeping
+        # the pod in Init, including 2026.9.7's behavior where a plugin that fails to load fails
+        # doctor: Scott decided on 2026-09-24 (scripts/prune-plugin-installs.mts) that a broken
+        # plugin must never wedge the pod. A failure logs a "doctor: ERROR" line with doctor's
+        # exit code, grepped the same way as "prune-plugin-installs: WARNING". A failed DB
+        # migration still leaves the gateway exiting 78 on the old schema, so that case is not
+        # hidden.
+        - name: doctor
+          image: olya-image
+          command:
+            - sh
+            - -c
+            - 'rm -rf /doctor/config && mkdir /doctor/config && cp /state/config/openclaw.json /doctor/config/ && openclaw doctor --fix --non-interactive; code=$?; if [ "$code" -ne 0 ]; then echo "doctor: ERROR exit $code"; fi; exit 0'
+          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
+          envFrom:
+            - configMapRef:
+                name: olya-proxy-env
+          env:
+            - name: HOME
+              value: /state/home
+            - name: OPENCLAW_STATE_DIR
+              value: /state/openclaw
+            - name: OPENCLAW_CONFIG_PATH
+              value: /doctor/config/openclaw.json
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # Not measured. Same as install-plugins, because on 2026.9.7 doctor can run the same
+          # npm install of a managed plugin that install-plugins needed 2Gi for.
+          resources:
+            requests:
+              cpu: "50m"
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            # Same overlays as the olya container's enforcement boundary below: doctor's
+            # conditional writers under the workspace (TOOLS.md migration, HEARTBEAT.md rename,
+            # MEMORY.md/memory.md merge, plugin manifest rewrites) and any config repair must not
+            # reach the checkout or /state/config. It reads /state/config/openclaw.json once,
+            # below, to seed its own throwaway copy; that read still works read-only.
+            - name: state
+              mountPath: /state/workspace
+              subPath: workspace
+              readOnly: true
+            - name: state
+              mountPath: /state/config
+              subPath: config
+              readOnly: true
+            - name: doctor-config
+              mountPath: /doctor
+            - name: tmp
+              mountPath: /tmp
+
         # Removes the plugin install records install-plugins left on the PV (acpx, the ClawHub
         # diagnostics-prometheus, a stray perplexity), now that every plugin is baked into the
         # image as bundled (activescott/activeassistant#386). A record outranks the bundled copy,
@@ -133,13 +210,19 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
-        # Copies the Google Workspace credential JSON from the read-only Secret
-        # volume to a writable emptyDir so the MCP server can persist refreshed
-        # OAuth tokens. Secret volumes are always read-only in Kubernetes.
-        - name: copy-workspace-creds
+        # The gateway refuses a group/world-writable temp dir without the sticky bit and disables
+        # its session observer (activescott/activeassistant#440). fsGroup leaves the tmp
+        # emptyDir root as root:node with mode 2777, and uid 1000 is not the owner so it cannot
+        # chmod it: the other initContainers cannot do this. Runs as root, the owner, which
+        # needs no capabilities. The emptyDir is recreated on every pod start, so this runs
+        # on every one.
+        - name: tmp-sticky
           image: olya-image
-          command: ["sh", "-c", "cp /secret/credentials.json /data/credentials.json && chmod 0600 /data/credentials.json"]
+          command: ["chmod", "1777", "/tmp"]
           securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
@@ -152,11 +235,8 @@ spec:
               cpu: "100m"
               memory: 32Mi
           volumeMounts:
-            - name: google-workspace-creds
-              mountPath: /secret
-              readOnly: true
-            - name: google-workspace-data
-              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
 
       containers:
         - name: olya
@@ -204,9 +284,20 @@ spec:
             #
             # The ProxyCommand sends it through the egress proxy as CONNECT host:22, so git over
             # SSH is logged with everything else. Plain `ssh` without this variable still
-            # connects directly.
+            # connects directly; `ssh -F` the config gets the same ProxyCommand from the top of
+            # it, which seed-workspace.mts writes for the shells that lose this variable.
             - name: GIT_SSH_COMMAND
               value: ssh -F $(HOME)/.ssh/config -o "ProxyCommand=/scripts/ssh-proxy-connect.mts %h %p"
+            # Claude Code telemetry and error reports to Datadog
+            # (http-intake.logs.us5.datadoghq.com), denied at the egress proxy on every request.
+            - name: DISABLE_TELEMETRY
+              value: "1"
+            - name: DISABLE_ERROR_REPORTING
+              value: "1"
+            # Prisma CLI telemetry to checkpoint.prisma.io, denied at the egress proxy on
+            # every request.
+            - name: CHECKPOINT_DISABLE
+              value: "1"
             # The two keys openclaw.json substitutes, plus provider API keys, named
             # individually rather than
             # with `envFrom: secretRef`. envFrom would pull in every key of olya-env, and env is
@@ -218,9 +309,9 @@ spec:
             # Provider API keys (OPENROUTER_API_KEY) are read from the
             # environment by OpenClaw's provider plugins, not substituted in the config.
             #
-            # grafana_service_account_token and tinkerbell_api_token are delivered
-            # below, for the mcp-grafana and tinkerbell MCP servers configured in
-            # openclaw.json.
+            # grafana_service_account_token is delivered below, for the mcp-grafana MCP server
+            # configured in openclaw.json. There is no tinkerbell token here: her tinkerbell
+            # MCP server is the MCP gateway, which holds it (browser-chaperone#44).
             - name: OPENCLAW_GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -237,23 +328,6 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: grafana_service_account_token
-            - name: TINKERBELL_API_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: olya-env
-                  key: tinkerbell_api_token
-            - name: WORKSPACE_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: olya-google-workspace
-                  key: google_workspace_client_id
-            - name: WORKSPACE_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: olya-google-workspace
-                  key: google_workspace_client_secret
-            - name: WORKSPACE_CREDENTIALS_PATH
-              value: /etc/olya-google-workspace/credentials.json
             # hooks.token in openclaw.json. Has to be deployed before the config references it:
             # an unresolved ${OPENCLAW_HOOKS_TOKEN} stays a literal string.
             - name: OPENCLAW_HOOKS_TOKEN
@@ -288,6 +362,51 @@ spec:
                 secretKeyRef:
                   name: olya-env
                   key: relay_app_token
+            # mcp.servers.google-workspace and mcp.servers.tinkerbell in openclaw.json send this
+            # as their bearer token. Good for nothing but the MCP gateway in
+            # browser-chaperone-prod (browser-chaperone#39, #44).
+            - name: MCP_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-mcp-gateway
+                  key: mcp_gateway_token
+            # The chaperone-wake plugin checks the approval app's bearer token against this on
+            # /chaperone/decision. Good for that route only; it has no operator scopes.
+            - name: CHAPERONE_WAKE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: olya-chaperone-wake
+                  key: chaperone_wake_token
+            # psql's defaults, so a bare `psql` reaches GPU Poet's production Postgres as the
+            # read-only olya_ro role (activescott/activeassistant#705).
+            - name: PGHOST
+              value: db.gpupoet-prod.svc.cluster.local
+            - name: PGDATABASE
+              value: gpu_agent
+            - name: PGUSER
+              value: olya_ro
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-db
+                  key: gpupoet_ro_password
+            # GPU Poet's excluder credentials, for her shell commands to use directly
+            # (activescott/activeassistant#743, activescott/gpu-poet#83). The OpenClaw secret
+            # store can't deliver these to her claude-cli Bash, so they ride in as pod env vars
+            # like PGPASSWORD above. optional: true because Scott adds the values after this
+            # merges; the pod must still start without them.
+            - name: GPUPOET_EXCLUDER_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-excluder
+                  key: gpupoet_excluder_username
+                  optional: true
+            - name: GPUPOET_EXCLUDER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-excluder
+                  key: gpupoet_excluder_password
+                  optional: true
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
@@ -334,19 +453,22 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
-          # 12Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
+          # 20Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
           # peaking at 7.93Gi (8,511,156,224 bytes) against the prior 8Gi limit, OOMKilling the
           # container mid-turn with three heavy agent sessions overlapping (install/build/test
           # work, not gh-only or review sessions). Backing out the ~1.1Gi idle baseline puts each
-          # heavy session at roughly 2-2.5Gi. 12Gi covers three heavy sessions plus the idle
-          # baseline with about 3.5Gi of margin, versus zero margin at 8Gi.
+          # heavy session at roughly 2-2.5Gi. 12Gi covered three heavy sessions plus the idle
+          # baseline with about 3.5Gi of margin, versus zero margin at 8Gi. The peak has since
+          # reached 10.23GiB (max_over_time of container_memory_working_set_bytes over the 14
+          # days to 2026-09-25), so 12Gi was down to under 2Gi of margin. Raised to 20Gi with
+          # the operator's approval (activescott/activeassistant#440).
           resources:
             requests:
               cpu: "500m"
               memory: 2Gi
             limits:
               cpu: "4"
-              memory: 12Gi
+              memory: 20Gi
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
@@ -438,8 +560,6 @@ spec:
             - name: ssh-key
               mountPath: /etc/olya-ssh
               readOnly: true
-            - name: google-workspace-data
-              mountPath: /etc/olya-google-workspace
             # For the postStart hook only. She has no reason to run these, but the ConfigMap is
             # read-only here and holds nothing sensitive.
             - name: scripts
@@ -515,18 +635,9 @@ spec:
           secret:
             secretName: olya-ssh
             defaultMode: 0400
-        # Google Workspace MCP credentials (read-only source). The initContainer
-        # copies this to the writable google-workspace-data emptyDir so the MCP
-        # server can persist refreshed OAuth tokens.
-        - name: google-workspace-creds
-          secret:
-            secretName: olya-google-workspace
-            items:
-              - key: google_workspace_credentials_json
-                path: credentials.json
-            defaultMode: 0600
-        - name: google-workspace-data
-          emptyDir: {}
         # readOnlyRootFilesystem means node, npm, and git all need somewhere to write.
         - name: tmp
+          emptyDir: {}
+        # The doctor initContainer's throwaway copy of openclaw.json.
+        - name: doctor-config
           emptyDir: {}

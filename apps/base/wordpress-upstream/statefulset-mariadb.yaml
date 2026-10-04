@@ -23,6 +23,10 @@ spec:
         fsGroup: 999
         runAsUser: 999
         runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      # MariaDB never calls the Kubernetes API.
+      automountServiceAccountToken: false
       containers:
         - name: mariadb
           # Tags: https://hub.docker.com/_/mariadb/tags
@@ -33,9 +37,30 @@ spec:
                 secretKeyRef:
                   name: wordpress-creds
                   key: mariadb-root-password
+            # Read only on first init, when the entrypoint creates this
+            # database and user before running restore.sql. That lets
+            # restore.sql be a dump of the WordPress database alone, with
+            # the user's password taken from the same secret WordPress uses.
+            - name: MARIADB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-db-name
+            - name: MARIADB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-db-user
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wordpress-creds
+                  key: wordpress-db-password
           ports:
             - name: mysql
               containerPort: 3306
+          securityContext:
+            allowPrivilegeEscalation: false
           volumeMounts:
             - mountPath: /var/lib/mysql
               name: mariadb-data

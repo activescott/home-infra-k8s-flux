@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wordpress-php-request-guard
+data:
+  request-guard.ini: |
+    auto_prepend_file = /usr/local/etc/php/request-guard.php
+  # Runs before every PHP request. Two checks.
+  #
+  # The tenant's Traefik rules keep the REST API off the internet partly by
+  # matching the `rest_route` query parameter, and Traefik only sees that
+  # parameter under its literal name in the URL. WordPress also accepts it
+  # two ways Traefik cannot see:
+  #   - in a POST body: WP::parse_request reads public query vars from $_POST
+  #     before $_GET;
+  #   - under names PHP rewrites to rest_route: `rest.route`, `rest route` and
+  #     `rest[route` all arrive as $_GET['rest_route'].
+  # Both are refused here. The block editor and REST clients send it in the
+  # URL under its own name, which Traefik handles.
+  #
+  # wp-login.php, xmlrpc.php and everything under wp-admin/ are refused unless
+  # the client is on the LAN. Traefik already does this, but on its own reading
+  # of the URL, which can differ from Apache's. SCRIPT_FILENAME is the file
+  # Apache actually chose to run, after decoding and removing dot segments.
+  # REMOTE_ADDR is the client Traefik saw: Traefik replaces any client-sent
+  # X-Forwarded-For with the TCP peer, and the image's mod_remoteip
+  # (conf-enabled/remoteip.conf) takes it from there because it trusts the
+  # private ranges Traefik's pods live in.
+  #
+  # The ranges are olya-lan-only's, as in the tenant's ingress. Keep them in
+  # step. 127.0.0.1 is the kubelet's probes, which run curl inside the pod (see
+  # the Deployment); no request through Traefik can arrive as loopback.
+  #
+  # The code runs in a closure so it leaves no variables in WordPress's global
+  # scope.
+  request-guard.php: |
+    <?php
+    (static function () {
+        if (
+            isset($_POST['rest_route'])
+            || (isset($_GET['rest_route'])
+                && !preg_match('/(?:^|&)rest_route=/', $_SERVER['QUERY_STRING'] ?? ''))
+        ) {
+            http_response_code(403);
+            exit;
+        }
+
+        if (!preg_match('#^/var/www/html/(?:wp-login\.php$|xmlrpc\.php$|wp-admin/)#', $_SERVER['SCRIPT_FILENAME'] ?? '')) {
+            return;
+        }
+        $client = ip2long($_SERVER['REMOTE_ADDR'] ?? '');
+        foreach (['127.0.0.1/32', '10.1.111.5/32', '10.1.111.32/27', '10.1.111.64/26', '10.1.111.128/25'] as $range) {
+            [$net, $bits] = explode('/', $range);
+            $mask = -1 << (32 - (int) $bits);
+            if ($client !== false && ($client & $mask) === (ip2long($net) & $mask)) {
+                return;
+            }
+        }
+        http_response_code(403);
+        exit;
+    })();

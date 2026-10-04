@@ -66,7 +66,8 @@ To give an app a new public URL like `myapp.activescott.com`:
    (10.1.111.1).
 
    **Exception — required, not optional, for any host behind an `ipAllowList`
-   middleware** (currently `olya.activescott.com`). Hairpinned requests can reach
+   middleware** (currently `olya.activescott.com`, and `mmm.willeke.com` once its
+   ingress is enabled). Hairpinned requests can reach
    Traefik with the router's address as the source instead of the client's, and
    those allowlists deliberately exclude `10.1.111.1` so that a source-IP
    regression fails closed rather than admitting everyone. Skip the override and

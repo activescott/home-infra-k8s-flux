@@ -1,8 +1,8 @@
 # Who may talk to what in browser-chaperone (activescott/activeassistant#191, #196).
 #
 # Written against the labels in browser-chaperone's k8s/base (`app: browser`, `app: app`,
-# `app: db`), which apps/base/browser-chaperone copies. `app: slack-relay` has no base; the
-# Deployment is in this directory.
+# `app: db`), which apps/base/browser-chaperone copies. `app: slack-relay` and `app: mcp-gateway`
+# have no base; their Deployments are in this directory.
 #
 # The assistant's pod (namespace olya) is the one to keep out. Its own egress policy already
 # denies all of 172.16.0.0/12, so today it cannot reach anything in this namespace at all, and
@@ -11,8 +11,8 @@
 # so the allowlist store stays closed if that policy is ever loosened to let her drive the
 # browser.
 #
-# Two ports are now open to her, and they are the two services that gate what she does with
-# them: browser:3500 (#229) and slack-relay:3600 (#315). The db and the approval app are still
+# Three ports are now open to her, and they are the services that gate what she does with
+# them: browser:3500 (#229), slack-relay:3600 (#315) and mcp-gateway:3700 (browser-chaperone#39). The db and the approval app are still
 # closed to her, which is the point: both hold the grants that decide those two gates.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. Kubelet
@@ -121,7 +121,8 @@ spec:
           protocol: TCP
 ---
 # The assistant's proxy (olya-egress-squid.conf): reachable from olya-0 only, and out to the
-# internet but no private network. Same egress as the browser's proxy above.
+# internet but no private network, and to the approval app for its check. Same egress as the
+# browser's proxy above otherwise.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -157,6 +158,24 @@ spec:
               - 192.168.0.0/16
               - 169.254.0.0/16 # link-local, including cloud metadata endpoints
               - 127.0.0.0/8
+    # debeth, for the SSH validator-upgrade runbook Olya runs there
+    # (activescott/activeassistant#637). Matches the standing exception in
+    # olya-egress-squid.conf; this policy is what lets Squid's own connection out.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.25/32
+      ports:
+        - port: 22
+          protocol: TCP
+    # GET /internal/allowlist/check and POST /internal/allowlist/requests, from the helper,
+    # for every host that is not a standing one (browser-chaperone#18).
+    - to:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 3400
+          protocol: TCP
     # DNS, for the destinations and for the reverse lookup that puts the pod name in the log.
     - to:
         - namespaceSelector:
@@ -238,8 +257,68 @@ spec:
         - port: 53
           protocol: TCP
 ---
-# The approval app holds every write route to the allowlist. In-cluster, the browser service
-# and the Slack relay call it; people reach the UI through Traefik. Ingress only: what the app
+# The MCP gateway: in from olya-0 on its port and from nothing else, out to Google and to the
+# approval app (browser-chaperone#39). Same reasoning as the relay above: this port is the whole
+# of her Google access, and the token she holds is good for nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-gateway
+  namespace: browser-chaperone-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: mcp-gateway
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
+      ports:
+        - port: 3700
+          protocol: TCP
+
+  egress:
+    # The Google APIs and OAuth token endpoint, and tinkerbellbot.com (browser-chaperone#44),
+    # and no private network. Google publishes no fixed address range to narrow this to, and
+    # tinkerbellbot.com is behind Cloudflare.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # the LAN, and the node itself
+              - 172.16.0.0/12 # cluster pods and services
+              - 192.168.0.0/16
+              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
+              - 127.0.0.0/8
+    # /internal/allowlist/check and /internal/allowlist/requests, on every gated call.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 3400
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# The approval app holds every write route to the allowlist. In-cluster, the browser service,
+# the Slack relay, the MCP gateway and the assistant's proxy call it; people reach the UI through
+# Traefik. Ingress only: what the app
 # itself needs to reach is decided when it is deployed.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -260,6 +339,12 @@ spec:
         - podSelector:
             matchLabels:
               app: slack-relay
+        - podSelector:
+            matchLabels:
+              app: mcp-gateway
+        - podSelector:
+            matchLabels:
+              app: olya-egress-proxy
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system

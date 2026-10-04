@@ -8,6 +8,7 @@ resources:
   - olya-statefulset.yaml
   - olya-service.yaml
   - olya-ingress.yaml
+  - olya-wake-ingress.yaml
   - olya-networkpolicy.yaml
   - olya-memory-sync-cronjob.yaml
   # Image is private on GHCR, same as the other first-party images in this repo.
@@ -48,6 +49,9 @@ configMapGenerator:
       - no_proxy=localhost,.localhost,127.0.0.1,::1,.svc,.cluster.local,172.16.0.0/12
       - NODE_USE_ENV_PROXY=1
 secretGenerator:
+  # tinkerbell_api_token is still in the file and read by nothing: the statefulset stopped
+  # naming it when the MCP gateway took tinkerbell over (browser-chaperone#44), and the token
+  # is revoked in tinkerbell. Removing the key needs the private key.
   # Keys: tinkerbell_api_token, openclaw_gateway_token, anthropic_api_key, openrouter_api_key,
   # and relay_bot_token and relay_app_token, which are the Slack relay's credentials and not Slack tokens
   # (activescott/activeassistant#315). Both must match the relay's Secret, in
@@ -66,11 +70,6 @@ secretGenerator:
   - name: olya-ssh
     files:
       - id_ed25519=olya-ssh.secret.encrypted
-  # Google Workspace MCP credentials. Client ID, secret, and the credential JSON
-  # from the OAuth consent flow. See env.secret.google-workspace.example.
-  - name: olya-google-workspace
-    envs:
-      - .env.secret.google-workspace.encrypted
   # Key: openclaw_hooks_token, the bearer token Alertmanager presents to the gateway's /hooks
   # endpoint. Same value as
   # monitoring/prometheus/.env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted;
@@ -79,7 +78,36 @@ secretGenerator:
   - name: olya-hooks
     envs:
       - .env.secret.olya-hooks.public-key-encrypted.encrypted
+  # Key: mcp_gateway_token, what she presents to the MCP gateway (browser-chaperone#39). Same
+  # value as gateway_client_token in
+  # ../browser-chaperone/.env.secret.mcp-gateway-token.public-key-encrypted.encrypted; rotate
+  # both together.
+  - name: olya-mcp-gateway
+    envs:
+      - .env.secret.olya-mcp-gateway.public-key-encrypted.encrypted
+  # Key: chaperone_wake_token, what the approval app presents to the chaperone-wake plugin's
+  # /chaperone/decision route (activescott/activeassistant#543). Same value as
+  # chaperone_wake_token in
+  # ../browser-chaperone/.env.secret.agent-wake-token.public-key-encrypted.encrypted; rotate
+  # both together.
+  - name: olya-chaperone-wake
+    envs:
+      - .env.secret.olya-chaperone-wake.public-key-encrypted.encrypted
+  # Key: gpupoet_ro_password, the password of olya_ro, the read-only role on GPU Poet's
+  # production Postgres (activescott/activeassistant#705). The role itself was created by hand
+  # in db-0 with the same value; rotate both together.
+  - name: olya-gpupoet-db
+    envs:
+      - .env.secret.olya-gpupoet-db.public-key-encrypted.encrypted
+  # Keys: gpupoet_excluder_username, gpupoet_excluder_password, same values as
+  # EXCLUDER_USERNAME/EXCLUDER_PASSWORD in ../gpupoet/.env.secret.app.encrypted
+  # (activescott/activeassistant#743). The OpenClaw secret store can't deliver to her
+  # claude-cli Bash, so this rides in as a pod env var instead. Scott adds the values with
+  # ./scripts/onepassword-secrets.mts new apps/production/olya/.env.secret.olya-gpupoet-excluder.
+  - name: olya-gpupoet-excluder
+    envs:
+      - .env.secret.olya-gpupoet-excluder.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790309606 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1791117640 # {"$imagepolicy": "flux-system:policy-olya:tag"}

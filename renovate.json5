@@ -105,6 +105,21 @@
       ],
     },
     {
+      // WordPress core cannot update itself any more (read-only core and
+      // WP_AUTO_UPDATE_CORE false, see apps/base/wordpress-upstream), so this
+      // PR is the only way a core security fix reaches the site. Raised above
+      // other PRs; the 7-day minimumReleaseAge still applies, and a fix
+      // needed sooner is a manual bump.
+      description: "WordPress core bumps are security-relevant",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["wordpress"],
+      matchUpdateTypes: ["patch", "minor", "digest"],
+      prPriority: 10,
+      prBodyNotes: [
+        "WordPress core ships only through this image. Merge the same day; check WordPress's release post for a security label.",
+      ],
+    },
+    {
       // Renovate groups all pin updates into one branch by default; one
       // failing dep then blocks every pin (seen twice: Mend jobs be5c8c82
       // and the 2026-09-03 17:01 run). Ungroup so each pin is its own PR
@@ -134,6 +149,8 @@
         "ghcr.io/activescott/browser-chaperone/app",
         "ghcr.io/activescott/browser-chaperone/browser",
         "ghcr.io/activescott/browser-chaperone/slack-relay",
+        "ghcr.io/activescott/browser-chaperone/mcp-gateway",
+        "ghcr.io/activescott/browser-chaperone/network-proxy",
         "ghcr.io/activescott/fernfiles/app",
         "ghcr.io/activescott/fernfiles/worker",
         "ghcr.io/activescott/fernfiles/inference-service",
