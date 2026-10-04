@@ -21,7 +21,6 @@ spec:
     name: email-routing
   forProvider:
     zoneId: d4d737894905e3ced0bc6861642492e5
-    name: dreamwright.app
 
 ---
 # Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
