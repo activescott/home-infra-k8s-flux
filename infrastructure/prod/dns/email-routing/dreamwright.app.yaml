@@ -66,18 +66,14 @@ spec:
     # Overrides the Secret's default to Olya's own address.
     - localPart: olya
       destination: olya@pingpoet.com
-    # Both of them: no `destination` override, so the base action keeps pulling
-    # scott@willeke.com from the Secret, and `extraDestinations` adds a second forward
-    # action for Olya rather than writing his address into this manifest to get two. See
-    # xrd.yaml and the `actions` comment in composition.yaml.
+    # Both of them: Cloudflare allows only one forward destination per rule, so this
+    # forwards to the Google Group scottandolya@pingpoet.com rather than to scott@willeke.com
+    # plus a second action for Olya.
     - localPart: it
-      extraDestinations:
-        - olya@pingpoet.com
-    # AWS root account address. Same shape as `it` above: no override, extraDestinations
-    # adds Olya as a second forward.
+      destination: scottandolya@pingpoet.com
+    # AWS root account address. Same shape as `it` above.
     - localPart: aws-root
-      extraDestinations:
-        - olya@pingpoet.com
+      destination: scottandolya@pingpoet.com
     # Destination for the rua= address in _dmarc.dreamwright.app -- see
     # zones/dreamwright.app.yaml. Without this rule, aggregate reports bounce and the
     # p=none monitoring period observes nothing.
