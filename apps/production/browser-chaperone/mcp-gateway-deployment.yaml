@@ -80,6 +80,9 @@ spec:
               value: http://app:3400
             - name: WORKSPACE_CREDENTIALS_PATH
               value: /data/credentials.json
+            # The origin Olya reaches /mcp at. Unset, gmail_saveAttachment is not served.
+            - name: DOWNLOAD_BASE_URL
+              value: http://mcp-gateway.browser-chaperone-prod.svc:3700
             # Named individually rather than envFrom, so the credential JSON reaches this
             # container as the file above and not also as an environment variable.
             - name: GATEWAY_CLIENT_TOKEN
@@ -109,7 +112,8 @@ spec:
               cpu: 50m
             limits:
               # Two Node processes, and an attachment is buffered in memory up to
-              # ATTACHMENT_MAX_BYTES, 10Mi by default.
+              # ATTACHMENT_MAX_BYTES, 10Mi by default. Saved attachments are held in memory
+              # too, up to SAVED_ATTACHMENTS_MAX_BYTES, 100Mi by default.
               memory: 768Mi
               cpu: "2"
           securityContext:
