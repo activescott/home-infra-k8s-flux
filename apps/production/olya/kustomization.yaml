@@ -107,7 +107,15 @@ secretGenerator:
   - name: olya-gpupoet-db
     envs:
       - .env.secret.olya-gpupoet-db.public-key-encrypted.encrypted
+  # Keys: gpupoet_excluder_username, gpupoet_excluder_password, same values as
+  # EXCLUDER_USERNAME/EXCLUDER_PASSWORD in ../gpupoet/.env.secret.app.encrypted
+  # (activescott/activeassistant#743). The OpenClaw secret store can't deliver to her
+  # claude-cli Bash, so this rides in as a pod env var instead. Scott adds the values with
+  # ./scripts/onepassword-secrets.mts new apps/production/olya/.env.secret.olya-gpupoet-excluder.
+  - name: olya-gpupoet-excluder
+    envs:
+      - .env.secret.olya-gpupoet-excluder.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1791005433 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1791085343 # {"$imagepolicy": "flux-system:policy-olya:tag"}

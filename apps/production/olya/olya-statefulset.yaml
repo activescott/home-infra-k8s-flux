@@ -410,6 +410,23 @@ spec:
                 secretKeyRef:
                   name: olya-gpupoet-db
                   key: gpupoet_ro_password
+            # GPU Poet's excluder credentials, for her shell commands to use directly
+            # (activescott/activeassistant#743, activescott/gpu-poet#83). The OpenClaw secret
+            # store can't deliver these to her claude-cli Bash, so they ride in as pod env vars
+            # like PGPASSWORD above. optional: true because Scott adds the values after this
+            # merges; the pod must still start without them.
+            - name: GPUPOET_EXCLUDER_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-excluder
+                  key: gpupoet_excluder_username
+                  optional: true
+            - name: GPUPOET_EXCLUDER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: olya-gpupoet-excluder
+                  key: gpupoet_excluder_password
+                  optional: true
           # Proves the memory bind mounts above are actually in place, and kills the container if
           # they are not. This is the ONLY place that check can run: the mounts exist in this
           # container's mount namespace and nowhere else, so seed-workspace cannot see them, and
