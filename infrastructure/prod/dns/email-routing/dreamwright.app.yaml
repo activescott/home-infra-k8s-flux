@@ -1,0 +1,92 @@
+# Email Routing for dreamwright.app. Every other zone in this directory had the feature
+# already enabled via the dashboard before Crossplane adopted it; this one does not, so it
+# is the first to turn Email Routing on declaratively instead of adopting existing state.
+#
+# EmailRoutingSettings is the resource that does that: its own schema has no settable
+# `enabled` field (it is read-only, set by this resource's create/delete), so creating it
+# is what calls Cloudflare's enable endpoint, and Cloudflare provisions the apex MX records
+# and the cf2024-1 DKIM TXT record as a side effect -- see zones/dreamwright.app.yaml for
+# why those are not declared here yet. The zone's own apex SPF and DMARC records are
+# updated ahead of this in the same change so Cloudflare's provisioning finds the SPF
+# include it needs already in place instead of writing a second, conflicting TXT record.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingSettings
+metadata:
+  name: dreamwright-app-settings
+  namespace: cloudflare
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: email-routing
+  forProvider:
+    zoneId: d4d737894905e3ced0bc6861642492e5
+    name: dreamwright.app
+
+---
+# Disabled, dropping catch-all. See ramblefeed.com.yaml for why this is EmailRoutingCatchAll
+# rather than a second EmailRoutingRule. No external-name annotation: unlike every other
+# zone here, there is no pre-existing Cloudflare rule to adopt, so Crossplane creates this
+# one -- same as the RFC 2142 rules below needing no `adopt` block.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingCatchAll
+metadata:
+  name: dreamwright-app-catch-all
+  namespace: cloudflare
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: email-routing
+  forProvider:
+    zoneId: d4d737894905e3ced0bc6861642492e5
+    enabled: false
+    matchers:
+      - type: all
+    actions:
+      - type: drop
+
+---
+# RFC 2142 §5.2 role mailboxes for dreamwright.app, plus this zone's own aliases. One
+# RoleMailboxes composite fans out into one EmailRoutingRule per entry -- abuse, noc,
+# security, postmaster, hostmaster, webmaster, and everything under `aliases` -- each
+# forwarding to the destination held in the SOPS-encrypted Secret
+# cloudflare/email-routing-destination unless an alias overrides it. See
+# infrastructure/prod/controllers/crossplane-config/rolemailboxes/xrd.yaml.
+apiVersion: email.activescott.com/v1alpha1
+kind: RoleMailboxes
+metadata:
+  name: dreamwright-app-rfc2142
+  namespace: cloudflare
+spec:
+  zoneId: d4d737894905e3ced0bc6861642492e5
+  zoneName: dreamwright.app
+  aliases:
+    # Keeps the Secret's default destination (scott@willeke.com), so no override here.
+    - localPart: scott
+    # Overrides the Secret's default to Olya's own address.
+    - localPart: olya
+      destination: olya@pingpoet.com
+    # Both of them: no `destination` override, so the base action keeps pulling
+    # scott@willeke.com from the Secret, and `extraDestinations` adds a second forward
+    # action for Olya rather than writing his address into this manifest to get two. See
+    # xrd.yaml and the `actions` comment in composition.yaml.
+    - localPart: it
+      extraDestinations:
+        - olya@pingpoet.com
+    # AWS root account address. Same shape as `it` above: no override, extraDestinations
+    # adds Olya as a second forward.
+    - localPart: aws-root
+      extraDestinations:
+        - olya@pingpoet.com
+    # Destination for the rua= address in _dmarc.dreamwright.app -- see
+    # zones/dreamwright.app.yaml. Without this rule, aggregate reports bounce and the
+    # p=none monitoring period observes nothing.
+    #
+    # Aggregate reports go to Olya, who is watching them for the move to p=quarantine, same
+    # as the other routed zones. Her address is in git rather than the Secret because
+    # _dmarc publishes it to the world either way.
+    - localPart: dmarc
+      ruleName: dmarc-reports
+      priority: 10
+      destination: olya@pingpoet.com

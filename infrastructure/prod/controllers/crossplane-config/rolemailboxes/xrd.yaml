@@ -116,6 +116,22 @@ spec:
                           the link Cloudflare mails. See
                           ../../../dns/email-routing/destinations.yaml.
                         pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+                      extraDestinations:
+                        type: array
+                        description: >
+                          Also forward to these addresses, in addition to the
+                          base one -- the Secret's default, or `destination`
+                          if set. Cloudflare's forward action takes only a
+                          single address -- "Currently limited to a single
+                          value" in the provider's own schema -- so each entry
+                          here becomes its own forward action on the same
+                          rule, which is how a mailbox reaches more than one
+                          inbox without writing the Secret's address into this
+                          manifest to do it. Same verification requirement as
+                          `destination`.
+                        items:
+                          type: string
+                          pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
                     required: [localPart]
                 adopt:
                   type: object
