@@ -74,6 +74,11 @@ spec:
     - localPart: it
       extraDestinations:
         - olya@pingpoet.com
+    # AWS root account address. Same shape as `it` above: no override, extraDestinations
+    # adds Olya as a second forward.
+    - localPart: aws-root
+      extraDestinations:
+        - olya@pingpoet.com
     # Destination for the rua= address in _dmarc.dreamwright.app -- see
     # zones/dreamwright.app.yaml. Without this rule, aggregate reports bounce and the
     # p=none monitoring period observes nothing.
