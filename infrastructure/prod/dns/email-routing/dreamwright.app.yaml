@@ -74,6 +74,15 @@ spec:
     # AWS root account address. Same shape as `it` above.
     - localPart: aws-root
       destination: scottandolya@pingpoet.com
+    # AWS member-account root email for the prod account. Same shape as `aws-root` above.
+    - localPart: aws-prod
+      destination: scottandolya@pingpoet.com
+    # AWS member-account root email for the agents account. Same shape as `aws-root` above.
+    - localPart: aws-agents
+      destination: scottandolya@pingpoet.com
+    # Budget and anomaly alerts. Same shape as `aws-root` above.
+    - localPart: alerts
+      destination: scottandolya@pingpoet.com
     # Destination for the rua= address in _dmarc.dreamwright.app -- see
     # zones/dreamwright.app.yaml. Without this rule, aggregate reports bounce and the
     # p=none monitoring period observes nothing.
