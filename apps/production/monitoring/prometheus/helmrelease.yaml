@@ -81,6 +81,15 @@ spec:
       # Never calls the Kubernetes API; its configmap-reload sidecar watches the mounted file.
       automountServiceAccountToken: false
 
+      # Picked up by the chart's default kubernetes-pods scrape job (see "Adding a scrape
+      # target" in the README) rather than a static extraScrapeConfigs entry, since
+      # Alertmanager is already a discoverable pod. Without this there were zero
+      # alertmanager_* series in Prometheus — no way to tell a delivered-but-ignored
+      # notification from a silently failed one. Port 9093 is Alertmanager's listener.
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+
       persistence:
         enabled: false
 
@@ -132,6 +141,9 @@ spec:
           # OlyaPodNotReady fires because Olya is down, so it's the one alert that must
           # skip her hook rather than go through it -- she can't triage her own outage.
           # Matching it here, ahead of the olya-hook route, sends it straight to Scott.
+          # OlyaPodNotReadyExtended, the longer-for: escalation of the same condition, is
+          # matched the same way for the same reason — a webhook attempt to a pod that's
+          # been down for an hour would just be a wasted call.
           #
           # Every other alert also goes to Olya, who files and triages it. `continue` lets the
           # alert carry on to the route below it. The second route is not redundant: once any
@@ -144,7 +156,7 @@ spec:
           routes:
             - receiver: on_call_operator_default
               matchers:
-                - alertname="OlyaPodNotReady"
+                - alertname=~"OlyaPodNotReady|OlyaPodNotReadyExtended"
             - receiver: olya-hook
               group_by: ["..."]
               repeat_interval: 24h
@@ -1897,6 +1909,29 @@ spec:
                   query: 'kubectl -n olya describe pod olya-0'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
                   repo: activescott/home-infra-k8s-flux
+              # Same condition as OlyaPodNotReady, escalated. A prior outage had
+              # OlyaPodNotReady firing for 6h11m at one severity with no way to tell "she
+              # just restarted" from "she has been gone all afternoon" — this distinguishes
+              # the two by firing a second time, severity unchanged, once the first alert
+              # has been firing for an hour. Routed the same way as OlyaPodNotReady (see the
+              # route matcher above) rather than through olya-hook.
+              - alert: OlyaPodNotReadyExtended
+                expr: >-
+                  kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
+                  or kube_pod_init_container_status_waiting_reason{namespace="olya",pod="olya-0",reason="CrashLoopBackOff"} > 0
+                  or kube_pod_status_phase{namespace="olya",pod="olya-0",phase="Pending"} > 0
+                for: 60m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: olya-0 has not been Ready for over an hour
+                  description: >-
+                    OlyaPodNotReady has now been firing for over an hour. Check whether the
+                    StatefulSet is wedged on a stale revision rather than assuming a revert
+                    hasn't deployed — see "Wedged single-replica StatefulSet" in the runbook.
+                  query: 'kubectl -n olya describe pod olya-0'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md#wedged-single-replica-statefulset
+                  repo: activescott/home-infra-k8s-flux
               # A session wedged on a tool call that never returns, while the pod stays
               # Ready (activescott/activeassistant#99). Fed by
               # olya_stalled_session_progress_age_seconds; see the stage.match comment in
@@ -1924,6 +1959,59 @@ spec:
                     which drops whatever that session was doing.
                   query: '{namespace="olya", app="olya"} |= "stalled session: sessionId={{ $labels.session_id }}"'
                   repo: activescott/activeassistant
+
+          # Alertmanager's own delivery health. Scraped via the podAnnotations block under
+          # alertmanager: above, not extraScrapeConfigs, since it's already a discoverable
+          # pod — see "Adding a scrape target" in the README.
+          #
+          # No route carve-out needed: an alertname that doesn't match the OlyaPodNotReady
+          # matcher above falls through to both olya-hook (webhook) and
+          # on_call_operator_default (Telegram), so a failure specific to one integration
+          # still reaches someone over the other.
+          - name: alertmanager-self-monitoring
+            rules:
+              - alert: AlertmanagerNotificationFailed
+                expr: 'sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Alertmanager failed to deliver a notification via {{ $labels.integration }}.'
+                  description: >-
+                    alertmanager_notifications_failed_total rose for integration
+                    {{ $labels.integration }} in the last 15 minutes. Every other alert in
+                    this file depends on this delivery path, so some other firing alert may
+                    not have reached anyone.
+                  repo: activescott/home-infra-k8s-flux
+          # Catches a pod wedged at mount time in any namespace — no container ever starts,
+          # so there are no restarts and no logs, which is exactly the class OlyaPodNotReady's
+          # own Pending clause covers only for olya-0. namespace!="olya" so a wedged olya-0
+          # pages once via OlyaPodNotReady rather than twice.
+          #
+          # namespace!="arc-runners" excludes ARC's ephemeral runner pods, which sit Pending
+          # by design while queued for a scale-set slot: 14 days of history show the
+          # namespace rarely without at least one Pending runner, but each individual pod's
+          # own Pending span was brief (well under for: below) every time checked.
+          #
+          # for: 60m, not 10m like OlyaPodNotReady: the same history showed gpupoet-prod's
+          # CronJob pods (amazon-revalidation, ebay-revalidation) routinely sitting Pending
+          # for 25-40 minutes each run, apparently waiting on the dind sidecar or node
+          # scheduling slack — a shorter window would have paged on that routinely.
+          - name: cluster-pod-health
+            rules:
+              - alert: PodStuckPending
+                expr: 'kube_pod_status_phase{phase="Pending", namespace!~"arc-runners|olya"} > 0'
+                for: 60m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: '{{ $labels.namespace }}/{{ $labels.pod }} has been Pending for over an hour.'
+                  description: >-
+                    No container has started and kubelet keeps retrying — check for a
+                    FailedMount event first (a ConfigMap or Secret a volume references may
+                    not exist), then node capacity and the PVC.
+                  query: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}'
+                  repo: activescott/home-infra-k8s-flux
 
           # WordPress (apps/base/wordpress-upstream). The counters are minted from the wordpress
           # container's log in alloy/helmrelease.yaml, which has the matched lines. All three
