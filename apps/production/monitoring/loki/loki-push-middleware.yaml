@@ -1,0 +1,52 @@
+# Gates the Loki push path (loki-push-ingress.yaml) to the Dreamwright agents host
+# (ping-poet/dreamwright#122). Same shape and reasoning as
+# ../prometheus/remote-write-middleware.yaml: loki.activescott.com resolves to the WAN address,
+# so a credential alone is not enough. The host's request keeps its public source address
+# through the edge firewall's port forward. Never add .1 or .20 here, for the reason given in
+# that file.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: loki-push-allowlist
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/ipallowlist/
+  ipAllowList:
+    sourceRange:
+      - 52.11.188.6/32 # Dreamwright agents host EIP, ping-poet/dreamwright#122
+---
+# Loki runs with auth_enabled: false, so this is the only credential on the path. One htpasswd
+# line per sender, written by scripts/add-ingest-user.mts.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: loki-push-auth
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/basicauth/
+  basicAuth:
+    secret: loki-push-auth
+    removeHeader: true
+---
+# Loki's own limits are per stream and per tenant, not per connection, so cap concurrent pushes
+# here. Excess requests get a 429, which Alloy and Promtail retry.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: loki-push-inflight
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/inflightreq/
+  inFlightReq:
+    amount: 4
+---
+# Alloy's loki.write batches 1 MiB by default, so 4 MiB leaves room; larger bodies get a 413.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: loki-push-body-limit
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/buffering/
+  buffering:
+    maxRequestBodyBytes: 4194304 # 4 MiB

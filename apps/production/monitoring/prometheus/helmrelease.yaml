@@ -1897,6 +1897,33 @@ spec:
                   query: 'kubectl -n olya describe pod olya-0'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
                   repo: activescott/home-infra-k8s-flux
+              # A session wedged on a tool call that never returns, while the pod stays
+              # Ready (activescott/activeassistant#99). Fed by
+              # olya_stalled_session_progress_age_seconds; see the stage.match comment in
+              # alloy/helmrelease.yaml for the log line and why it reads lastProgressAge.
+              #
+              # 900 is above every value seen in the week to 2026-10-04 (max 886s, from
+              # subagents waiting on CI), and `for: 1h` on top means the session has made
+              # no progress for 75 minutes before this fires. The series is per session
+              # and disappears 5m after the session stops logging, so a recovery or a pod
+              # restart resolves it. max by rather than sum(): it is a gauge of seconds,
+              # and adding two series of it together gives a number that means nothing.
+              - alert: OlyaSessionStalled
+                expr: 'max by (session_id, session_key) (loki_process_custom_olya_stalled_session_progress_age_seconds) > 900'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Olya session {{ $labels.session_key }} has made no progress for over an hour.'
+                  description: >-
+                    OpenClaw has logged "stalled session" for {{ $labels.session_id }}
+                    ({{ $labels.session_key }}) with lastProgressAge above 900s for an hour,
+                    and the line says recovery=none: OpenClaw will not unstick it. If the key
+                    is agent:olya:main or a Slack thread, Olya is not answering there. The fix
+                    is restarting the pod, kubectl --context nas -n olya delete pod olya-0,
+                    which drops whatever that session was doing.
+                  query: '{namespace="olya", app="olya"} |= "stalled session: sessionId={{ $labels.session_id }}"'
+                  repo: activescott/activeassistant
 
           # Runtime security for the agent sandboxes (activescott/activeassistant#348,
           # part of #345). Two independent feeds: Falco watching syscalls, and
@@ -2134,6 +2161,41 @@ spec:
                     look at it and at the requests before it.
                   query: '{app="wordpress", container="wordpress"} |~ "(?i)/wp-content/uploads/[^ ?]*([.]|%2e)ph"'
                   repo: activescott/home-infra-k8s-flux
+
+          # The Dreamwright agents host (ping-poet/dreamwright#122). Its Alloy, a quadlet
+          # dreamwright-host installs, remote-writes here and pushes to Loki through the public
+          # routes that admit only 52.11.188.6, labelled host=<its name>. The job names are the
+          # selector, not the host name, which changes when the instance is replaced.
+          - name: dreamwright-host
+            rules:
+              - alert: DreamwrightHostSilent
+                expr: 'absent_over_time(up{job="dreamwright-host/node"}[15m])'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: No metrics from the Dreamwright agents host for 15 minutes
+                  description: >-
+                    The nas has received nothing from the agents host's Alloy for 15 minutes.
+                    Either the host is down, its alloy.service is down, or the remote-write path
+                    (Traefik ingress, the dreamwright-agents basic auth, the 52.11.188.6
+                    allowlist) is refusing it. On the host: sudo journalctl -u alloy.service.
+                  query: '{job="dreamwright-host/journal", unit="alloy.service"}'
+                  repo: ping-poet/dreamwright
+              - alert: DreamwrightHostLogsDropped
+                expr: 'sum by (host, reason) (increase(loki_write_dropped_entries_total{job="dreamwright-host/alloy"}[15m])) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'The Dreamwright agents host {{ $labels.host }} dropped log lines ({{ $labels.reason }}).'
+                  description: >-
+                    Metrics still arrive, but Loki refused log lines from the agents host and
+                    Alloy gave up on them. A 401 or 403 in alloy.service's journal on the host
+                    means the loki-push credential or allowlist; rate_limited or stream_limited
+                    means Loki's limits.
+                  query: '{job="dreamwright-host/journal", unit="alloy.service"} |= "loki.write"'
+                  repo: ping-poet/dreamwright
 
           # Scott's eth-docker validator host. Its Alloy remote-writes to this
           # Prometheus with external label host="debeth" (activescott/activeassistant#648),
