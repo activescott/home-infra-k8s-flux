@@ -35,6 +35,7 @@ configMapGenerator:
       - scripts/check-memory-mounts.mts
       - scripts/reconcile-automations.mts
       - scripts/ssh-proxy-connect.mts
+      - scripts/heap-snapshot-on-memory-critical.mts
       # Imported by the three above. Not a program, but it ships in the same ConfigMap because
       # all three resolve it as ./volume-layout.mts from /scripts.
       - scripts/volume-layout.mts

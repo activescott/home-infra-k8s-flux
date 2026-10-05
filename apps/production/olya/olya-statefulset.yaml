@@ -24,7 +24,8 @@ spec:
     spec:
       # Covers the gateway's own shutdown budget (logged as shutdown=325000ms) plus margin. At
       # the 30s default, SIGKILL arrived before the drain could run at all
-      # (activescott/activeassistant#722).
+      # (activescott/activeassistant#722). The olya container's 10s preStop hook counts against
+      # this too, leaving 25s of margin.
       terminationGracePeriodSeconds: 360
       serviceAccountName: olya
       imagePullSecrets:
@@ -261,6 +262,16 @@ spec:
       containers:
         - name: olya
           image: olya-image
+          # The image's CMD (image/Dockerfile in activeassistant) with one flag added: a preload
+          # that writes a heap snapshot on critical memory pressure; see
+          # scripts/heap-snapshot-on-memory-critical.mts. It goes here rather than in
+          # NODE_OPTIONS so only the gateway loads it, not every node process she runs. tini
+          # stays the ENTRYPOINT. If the image's CMD changes, change this with it.
+          args:
+            - node
+            - --import=/scripts/heap-snapshot-on-memory-critical.mts
+            - openclaw.mjs
+            - gateway
           # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
           envFrom:
             - configMapRef:
@@ -410,12 +421,18 @@ spec:
                 secretKeyRef:
                   name: olya-gpupoet-db
                   key: gpupoet_ro_password
-            # Dumps a JS stack and heap summary to the volume on SIGUSR2, so the next event-loop
+            # Dumps a JS stack and heap summary to the volume on SIGURG, so the next event-loop
             # stall (activescott/activeassistant#722) leaves evidence instead of just a liveness
             # restart. /state/openclaw persists across restarts and is writable in this
-            # container. Trigger with `kubectl exec ... kill -USR2 <gateway pid>`; see README.md.
+            # container. The preStop hook below sends it on every stop; see README.md for a
+            # manual trigger.
+            #
+            # Not SIGUSR2, Node's default: the gateway handles that one as a restart request, and
+            # with commands.restart unset and OPENCLAW_SUPERVISOR_MODE=external that exits the
+            # container. Nothing in OpenClaw handles SIGURG, and a process without the report
+            # flag ignores it (activescott/activeassistant#774, ping-poet/dreamwright#223).
             - name: NODE_OPTIONS
-              value: "--report-on-signal --report-signal=SIGUSR2 --report-directory=/state/openclaw"
+              value: "--report-on-signal --report-signal=SIGURG --report-directory=/state/openclaw"
             # GPU Poet's excluder credentials, for her shell commands to use directly
             # (activescott/activeassistant#743, activescott/gpu-poet#83). The OpenClaw secret
             # store can't deliver these to her claude-cli Bash, so they ride in as pod env vars
@@ -446,6 +463,22 @@ spec:
             postStart:
               exec:
                 command: ["/scripts/check-memory-mounts.mts"]
+            # Asks the gateway for a diagnostic report before kubelet sends SIGTERM, including on
+            # a liveness kill, when nobody is there to send it (activescott/activeassistant#774).
+            # PID 1 is tini, which forwards the signal to the gateway. Node writes the report from
+            # the event loop, so a gateway still stalled after 10s writes it only once the loop
+            # frees up, if that happens before SIGKILL, and its JS stack is then the stack after
+            # the stall rather than during it. The heap summary, libuv handles and resource usage
+            # are still from the moment it is written. Keeps the 20 newest reports, since every
+            # stop now leaves one.
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >-
+                    kill -URG 1; sleep 10;
+                    ls -t /state/openclaw/report.*.json 2>/dev/null | tail -n +21 | xargs -r rm -f
           ports:
             - name: http
               containerPort: 18789
