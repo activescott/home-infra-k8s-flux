@@ -1,0 +1,83 @@
+# Default deny for the namespace, then Traefik to the web UI, peers to the torrent port, and
+# Transmission out to the internet (activescott/activeassistant#577).
+#
+# Peers and trackers listen on any port, so the internet rule has no port list. What it refuses is
+# every private range: the LAN, the node, the rest of the cluster, and link-local.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+---
+# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# which explains the failure mode.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: transmission
+spec:
+  podSelector:
+    matchLabels:
+      app: transmission
+      role: app
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 9091
+          protocol: TCP
+    # Inbound peers through the NodePort, which is forwarded at the firewall. The NodePort
+    # masquerades, so the source is not the peer's address; the rule leaves it open.
+    - ports:
+        - port: 51413
+          protocol: TCP
+        - port: 51413
+          protocol: UDP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8

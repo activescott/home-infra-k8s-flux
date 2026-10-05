@@ -200,8 +200,11 @@ spec:
         - port: 3600
           protocol: TCP
 
-    # The MCP gateway (browser-chaperone#39). Her google-workspace MCP server is this Service,
-    # and the gateway holds the Google credential. Its own policy in
+    # The MCP gateway (browser-chaperone#39). Her google-workspace and tinkerbell MCP servers
+    # are this Service, and the gateway holds the Google credential and the tinkerbell token
+    # (#44). tinkerbellbot.com itself is public, so the internet rule above still reaches it;
+    # what closes that path is that no tinkerbell token is in this pod, and her egress proxy
+    # denies the host. Its own policy in
     # apps/production/browser-chaperone admits her on this port and nothing else.
     - to:
         - namespaceSelector:

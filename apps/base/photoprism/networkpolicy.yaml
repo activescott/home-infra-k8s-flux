@@ -1,0 +1,115 @@
+# Default deny for the namespace, then Traefik to PhotoPrism, PhotoPrism to MariaDB, and
+# PhotoPrism to DNS and the internet (activescott/activeassistant#577). Each overlay puts a copy in
+# its own namespace.
+#
+# Internet for reverse geocoding and maps (places.photoprism.app) and the sponsor license check.
+# The LAN, the node and the rest of the cluster are refused, so a WebDAV sync or share account in
+# PhotoPrism's settings that points at a LAN host would stop working; none shows in the logs, but
+# the accounts live in the database, not here.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. The probes are
+# kubelet httpGet and exec, which need no rule; backup-mariadb.sh runs through `kubectl exec`.
+---
+# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# which explains the failure mode.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: photoprism
+spec:
+  podSelector:
+    matchLabels:
+      app: photoprism
+      role: photoprism
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 2342
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              lib: mariadb
+              role: mariadb
+      ports:
+        - port: 3306
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mariadb
+spec:
+  podSelector:
+    matchLabels:
+      lib: mariadb
+      role: mariadb
+  policyTypes:
+    - Ingress
+  # No egress rule: default-deny covers it, and MariaDB makes no outbound connections.
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: photoprism
+              role: photoprism
+      ports:
+        - port: 3306
+          protocol: TCP
