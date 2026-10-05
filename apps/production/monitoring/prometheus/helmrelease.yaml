@@ -1990,6 +1990,41 @@ spec:
                   query: '{app="wordpress", container="wordpress"} |~ "(?i)/wp-content/uploads/[^ ?]*([.]|%2e)ph"'
                   repo: activescott/home-infra-k8s-flux
 
+          # The Dreamwright agents host (ping-poet/dreamwright#122). Its Alloy, a quadlet
+          # dreamwright-host installs, remote-writes here and pushes to Loki through the public
+          # routes that admit only 52.11.188.6, labelled host=<its name>. The job names are the
+          # selector, not the host name, which changes when the instance is replaced.
+          - name: dreamwright-host
+            rules:
+              - alert: DreamwrightHostSilent
+                expr: 'absent_over_time(up{job="dreamwright-host/node"}[15m])'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: No metrics from the Dreamwright agents host for 15 minutes
+                  description: >-
+                    The nas has received nothing from the agents host's Alloy for 15 minutes.
+                    Either the host is down, its alloy.service is down, or the remote-write path
+                    (Traefik ingress, the dreamwright-agents basic auth, the 52.11.188.6
+                    allowlist) is refusing it. On the host: sudo journalctl -u alloy.service.
+                  query: '{job="dreamwright-host/journal", unit="alloy.service"}'
+                  repo: ping-poet/dreamwright
+              - alert: DreamwrightHostLogsDropped
+                expr: 'sum by (host, reason) (increase(loki_write_dropped_entries_total{job="dreamwright-host/alloy"}[15m])) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'The Dreamwright agents host {{ $labels.host }} dropped log lines ({{ $labels.reason }}).'
+                  description: >-
+                    Metrics still arrive, but Loki refused log lines from the agents host and
+                    Alloy gave up on them. A 401 or 403 in alloy.service's journal on the host
+                    means the loki-push credential or allowlist; rate_limited or stream_limited
+                    means Loki's limits.
+                  query: '{job="dreamwright-host/journal", unit="alloy.service"} |= "loki.write"'
+                  repo: ping-poet/dreamwright
+
           # Scott's eth-docker validator host. Its Alloy remote-writes to this
           # Prometheus with external label host="debeth" (activescott/activeassistant#648),
           # so nothing here scrapes it and a dead pipeline looks like silence:

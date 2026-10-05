@@ -33,7 +33,7 @@ main thing to understand before editing the StatefulSet or the scripts.
 | `/state/archive`   | read-write       | nightly audit and transcript exports          |
 
 **The read-only mounts are the control.** `volumeMounts[].readOnly` is per container and per
-mount entry, so `seed-workspace`, `install-plugins` and `instruction-sync` write those two paths
+mount entry, so `seed-workspace` and `instruction-sync` write those two paths
 through their own read-write `/state` mount while nothing in the `olya` container can. A write
 from her tools fails with `EROFS`, which is the correct outcome. `OPENCLAW_CONFIG_READONLY=1` is
 set as a second layer for a better error message, and is explicitly *not* what enforces this.
@@ -191,6 +191,20 @@ To confirm from Alertmanager's side, this Loki query shows no failures after tha
 ```logql
 {namespace="monitoring", pod="prometheus-alertmanager-0"} |= "olya-hook"
 ```
+
+## Capturing a diagnostic report during a stall
+
+`NODE_OPTIONS` on the `olya` container carries `--report-on-signal --report-signal=SIGUSR2
+--report-directory=/state/openclaw`, so a main-thread stall like
+activescott/activeassistant#722 can be captured without killing the pod:
+
+```bash
+kubectl --context nas -n olya exec olya-0 -c olya -- pgrep -f openclaw
+kubectl --context nas -n olya exec olya-0 -c olya -- kill -USR2 <gateway pid>
+```
+
+The report lands as `/state/openclaw/report.<timestamp>.<pid>.<seq>.json`, with the JS and
+native stack, heap summary, and event loop and libuv handle info at the moment of the signal.
 
 ## Things that will bite
 
