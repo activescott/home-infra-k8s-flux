@@ -1,8 +1,8 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Fails when a volume's configMap.name or secret.secretName (including projected
 // sources) resolves to no ConfigMap/Secret that the kustomize build actually emits.
-// `kustomize build` emits such a volume without complaint: a volume mounted a
-// ConfigMap the build didn't define is exactly what reached main in #335.
+// `kustomize build` emits such a volume without complaint, so a volume mounted on
+// a ConfigMap/Secret the build never defines would otherwise pass silently.
 //
 // Usage:
 //   kustomize build apps/production --enable-helm \
@@ -96,18 +96,20 @@ function volumeRefsOf(res: K8sResource): VolumeRef[] {
 }
 
 function findViolations(resources: K8sResource[]): VolumeRef[] {
-  const configMapNames = new Set<string>()
-  const secretNames = new Set<string>()
+  const configMapKeys = new Set<string>()
+  const secretKeys = new Set<string>()
   for (const res of resources) {
-    if (res.kind === "ConfigMap" && res.metadata?.name) configMapNames.add(res.metadata.name)
-    if (res.kind === "Secret" && res.metadata?.name) secretNames.add(res.metadata.name)
+    const namespace = res.metadata?.namespace ?? "default"
+    if (res.kind === "ConfigMap" && res.metadata?.name) configMapKeys.add(`${namespace}/${res.metadata.name}`)
+    if (res.kind === "Secret" && res.metadata?.name) secretKeys.add(`${namespace}/${res.metadata.name}`)
   }
 
   const violations: VolumeRef[] = []
   for (const res of resources) {
     for (const ref of volumeRefsOf(res)) {
-      if (ref.type === "configMap" && configMapNames.has(ref.name)) continue
-      if (ref.type === "secret" && (secretNames.has(ref.name) || OUT_OF_BAND_SECRETS.has(ref.name))) continue
+      const key = `${ref.namespace}/${ref.name}`
+      if (ref.type === "configMap" && configMapKeys.has(key)) continue
+      if (ref.type === "secret" && (secretKeys.has(key) || OUT_OF_BAND_SECRETS.has(ref.name))) continue
       violations.push(ref)
     }
   }
