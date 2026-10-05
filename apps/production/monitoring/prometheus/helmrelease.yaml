@@ -1035,6 +1035,24 @@ spec:
                   query: '{namespace="tinkerbell-prod", level=~"error|fatal"} | json'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppErrorVolumeElevated.md
                   repo: activescott/tinkerbell
+              # tinkerbell-prod's access log recording 401s on POST /mcp
+              # (activescott/home-infra-k8s-flux#338). Fed by
+              # loki_process_custom_tinkerbell_mcp_unauthorized_total; see the stage.match
+              # comment in alloy/helmrelease.yaml for the log line. More than 5 in 15m, held
+              # for 10m, to ride out a handful of stray probes without paging.
+              - alert: TinkerbellMcpUnauthorized
+                expr: 'sum(increase(loki_process_custom_tinkerbell_mcp_unauthorized_total[15m])) > 5'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'tinkerbell-prod is rejecting POST /mcp with 401.'
+                  description: >-
+                    More than 5 401 responses from tinkerbell's /mcp endpoint in 15 minutes,
+                    still elevated after 10 minutes. Check whether a caller is using a stale
+                    or missing credential.
+                  query: '{namespace="tinkerbell-prod", app="app"} |= "POST /mcp 401"'
+                  repo: activescott/tinkerbell
           - name: email-relay
             rules:
               # Outbound mail for fernfiles, ramblefeed and tinkerbell all leaves
@@ -1923,6 +1941,24 @@ spec:
                     is restarting the pod, kubectl --context nas -n olya delete pod olya-0,
                     which drops whatever that session was doing.
                   query: '{namespace="olya", app="olya"} |= "stalled session: sessionId={{ $labels.session_id }}"'
+                  repo: activescott/activeassistant
+              # olya-0 failed to start a bundled MCP server (activescott/home-infra-k8s-flux#338).
+              # Fed by loki_process_custom_olya_mcp_server_start_failed_total; see the
+              # stage.match comment in alloy/helmrelease.yaml for the log line. Any failure in
+              # 15m is enough to fire -- a healthy gateway doesn't log this at all -- and
+              # `for: 10m` requires it to persist rather than resolving on a single blip.
+              - alert: OlyaMcpServerStartFailed
+                expr: 'sum(increase(loki_process_custom_olya_mcp_server_start_failed_total[15m])) > 0'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'olya-0 failed to start an MCP server.'
+                  description: >-
+                    OpenClaw's bundle-mcp subsystem logged "failed to start server" at least
+                    once in the last 15 minutes and it has not cleared in 10 minutes. Tool
+                    calls routed to that server are failing.
+                  query: '{namespace="olya", app="olya"} |= "failed to start server"'
                   repo: activescott/activeassistant
 
           # Runtime security for the agent sandboxes (activescott/activeassistant#348,

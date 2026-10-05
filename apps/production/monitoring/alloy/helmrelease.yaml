@@ -307,6 +307,26 @@ spec:
               }
             }
 
+            // tinkerbell-prod's access log (activescott/home-infra-k8s-flux#338): a 401 on
+            // POST /mcp means a caller hit the MCP endpoint without valid auth. The access
+            // log is a plain morgan-style line, not JSON --
+            //   POST /mcp 401 - - 2.495 ms
+            // -- so this selects on the literal line rather than a level label, the same
+            // reasoning as the email-relay status= selectors below.
+            stage.match {
+              selector = "{namespace=\"tinkerbell-prod\", app=\"app\"} |= \"POST /mcp 401\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "tinkerbell_mcp_unauthorized_total"
+                  description = "401 responses from tinkerbell's /mcp endpoint"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
             // email-relay: outbound mail delivery outcomes. Postfix is the only
             // evidence that mail is or is not leaving — it exports no metrics, and
             // the applications cannot tell either, since the relay accepts a message
@@ -842,6 +862,33 @@ spec:
 
               stage.label_drop {
                 values = ["session_id", "session_key"]
+              }
+            }
+
+            // OpenClaw (olya): an MCP server failed to start
+            // (activescott/home-infra-k8s-flux#338). The gateway's bundle-mcp subsystem
+            // logs one line per failed server, naming it:
+            //   failed to start server "tinkerbell" (http://...): MCP error -32603: ...
+            // Anchored the same way as provider-transport-fetch/diagnostic above: the
+            // unescaped JSON keys at the start of the line, so the same phrase quoted
+            // inside another message or pasted into tool output does not count. Matches
+            // any server name, not just "tinkerbell" -- a start failure for any bundled
+            // MCP server is the same failure mode.
+            stage.match {
+              selector = "{namespace=\"olya\", app=\"olya\"} |~ \"^\\\\{\\\"time\\\":\\\"[^\\\"]+\\\",\\\"level\\\":\\\"[a-z]+\\\",\\\"subsystem\\\":\\\"bundle-mcp\\\",\\\"message\\\":\\\"failed to start server \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "olya_mcp_server_start_failed_total"
+                  description = "OpenClaw MCP server start failures logged by olya-0"
+                  match_all   = true
+                  action      = "inc"
+
+                  // Default is 5m; baseline is low-volume, so the default would
+                  // delete the series between occurrences and leave increase()
+                  // with nothing to measure most of the time.
+                  max_idle_duration = "24h"
+                }
               }
             }
 
