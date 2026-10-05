@@ -1,11 +1,13 @@
 # Default deny for the namespace, then one policy per component (activescott/activeassistant#577).
 #
-# Who reaches in from outside: Traefik (Grafana and Prometheus ingresses), Olya (Grafana, Loki,
+# Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, and the Loki push
+# ingress for the Dreamwright agents host, ping-poet/dreamwright#122), Olya (Grafana, Loki,
 # Prometheus and Alertmanager at their in-cluster addresses; the other half of the monitoring
 # rule in apps/production/olya/olya-networkpolicy.yaml), and the edge firewall's syslog. Nothing
 # else pushes to Loki or queries Prometheus directly: on 2026-09-30 Loki's only `job` values were
-# Alloy's two, and every other cluster client goes through an ingress. A new direct client, say a
-# CI job querying Loki, has to be added here.
+# Alloy's two, and every other client goes through an ingress, including the agents host's
+# pushes, which arrive from Traefik. A new direct client, say a CI job querying Loki, has to be
+# added here.
 #
 # node-exporter runs with hostNetwork, so none of this applies to it.
 #
@@ -334,6 +336,7 @@ spec:
           protocol: TCP
 ---
 # Single binary. Its memberlist ring is itself, through the loki-memberlist headless Service.
+# Traefik carries the public push path, loki/loki-push-ingress.yaml.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -347,6 +350,12 @@ spec:
     - Egress
   ingress:
     - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: alloy
