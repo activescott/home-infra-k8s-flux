@@ -38,3 +38,23 @@ spec:
       name: _dmarc.dreamwright.app
       type: TXT
       content: v=DMARC1; p=none; rua=mailto:dmarc@dreamwright.app
+    # aws-prod.dreamwright.app tests the AWS cluster before cutover; delete it at cutover
+    # (ping-poet/dreamwright#272). The address is the aws-prod NLB's Elastic IP.
+    - key: aws-prod-a
+      name: aws-prod.dreamwright.app
+      type: A
+      content: 54.71.229.250
+    # SES domain identity DKIM for dreamwright.app, from the aws-prod account
+    # (ping-poet/dreamwright#273).
+    - key: ses-dkim-1-cname
+      name: lxyi3vwb7kh5w6sapovrlcizuan2sdk4._domainkey.dreamwright.app
+      type: CNAME
+      content: lxyi3vwb7kh5w6sapovrlcizuan2sdk4.dkim.amazonses.com
+    - key: ses-dkim-2-cname
+      name: 5jkusntjkdazjv63tglif5abvgh76fpf._domainkey.dreamwright.app
+      type: CNAME
+      content: 5jkusntjkdazjv63tglif5abvgh76fpf.dkim.amazonses.com
+    - key: ses-dkim-3-cname
+      name: odi3d4n3dmm5thmewnpsfwwhaqqntnji._domainkey.dreamwright.app
+      type: CNAME
+      content: odi3d4n3dmm5thmewnpsfwwhaqqntnji.dkim.amazonses.com
