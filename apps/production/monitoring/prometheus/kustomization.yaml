@@ -47,12 +47,16 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.alertmanager-olya-hook.public-key-encrypted.encrypted
-  # htpasswd line for the debeth user on the remote-write path (remote-write-middleware.yaml).
-  # Written by scripts/create-debeth-remote-write-auth.mts, which prints the password once for
-  # debeth and keeps no copy. Until that has run, the committed file holds a hash too short to
-  # be bcrypt, which Traefik rejects for any password, so the path denies every write.
+  # htpasswd lines for the remote-write senders, one per user (remote-write-middleware.yaml).
+  # Written by scripts/add-ingest-user.mts, which prints the new user's password once and keeps
+  # no copy. A line whose hash is too short to be bcrypt is a placeholder: Traefik rejects it
+  # for any password.
+  #
+  # A file and not an env file because a dotenv value cannot hold the second line. The
+  # generator key, not the filename, selects the SOPS format kustomize-controller decrypts
+  # with, so this must stay `users=` (no extension) to be read as binary.
   - name: prometheus-remote-write-auth
     options:
       disableNameSuffixHash: true
-    envs:
-      - .env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted
+    files:
+      - users=prometheus-remote-write-users.public-key-encrypted.encrypted

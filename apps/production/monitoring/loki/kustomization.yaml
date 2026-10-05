@@ -1,7 +1,20 @@
 resources:
   - ./loki-pv.yaml
   - ./helmrelease.yaml
+  - ./certificate.yaml
+  - ./loki-push-ingress.yaml
+  - ./loki-push-middleware.yaml
 
-namespace: monitoring
-
-buildMetadata: [originAnnotations, transformerAnnotations]
+secretGenerator:
+  # htpasswd lines for the Loki push senders (loki-push-middleware.yaml). Written by
+  # scripts/add-ingest-user.mts, which prints the new user's password once and keeps no copy.
+  # Until that has run, the committed file holds a hash too short to be bcrypt, which Traefik
+  # rejects for any password, so the path denies every push.
+  #
+  # The generator key, not the filename, selects the SOPS format kustomize-controller decrypts
+  # with, so this must stay `users=` (no extension) to be read as binary.
+  - name: loki-push-auth
+    options:
+      disableNameSuffixHash: true
+    files:
+      - users=loki-push-users.public-key-encrypted.encrypted

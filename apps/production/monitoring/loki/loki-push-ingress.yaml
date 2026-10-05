@@ -1,0 +1,35 @@
+# The Dreamwright agents host pushes its logs here (ping-poet/dreamwright#122). Only the push
+# path is public: queries stay in-cluster, through Grafana.
+#
+# Middleware order is the annotation's order, as in
+# ../prometheus/prometheus-remote-write-ingress.yaml: the allowlist first, so a request from
+# anywhere else gets a 403 before anything else runs. Then the in-flight cap, then basic auth,
+# and only then the body limit, so nothing unauthenticated gets buffered.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: loki-push-ingress
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd. Nothing validates the string, and
+    # a reference to a middleware that does not exist drops the whole router. Unlike the
+    # remote-write path there is no other router on this host to fall through to, so the
+    # failure is a 404, but run the post-merge checks in ../README.md ("Loki push") after any
+    # change to this line anyway.
+    traefik.ingress.kubernetes.io/router.middlewares: monitoring-loki-push-allowlist@kubernetescrd,monitoring-loki-push-inflight@kubernetescrd,monitoring-loki-push-auth@kubernetescrd,monitoring-loki-push-body-limit@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - loki.activescott.com
+      # must match certificate.yaml's secretName
+      secretName: loki-activescott-com-tls
+  rules:
+    - host: loki.activescott.com
+      http:
+        paths:
+          - path: /loki/api/v1/push
+            pathType: Exact
+            backend:
+              service:
+                name: loki
+                port:
+                  number: 3100
