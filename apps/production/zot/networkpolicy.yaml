@@ -2,8 +2,7 @@
 # (activescott/activeassistant#577).
 #
 # Clients use the public hostnames, which land on Traefik: CI pushes and pulls, kind clusters in
-# the runners, and the node's own image pulls. The only direct in-cluster client is the sandbox
-# vcluster, whose half of that path is in apps/production/agent-sandbox-k8s/networkpolicy.yaml.
+# the runners, and the node's own image pulls.
 # Egress is the upstream registries and their blob CDNs, so any public address; the LAN, the node
 # and the rest of the cluster are refused.
 #
@@ -62,9 +61,6 @@ spec:
             matchLabels:
               app.kubernetes.io/name: prometheus
               app.kubernetes.io/component: server
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: agent-sandbox-k8s
       ports:
         - port: 5000
           protocol: TCP
