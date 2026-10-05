@@ -22,6 +22,10 @@ spec:
         # namespace/app, so logs are queryable as {app="olya"} with no extra config.
         app: olya
     spec:
+      # Covers the gateway's own shutdown budget (logged as shutdown=325000ms) plus margin. At
+      # the 30s default, SIGKILL arrived before the drain could run at all
+      # (activescott/activeassistant#722).
+      terminationGracePeriodSeconds: 360
       serviceAccountName: olya
       imagePullSecrets:
         - name: github-container-registry-secret
@@ -390,6 +394,12 @@ spec:
                 secretKeyRef:
                   name: olya-gpupoet-db
                   key: gpupoet_ro_password
+            # Dumps a JS stack and heap summary to the volume on SIGUSR2, so the next event-loop
+            # stall (activescott/activeassistant#722) leaves evidence instead of just a liveness
+            # restart. /state/openclaw persists across restarts and is writable in this
+            # container. Trigger with `kubectl exec ... kill -USR2 <gateway pid>`; see README.md.
+            - name: NODE_OPTIONS
+              value: "--report-on-signal --report-signal=SIGUSR2 --report-directory=/state/openclaw"
             # GPU Poet's excluder credentials, for her shell commands to use directly
             # (activescott/activeassistant#743, activescott/gpu-poet#83). The OpenClaw secret
             # store can't deliver these to her claude-cli Bash, so they ride in as pod env vars
@@ -452,7 +462,11 @@ spec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/health"]
             periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 6
+            # 4 minutes. A 98s event-loop stall that recovered on its own still tripped this at
+            # the previous threshold of 6, killing the pod mid-task 18s before it would have
+            # recovered (activescott/activeassistant#722). A gateway that is truly wedged still
+            # gets restarted.
+            failureThreshold: 12
           # 20Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
           # peaking at 7.93Gi (8,511,156,224 bytes) against the prior 8Gi limit, OOMKilling the
           # container mid-turn with three heavy agent sessions overlapping (install/build/test
