@@ -141,9 +141,10 @@ spec:
           # OlyaPodNotReady fires because Olya is down, so it's the one alert that must
           # skip her hook rather than go through it -- she can't triage her own outage.
           # Matching it here, ahead of the olya-hook route, sends it straight to Scott.
-          # OlyaPodNotReadyExtended, the longer-for: escalation of the same condition, is
-          # matched the same way for the same reason — a webhook attempt to a pod that's
-          # been down for an hour would just be a wasted call.
+          # OlyaPodNotReadyExtended is matched the same way for the same reason, which also
+          # means it still reaches Scott over the same Telegram receiver as OlyaPodNotReady
+          # rather than a distinct path (activescott/activeassistant#812) -- the only other
+          # receiver configured here is olya-hook, and that one is the outage itself.
           #
           # Every other alert also goes to Olya, who files and triages it. `continue` lets the
           # alert carry on to the route below it. The second route is not redundant: once any
@@ -1910,11 +1911,11 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
                   repo: activescott/home-infra-k8s-flux
               # Same condition as OlyaPodNotReady, escalated. A prior outage had
-              # OlyaPodNotReady firing for 6h11m at one severity with no way to tell "she
-              # just restarted" from "she has been gone all afternoon" — this distinguishes
-              # the two by firing a second time, severity unchanged, once the first alert
-              # has been firing for an hour. Routed the same way as OlyaPodNotReady (see the
-              # route matcher above) rather than through olya-hook.
+              # OlyaPodNotReady fire for hours at one severity with no way to tell "she just
+              # restarted" from "she has been gone a long time" — this distinguishes the two
+              # by firing a second time, severity unchanged, once the first alert has been
+              # firing for an hour. Routed the same way as OlyaPodNotReady (see the route
+              # matcher above) rather than through olya-hook.
               - alert: OlyaPodNotReadyExtended
                 expr: >-
                   kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
@@ -1968,6 +1969,11 @@ spec:
           # matcher above falls through to both olya-hook (webhook) and
           # on_call_operator_default (Telegram), so a failure specific to one integration
           # still reaches someone over the other.
+          #
+          # Expect this to fire during an olya outage itself: olya-hook's webhook calls fail
+          # while the pod is down, which is exactly when OlyaPodNotReady is also firing. Both
+          # reach Scott over the same Telegram receiver, which is expected overlap, not a
+          # second incident.
           - name: alertmanager-self-monitoring
             rules:
               - alert: AlertmanagerNotificationFailed
@@ -1988,28 +1994,24 @@ spec:
           # own Pending clause covers only for olya-0. namespace!="olya" so a wedged olya-0
           # pages once via OlyaPodNotReady rather than twice.
           #
-          # namespace!="arc-runners" excludes ARC's ephemeral runner pods, which sit Pending
-          # by design while queued for a scale-set slot: 14 days of history show the
-          # namespace rarely without at least one Pending runner, but each individual pod's
-          # own Pending span was brief (well under for: below) every time checked.
-          #
-          # for: 60m, not 10m like OlyaPodNotReady: the same history showed gpupoet-prod's
-          # CronJob pods (amazon-revalidation, ebay-revalidation) routinely sitting Pending
-          # for 25-40 minutes each run, apparently waiting on the dind sidecar or node
-          # scheduling slack — a shorter window would have paged on that routinely.
+          # for: 60m: 14 days of history at 1m resolution put the longest legitimate Pending
+          # span in the cluster at gpupoet-prod's revalidation CronJob pods (amazon-revalidation,
+          # ebay-revalidation), around 11m, and arc-runners' queued runner pods, around 5m. 60m
+          # clears both with room to spare, so no namespace exclusion is needed for either.
           - name: cluster-pod-health
             rules:
               - alert: PodStuckPending
-                expr: 'kube_pod_status_phase{phase="Pending", namespace!~"arc-runners|olya"} > 0'
+                expr: 'kube_pod_status_phase{phase="Pending", namespace!="olya"} > 0'
                 for: 60m
                 labels:
                   severity: warning
                 annotations:
                   summary: '{{ $labels.namespace }}/{{ $labels.pod }} has been Pending for over an hour.'
                   description: >-
-                    No container has started and kubelet keeps retrying — check for a
-                    FailedMount event first (a ConfigMap or Secret a volume references may
-                    not exist), then node capacity and the PVC.
+                    Pending also covers a pod whose init containers are still running, not
+                    just the time before any container starts. Check for a FailedMount event
+                    first (a ConfigMap or Secret a volume references may not exist), then node
+                    capacity and the PVC.
                   query: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}'
                   repo: activescott/home-infra-k8s-flux
 

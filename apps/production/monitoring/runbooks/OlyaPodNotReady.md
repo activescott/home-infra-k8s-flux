@@ -43,10 +43,9 @@ kubectl -n olya get events --field-selector involvedObject.name=olya-0
 kubectl get pvc -n olya olya-state
 ```
 
-A `FailedMount` event (e.g. `configmap "olya-config" not found`) means a manifest change
-references a ConfigMap or Secret that a sibling change deleted or renamed. Fix the
-manifest, then see "Wedged single-replica StatefulSet" below, since the pod will not
-recover on its own once the spec is corrected.
+A `FailedMount` event means a manifest references a ConfigMap or Secret that does not
+exist. Fix the manifest, then see "Wedged single-replica StatefulSet" below, since the pod
+will not recover on its own once the spec is corrected.
 
 `olya` runs on a single node (`nas`), so Pending with no mount error most likely means that
 node is unschedulable or out of resources, not a scheduling-preference conflict.
