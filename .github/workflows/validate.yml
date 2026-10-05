@@ -27,23 +27,44 @@ jobs:
         with:
           version: v4.3.0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: scripts/.nvmrc
+
+      # GitHub-hosted runners ship yq; the stock self-hosted runner image does not.
+      - name: Install yq
+        run: |
+          curl -fsSL -o /tmp/yq https://github.com/mikefarah/yq/releases/download/v4.44.6/yq_linux_amd64
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+
       - name: Build apps/production
         run: |
-          output=$(kustomize build apps/production --enable-helm)
-          lines=$(echo "$output" | wc -l)
+          kustomize build apps/production --enable-helm > /tmp/apps-production.yaml
+          lines=$(wc -l < /tmp/apps-production.yaml)
           echo "apps/production line count: $lines"
           [ "$lines" -gt 0 ]
 
       - name: Build infrastructure/prod/configs
         run: |
-          output=$(kustomize build infrastructure/prod/configs --enable-helm)
-          lines=$(echo "$output" | wc -l)
+          kustomize build infrastructure/prod/configs --enable-helm > /tmp/infra-configs.yaml
+          lines=$(wc -l < /tmp/infra-configs.yaml)
           echo "infrastructure/prod/configs line count: $lines"
           [ "$lines" -gt 0 ]
 
       - name: Build infrastructure/prod/dns
         run: |
-          output=$(kustomize build infrastructure/prod/dns --enable-helm)
-          lines=$(echo "$output" | wc -l)
+          kustomize build infrastructure/prod/dns --enable-helm > /tmp/infra-dns.yaml
+          lines=$(wc -l < /tmp/infra-dns.yaml)
           echo "infrastructure/prod/dns line count: $lines"
           [ "$lines" -gt 0 ]
+
+      # kustomize build emits a volume referencing a ConfigMap/Secret the build
+      # never defines without complaint (#335), so this checks the built output.
+      - name: Check volume references resolve (apps/production)
+        run: yq -o=json ea '[.]' /tmp/apps-production.yaml | ./scripts/check-volume-refs.mts
+
+      - name: Check volume references resolve (infrastructure/prod/configs)
+        run: yq -o=json ea '[.]' /tmp/infra-configs.yaml | ./scripts/check-volume-refs.mts
+
+      - name: Check volume references resolve (infrastructure/prod/dns)
+        run: yq -o=json ea '[.]' /tmp/infra-dns.yaml | ./scripts/check-volume-refs.mts
