@@ -60,6 +60,9 @@ configMapGenerator:
       - no_proxy=localhost,.localhost,127.0.0.1,::1,.svc,.cluster.local,172.16.0.0/12
       - NODE_USE_ENV_PROXY=1
 secretGenerator:
+  # tinkerbell_api_token is still in the file and read by nothing: the statefulset stopped
+  # naming it when the MCP gateway took tinkerbell over (browser-chaperone#44), and the token
+  # is revoked in tinkerbell. Removing the key needs the private key.
   # Keys: tinkerbell_api_token, openclaw_gateway_token, anthropic_api_key, openrouter_api_key,
   # and relay_bot_token and relay_app_token, which are the Slack relay's credentials and not Slack tokens
   # (activescott/activeassistant#315). Both must match the relay's Secret, in
@@ -101,7 +104,21 @@ secretGenerator:
   - name: olya-chaperone-wake
     envs:
       - .env.secret.olya-chaperone-wake.public-key-encrypted.encrypted
+  # Key: gpupoet_ro_password, the password of olya_ro, the read-only role on GPU Poet's
+  # production Postgres (activescott/activeassistant#705). The role itself was created by hand
+  # in db-0 with the same value; rotate both together.
+  - name: olya-gpupoet-db
+    envs:
+      - .env.secret.olya-gpupoet-db.public-key-encrypted.encrypted
+  # Keys: gpupoet_excluder_username, gpupoet_excluder_password, same values as
+  # EXCLUDER_USERNAME/EXCLUDER_PASSWORD in ../gpupoet/.env.secret.app.encrypted
+  # (activescott/activeassistant#743). The OpenClaw secret store can't deliver to her
+  # claude-cli Bash, so this rides in as a pod env var instead. Scott adds the values with
+  # ./scripts/onepassword-secrets.mts new apps/production/olya/.env.secret.olya-gpupoet-excluder.
+  - name: olya-gpupoet-excluder
+    envs:
+      - .env.secret.olya-gpupoet-excluder.encrypted
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1790724563 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1791117640 # {"$imagepolicy": "flux-system:policy-olya:tag"}

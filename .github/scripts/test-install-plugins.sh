@@ -200,6 +200,22 @@ docker run --rm --user 1000:1000 -v "$broken:/state" --entrypoint test "$image" 
   fail "broken: failures file still present after a clean run"
 echo "::endgroup::"
 
+# A killed install leaves .openclaw-install-stage-* under npm/projects with empty package.json
+# files, which breaks OpenClaw's peer-link repair. The next boot must remove it and leave the
+# real project alone.
+echo "::group::abandoned install stage"
+staged=$(copy_volume "$fresh" staged)
+docker run --rm -u 0 -v "$staged:/state" --entrypoint sh "$image" -c '
+  d=/state/openclaw/npm/projects/.openclaw-install-stage-test1/node_modules/foo
+  mkdir -p "$d" && : > "$d/package.json" && chown -R 1000:1000 /state/openclaw/npm'
+run_install "$staged" "$mem" "$olya/managed-plugins.txt" "$work/staged.log"
+check_pinned "stage" "$staged" "$work/staged.log" 0 "removed 1 abandoned install staging dir"
+docker run --rm --entrypoint sh -v "$staged:/state:ro" "$image" -c \
+  'ls /state/openclaw/npm/projects/.openclaw-install-stage-* >/dev/null 2>&1 && exit 1; exit 0' ||
+  fail "stage: abandoned staging dir still present"
+docker volume rm "$staged" >/dev/null
+echo "::endgroup::"
+
 # Each "-" line in managed-plugins.txt must remove a managed install of that package left on the
 # PV by an earlier boot, leave the pinned plugins alone, and do nothing on the next boot.
 mapfile -t removals < <(grep -E '^\s*-' "$olya/managed-plugins.txt" | sed -E 's/^\s*-//')

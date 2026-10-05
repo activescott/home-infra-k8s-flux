@@ -270,6 +270,44 @@ OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are availa
 
 Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
+### Remote write
+
+Two senders push metrics here: debeth's eth-docker Alloy, so the nas can alert on the validator without any route into debeth (activescott/activeassistant#648), and the Dreamwright agents host (ping-poet/dreamwright#122). debeth's Alloy config lives in `hosts/debeth/` in the private repo.
+
+```
+debeth Alloy / agents host --HTTPS POST--> Traefik prometheus.activescott.com/api/v1/write --> prometheus-server (--web.enable-remote-write-receiver)
+```
+
+- `prometheus/prometheus-remote-write-ingress.yaml` routes only that exact path, through `prometheus-remote-write-lan` (allows `10.1.111.25/32` for debeth and `52.11.188.6/32` for the agents host), `prometheus-remote-write-inflight` (4 concurrent requests), `prometheus-remote-write-auth` (basic auth, users `debeth` and `dreamwright-agents`) and `prometheus-remote-write-body-limit` (4 MiB). Everything else on the host stays on `prometheus-ingress.yaml` and Scott's read credential, which cannot write.
+- debeth resolves the name to `10.1.111.20` through the LAN DNS override, so its source address survives to the allowlist. Publicly the name resolves to the WAN address, which is why the path has an allowlist and not only a password. The agents host comes in from the internet; the edge firewall's port forward keeps its public address, as Traefik's access log shows for every public client.
+- `scripts/add-ingest-user.mts prometheus-remote-write <user>` creates and rotates a sender's credential. Scott runs it piped straight into the sender over ssh, for debeth `./scripts/add-ingest-user.mts prometheus-remote-write debeth | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'` (with the secrets directory created first; see `hosts/debeth/README.md` in the private repo for the full order). It rewrites the user's bcrypt line in `prometheus/prometheus-remote-write-users.public-key-encrypted.encrypted` and keeps the other users' lines, so it needs the age key from 1Password. The password is never shown, only piped. Nothing else keeps a copy; if it is lost, rerun the whole line, which rotates it. A line whose hash is too short to be bcrypt is a placeholder that Traefik rejects for every password.
+- The first run against `prometheus-remote-write` carries debeth's line over from `.env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted`, where it lived as a single dotenv value, and deletes that file.
+- Every series debeth sends carries `host="debeth"`.
+
+The receiver also accepts writes on the in-cluster Service from any pod that can reach it; Traefik's allowlist does not apply there.
+
+After Flux applies, from a LAN host other than debeth, `curl -X POST https://prometheus.activescott.com/api/v1/write` gets a 403, and so does the same request from any internet address but the agents host. From debeth or the agents host, the same request gets a 401 without the credential and with Scott's read credential, and reaches Prometheus with the sender's own: an empty body gets a 400 from Prometheus itself, and the sender's real writes get a 2xx (`prometheus_http_requests_total{handler="/api/v1/write",code=~"2.."}`).
+
+The check with Scott's read credential is mandatory after every change to the remote-write Ingress or its middlewares. If the Ingress names a middleware that does not exist, Traefik 3.3.6 drops the whole `/api/v1/write` router and the path falls through to `prometheus-ingress.yaml`, where the read credential can write. Nothing else reports this: the senders' writes fail with a 401 either way. Run it from debeth and expect 401 (curl prompts for the password):
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' -X POST -u '<read user>' https://prometheus.activescott.com/api/v1/write
+```
+
+### Loki push
+
+The Dreamwright agents host pushes its logs to Loki over the internet (ping-poet/dreamwright#122). Only the push path is public; queries stay in-cluster.
+
+```
+agents host --HTTPS POST--> Traefik loki.activescott.com/loki/api/v1/push --> loki:3100
+```
+
+- `loki/loki-push-ingress.yaml` routes only that exact path, through `loki-push-allowlist` (allows `52.11.188.6/32`), `loki-push-inflight` (4 concurrent requests), `loki-push-auth` (basic auth, user `dreamwright-agents`) and `loki-push-body-limit` (4 MiB), in that order, as on the remote-write path. Loki runs with `auth_enabled: false`, so basic auth is the only credential.
+- `scripts/add-ingest-user.mts loki-push <user>` creates and rotates a credential, the same way as for remote write. It writes `loki/loki-push-users.public-key-encrypted.encrypted`. The file first committed is a placeholder, so the path denies every push until it has run.
+- `networkpolicy.yaml` admits Traefik to Loki on 3100 for this route.
+
+After Flux applies, from the agents host, `curl -X POST https://loki.activescott.com/loki/api/v1/push` gets a 401 without the credential and a 2xx with it (send a real push, for example `-H 'Content-Type: application/json' -d '{"streams":[{"stream":{"host":"check"},"values":[["'"$(date +%s%N)"'","push check"]]}]}'`, which returns 204). From any other address the same request gets a 403.
+
 ## Alert Runbooks
 
 Runbooks live in `runbooks/`, one file per alert, added as alerts are diagnosed

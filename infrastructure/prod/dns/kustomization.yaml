@@ -33,6 +33,7 @@ resources:
   - email-routing/activescott.com.yaml
   - email-routing/coinpoet.com.yaml
   - email-routing/datamanifest.com.yaml
+  - email-routing/dreamwright.app.yaml
   - email-routing/fernfiles.com.yaml
   - email-routing/gpupoet.com.yaml
   - email-routing/ramblefeed.com.yaml

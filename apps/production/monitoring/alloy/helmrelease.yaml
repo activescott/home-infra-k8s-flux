@@ -785,6 +785,99 @@ spec:
               }
             }
 
+            // OpenClaw (olya): a session wedged on a tool call that never returns
+            // (activescott/activeassistant#99). The gateway's diagnostic subsystem logs
+            // one line per stalled session every 30s, all sessions in the same sweep:
+            //   stalled session: sessionId=<uuid> sessionKey=agent:olya:main state=idle
+            //   age=212s ... lastProgressAge=212s ... recovery=none
+            //
+            // The gauge reads lastProgressAge, not age. age keeps counting across a
+            // session's tool calls, so subagents that sit in a string of 540s CI waits
+            // pass an hour routinely (27378s at worst in the week to 2026-10-04) while
+            // making progress. lastProgressAge resets on every step, never went above
+            // 886s over the same period, and only keeps growing when nothing is moving.
+            //
+            // Labelled per session because the sweep logs every stalled session in the
+            // same instant, so a single series would only ever show the last one. The
+            // label is the cardinality: 148 sessions stalled in that week, and each
+            // series is deleted 5m after its session's last line, so only sessions
+            // stalled right now exist. stage.label_drop takes the labels back off before
+            // the line goes to Loki, which does not need a stream per session.
+            //
+            // The anchor on the line's leading JSON keys is the same as the openrouter
+            // selector above: Olya quotes this phrase in chat, and those lines must not
+            // count.
+            stage.match {
+              selector = "{namespace=\"olya\", app=\"olya\"} |~ \"^\\\\{\\\"time\\\":\\\"[^\\\"]+\\\",\\\"level\\\":\\\"[a-z]+\\\",\\\"subsystem\\\":\\\"diagnostic\\\",\\\"message\\\":\\\"stalled session: \""
+
+              stage.regex {
+                expression = "stalled session: sessionId=(?P<stalled_session_id>\\S+) sessionKey=(?P<stalled_session_key>\\S+) .* lastProgressAge=(?P<stalled_progress_age>[0-9]+)s"
+              }
+
+              stage.labels {
+                values = {
+                  session_id  = "stalled_session_id",
+                  session_key = "stalled_session_key",
+                }
+              }
+
+              stage.metrics {
+                metric.gauge {
+                  name        = "olya_stalled_session_progress_age_seconds"
+                  description = "seconds since a stalled OpenClaw session last made progress"
+                  source      = "stalled_progress_age"
+                  action      = "set"
+
+                  // The default, set explicitly because the alert depends on it: a
+                  // session that recovers, or dies with the pod, stops logging, and its
+                  // series has to go away instead of holding its last value.
+                  max_idle_duration = "5m"
+                }
+              }
+
+              stage.label_drop {
+                values = ["session_id", "session_key"]
+              }
+            }
+
+            // The network chaperone's access log (browser-chaperone#89,
+            // ping-poet/dreamwright#108): olya-egress-squid.conf's "egress"
+            // logformat writes chaperone=%ea on every connection, where %ea is
+            // the helper's outcome. `unchecked` means the approval app did not
+            // answer in time, which in enforce mode refuses the connection
+            // instead of asking; it should never happen in a healthy rollout.
+            stage.match {
+              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |= \"chaperone=unchecked\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "chaperone_unchecked_total"
+                  description = "connections the network chaperone could not check because the approval app did not answer"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // would_deny is today's outcome for a refused connection
+            // (NETWORK_CHAPERONE_MODE=report_only); the same check in enforce
+            // mode logs denied instead. Matching both now means this counter
+            // does not need to change when that flips.
+            stage.match {
+              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |~ \"chaperone=(would_deny|denied)\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "chaperone_refused_total"
+                  description = "connections the network chaperone refused or would have refused"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             // activescott/home-infra-k8s-flux#276: kustomize-controller no
             // longer exposes gotk_reconcile_condition (confirmed absent from
             // Prometheus on 2026-09-30 -- see the flux-reconcile-log-health
