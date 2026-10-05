@@ -1059,7 +1059,7 @@
       },
       "id": 300,
       "panels": [],
-      "title": "Proxy Errors (OxyLabs)",
+      "title": "Proxy Errors",
       "type": "row"
     },
     {
@@ -1067,7 +1067,7 @@
         "type": "prometheus",
         "uid": "PBFA97CFB590B2093"
       },
-      "description": "407 with X-Error-Description matching traffic/bandwidth/quota/balance. Top up OxyLabs.",
+      "description": "407 with X-Error-Description matching traffic/bandwidth/quota/balance. Top up DataImpulse.",
       "fieldConfig": {
         "defaults": {
           "thresholds": {
