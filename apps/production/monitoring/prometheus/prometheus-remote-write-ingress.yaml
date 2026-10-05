@@ -1,10 +1,11 @@
-# debeth's Alloy pushes metrics here (activescott/activeassistant#648). A second Ingress for
+# debeth's Alloy (activescott/activeassistant#648) and the Dreamwright agents host
+# (ping-poet/dreamwright#122) push metrics here. A second Ingress for
 # the same host because middleware annotations are per-Ingress. Traefik prefers the longer
 # rule, so Path(`/api/v1/write`) wins over prometheus-ingress's PathPrefix(`/`): the read
-# credential cannot write, and the debeth credential works on this one path only.
+# credential cannot write, and the sender credentials work on this one path only.
 #
 # Middleware order is the annotation's order: the allowlist first, so a request from anywhere
-# but debeth gets a 403 before anything else runs. Then the in-flight cap, so a stuck or
+# but a sender gets a 403 before anything else runs. Then the in-flight cap, so a stuck or
 # hostile sender cannot hold connections open or make Traefik run bcrypt in parallel. Then
 # basic auth, and only then the body limit, so nothing unauthenticated gets buffered.
 apiVersion: networking.k8s.io/v1
@@ -17,7 +18,7 @@ metadata:
     # router, not just the middleware, and /api/v1/write falls through to prometheus-ingress's
     # PathPrefix(`/`) router. debeth then gets a 401, but Scott's read credential can write.
     # That is why the post-merge check with the read credential in ../README.md
-    # ("debeth remote write") is mandatory after any change to this line.
+    # ("Remote write") is mandatory after any change to this line.
     traefik.ingress.kubernetes.io/router.middlewares: monitoring-prometheus-remote-write-lan@kubernetescrd,monitoring-prometheus-remote-write-inflight@kubernetescrd,monitoring-prometheus-remote-write-auth@kubernetescrd,monitoring-prometheus-remote-write-body-limit@kubernetescrd
 spec:
   tls:

@@ -111,6 +111,13 @@ secretGenerator:
   - name: mcp-gateway-creds
     envs:
       - .env.secret.mcp-gateway-google.encrypted
+  # Key: tinkerbell_api_token, the gateway's own tinkerbell token (browser-chaperone#44). The
+  # committed file holds a PLACEHOLDER until the operator writes a new token; see
+  # env.secret.mcp-gateway-tinkerbell.example. A Secret of its own because two SOPS files
+  # cannot share a generator.
+  - name: mcp-gateway-tinkerbell
+    envs:
+      - .env.secret.mcp-gateway-tinkerbell.encrypted
   # Key: gateway_client_token, the token Olya presents to the gateway. Same value as
   # mcp_gateway_token in ../olya/.env.secret.olya-mcp-gateway.public-key-encrypted.encrypted;
   # rotate both together. A Secret of its own because two SOPS files cannot share a generator.
@@ -126,7 +133,7 @@ secretGenerator:
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.23.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.25.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
     newTag: v0.7.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
