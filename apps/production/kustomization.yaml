@@ -16,7 +16,6 @@ resources:
   - ./monitoring
   - ./plex
   - ./scott-willeke-com
-  - ./dreamwright
   - ./gpupoet
   - ./gpu-poet-collector
   - ./coinpoet-redirect

@@ -1,7 +1,0 @@
-resources:
-  - deployment.yaml
-  - service.yaml
-  - ingress.yaml
-  - db-statefulset.yaml
-  - db-service.yaml
-  - token-keys-pvc.yaml
