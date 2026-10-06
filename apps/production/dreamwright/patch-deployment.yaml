@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: dreamwright
 spec:
+  # Home is frozen for the move to aws-prod (ping-poet/dreamwright#278); db stays up.
+  replicas: 0
   template:
     spec:
       containers:
