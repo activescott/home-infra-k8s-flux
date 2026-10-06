@@ -20,16 +20,18 @@ spec:
     ttl: 300
     proxied: false
   records:
+    # dreamwright.app is served by aws-prod (ping-poet/dreamwright#278); the address is the
+    # aws-prod NLB's Elastic IP. The keys still say cname so Crossplane updates in place.
     - key: apex-cname
       name: dreamwright.app
-      type: CNAME
+      type: A
       ttl: 1
-      content: k8s.activescott.com
+      content: 54.71.229.250
     - key: www-cname
       name: www.dreamwright.app
-      type: CNAME
+      type: A
       ttl: 1
-      content: k8s.activescott.com
+      content: 54.71.229.250
     - key: apex-spf-txt
       name: dreamwright.app
       type: TXT
@@ -38,12 +40,6 @@ spec:
       name: _dmarc.dreamwright.app
       type: TXT
       content: v=DMARC1; p=none; rua=mailto:dmarc@dreamwright.app
-    # aws-prod.dreamwright.app tests the AWS cluster before cutover; delete it at cutover
-    # (ping-poet/dreamwright#272). The address is the aws-prod NLB's Elastic IP.
-    - key: aws-prod-a
-      name: aws-prod.dreamwright.app
-      type: A
-      content: 54.71.229.250
     # SES domain identity DKIM for dreamwright.app, from the aws-prod account
     # (ping-poet/dreamwright#273).
     - key: ses-dkim-1-cname
