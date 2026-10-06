@@ -21,13 +21,14 @@ spec:
     proxied: false
   records:
     # dreamwright.app is served by aws-prod (ping-poet/dreamwright#278); the address is the
-    # aws-prod NLB's Elastic IP. The keys still say cname so Crossplane updates in place.
-    - key: apex-cname
+    # aws-prod NLB's Elastic IP. The provider can't change a record's type in place, so
+    # these got new keys to delete the old CNAMEs and create A records.
+    - key: apex-a
       name: dreamwright.app
       type: A
       ttl: 1
       content: 54.71.229.250
-    - key: www-cname
+    - key: www-a
       name: www.dreamwright.app
       type: A
       ttl: 1
