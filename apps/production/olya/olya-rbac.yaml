@@ -146,6 +146,22 @@ rules:
     resources: ["ingresses", "ingresses/status", "networkpolicies"]
     verbs: ["get", "list", "watch"]
 ---
+# Crossplane's Cloudflare provider and our DNSZone XRD ship no aggregate-to-view role, so `view`
+# can't read them either. Records hold only what public DNS already serves.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: olya-view-crossplane-dns
+  labels:
+    rbac.activescott.com/aggregate-to-olya-view: "true"
+rules:
+  - apiGroups: ["dns.activescott.com"]
+    resources: ["dnszones", "dnszones/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["dns.cloudflare.m.cloudflare.com", "dns.cloudflare.crossplane.io"]
+    resources: ["dnsrecords", "dnsrecords/status"]
+    verbs: ["get", "list", "watch"]
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
