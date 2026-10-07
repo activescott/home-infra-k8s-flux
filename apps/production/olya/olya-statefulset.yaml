@@ -47,6 +47,40 @@ spec:
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
       # with the ssh key mounted, so it is the last place to leave at the defaults.
       initContainers:
+        # A new olya-0 pod IP isn't in kube-router's ipset for the egress proxy's ingress
+        # NetworkPolicy for ~20-40s after the pod starts; until then the proxy's chain ends in
+        # REJECT and every connection to it fails ECONNREFUSED. seed-workspace hit this twice on
+        # most starts, each triggering OpenClaw's own retry/backoff on top of kubelet's
+        # (activescott/activeassistant#878). This blocks on a plain TCP connect to the proxy
+        # before anything else runs, so seed-workspace and every later step start with egress
+        # already working. A widened NetworkPolicy would not fix this: kube-router resolves a
+        # namespaceSelector to the same per-pod-IP ipset, so the race is the same either way.
+        - name: wait-for-egress-proxy
+          image: busybox:1.38@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+          command:
+            - sh
+            - -c
+            - |
+              start=$(date +%s)
+              while [ $(( $(date +%s) - start )) -lt 120 ]; do
+                nc -z -w 2 olya-egress-proxy.browser-chaperone-prod.svc.cluster.local 3128 && exit 0
+                sleep 2
+              done
+              echo "wait-for-egress-proxy: olya-egress-proxy:3128 still unreachable after 120s" >&2
+              exit 1
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 16Mi
+            limits:
+              cpu: "100m"
+              memory: 32Mi
+
         # Credentials and workspace. Clones activeassistant to /state/workspace, forces it to
         # origin/main, seeds the gateway config to /state/config, and relocates the memory files
         # to /state/memory, which the olya container bind-mounts back over workspace root.
