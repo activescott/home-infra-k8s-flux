@@ -158,3 +158,40 @@ roleRef:
   kind: ClusterRole
   name: olya-view
   apiGroup: rbac.authorization.k8s.io
+---
+# Read-only access to the Cloudflare Email Routing managed resources and the RoleMailboxes
+# composite, so she can inspect routing rules (e.g. the dmarc-reports forwards) herself.
+#
+# These are namespaced, confined to the `cloudflare` namespace (see
+# infrastructure/prod/controllers/crossplane-config/providerconfig.yaml), but granted here as a
+# ClusterRole/ClusterRoleBinding like olya-view above rather than a Role/RoleBinding: this
+# kustomization sets `namespace: olya`, which would rewrite a namespaced Role's metadata.namespace
+# to `olya` and leave it unable to see anything in `cloudflare`.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: olya-email-routing
+rules:
+  - apiGroups: ["email.cloudflare.m.cloudflare.com"]
+    resources:
+      - emailroutingaddresses
+      - emailroutingcatchalls
+      - emailroutingrules
+      - emailroutingsettings
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["email.activescott.com"]
+    resources: ["rolemailboxes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: olya-email-routing
+subjects:
+  - kind: ServiceAccount
+    name: olya
+    namespace: olya
+roleRef:
+  kind: ClusterRole
+  name: olya-email-routing
+  apiGroup: rbac.authorization.k8s.io
