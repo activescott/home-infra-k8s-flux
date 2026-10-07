@@ -938,7 +938,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: "The network chaperone could not reach the approval app."
-                  description: '{{ $labels.pod }} logged chaperone=unchecked in the last 5 minutes: a connection could not be checked because the approval app did not answer within 5s. In enforce mode this refuses the connection outright. Check the app Deployment in browser-chaperone-prod for a stalled rollout or a crash loop.'
+                  description: '{{ $labels.pod }} logged chaperone=unchecked in the last 5 minutes: a connection could not be checked because the approval app did not answer within 5s. In enforce mode this refuses the connection outright, so Dreamwright assistants are offline: their replies and tool calls get refused while the approval app is down. Check the app Deployment in browser-chaperone-prod for a stalled rollout or a crash loop.'
               # ping-poet/dreamwright#398: the check can answer but raising the
               # approval request itself can still fail (AllowlistUnavailableError
               # on /internal/allowlist/requests), which this counter catches and
@@ -956,7 +956,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: "The network chaperone could not raise an approval request."
-                  description: '{{ $labels.pod }} logged "the request could not be raised" in the last 5 minutes: the approval check answered but raising the request on /internal/allowlist/requests failed, so no request reached Slack. In enforce mode this denies the connection with no request id to approve. Check the approval app in browser-chaperone-prod for errors around /internal/allowlist/requests.'
+                  description: '{{ $labels.pod }} logged "the request could not be raised" in the last 5 minutes: the approval check answered but raising the request on /internal/allowlist/requests failed, so no request reached Slack. In enforce mode this denies the connection with no request id to approve, so Dreamwright assistants are offline: their replies and tool calls get refused while the approval app is down. Check the approval app in browser-chaperone-prod for errors around /internal/allowlist/requests.'
               # Threshold from the 7 days of Loki history measured for
               # ping-poet/dreamwright#108: the chaperone= field has existed since
               # 2026-09-29, and its worst single hour there was 284 would-denies (a
