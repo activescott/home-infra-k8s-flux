@@ -933,6 +933,19 @@ spec:
                 annotations:
                   summary: "The network chaperone could not reach the approval app."
                   description: '{{ $labels.pod }} logged chaperone=unchecked in the last 5 minutes: a connection could not be checked because the approval app did not answer within 5s. In enforce mode this refuses the connection outright. Check the app Deployment in browser-chaperone-prod for a stalled rollout or a crash loop.'
+              # ping-poet/dreamwright#398: the check can answer but raising the
+              # approval request itself can still fail (AllowlistUnavailableError
+              # on /internal/allowlist/requests), which this counter catches and
+              # chaperone_unchecked_total above does not. See the stage.match
+              # comment in alloy/helmrelease.yaml for the log line.
+              - alert: ChaperoneApprovalRaiseFailed
+                expr: 'increase(loki_process_custom_chaperone_approval_raise_failed_total[5m]) > 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: "The network chaperone could not raise an approval request."
+                  description: '{{ $labels.pod }} logged "the request could not be raised" in the last 5 minutes: the approval check answered but raising the request on /internal/allowlist/requests failed, so no request reached Slack. In enforce mode this denies the connection with no request id to approve. Check the approval app in browser-chaperone-prod for errors around /internal/allowlist/requests.'
               # Threshold from the 7 days of Loki history measured for
               # ping-poet/dreamwright#108: the chaperone= field has existed since
               # 2026-09-29, and its worst single hour there was 284 would-denies (a
