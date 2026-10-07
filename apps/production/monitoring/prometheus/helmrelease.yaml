@@ -925,8 +925,14 @@ spec:
               # or a crash should never leave the egress proxy unable to reach it. Fed by
               # chaperone_unchecked_total; see the stage.match comment in alloy/helmrelease.yaml
               # for the log line and why it means the approval app did not answer.
+              #
+              # ping-poet/dreamwright#108 (comment): a bare increase() misses the first
+              # burst after any proxy pod or Alloy restart, because the counter's series
+              # does not exist until its first match and starts at that value, so
+              # increase() over it is 0. The `unless ... offset 5m` half catches a series
+              # that has just appeared.
               - alert: ChaperoneApprovalUnchecked
-                expr: 'increase(loki_process_custom_chaperone_unchecked_total[5m]) > 0'
+                expr: 'increase(loki_process_custom_chaperone_unchecked_total[5m]) > 0 or (loki_process_custom_chaperone_unchecked_total unless loki_process_custom_chaperone_unchecked_total offset 5m)'
                 for: 0m
                 labels:
                   severity: critical
@@ -938,8 +944,13 @@ spec:
               # on /internal/allowlist/requests), which this counter catches and
               # chaperone_unchecked_total above does not. See the stage.match
               # comment in alloy/helmrelease.yaml for the log line.
+              #
+              # Same shape as ChaperoneApprovalUnchecked above, for the same reason
+              # (ping-poet/dreamwright#108 comment): the `unless ... offset 5m` half
+              # catches this counter's first-ever series, which a bare increase()
+              # reads as 0.
               - alert: ChaperoneApprovalRaiseFailed
-                expr: 'increase(loki_process_custom_chaperone_approval_raise_failed_total[5m]) > 0'
+                expr: 'increase(loki_process_custom_chaperone_approval_raise_failed_total[5m]) > 0 or (loki_process_custom_chaperone_approval_raise_failed_total unless loki_process_custom_chaperone_approval_raise_failed_total offset 5m)'
                 for: 0m
                 labels:
                   severity: critical
