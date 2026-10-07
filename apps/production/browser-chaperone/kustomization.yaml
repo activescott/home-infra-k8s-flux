@@ -111,6 +111,13 @@ secretGenerator:
   - name: mcp-gateway-creds
     envs:
       - .env.secret.mcp-gateway-google.encrypted
+  # Key: tinkerbell_api_token, the gateway's own tinkerbell token (browser-chaperone#44). The
+  # committed file holds a PLACEHOLDER until the operator writes a new token; see
+  # env.secret.mcp-gateway-tinkerbell.example. A Secret of its own because two SOPS files
+  # cannot share a generator.
+  - name: mcp-gateway-tinkerbell
+    envs:
+      - .env.secret.mcp-gateway-tinkerbell.encrypted
   # Key: gateway_client_token, the token Olya presents to the gateway. Same value as
   # mcp_gateway_token in ../olya/.env.secret.olya-mcp-gateway.public-key-encrypted.encrypted;
   # rotate both together. A Secret of its own because two SOPS files cannot share a generator.
@@ -126,16 +133,16 @@ secretGenerator:
 images:
   - name: browser-chaperone-image-app
     newName: ghcr.io/activescott/browser-chaperone/app # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:name"}
-    newTag: v0.20.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
+    newTag: v0.31.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-app:tag"}
   - name: browser-chaperone-image-browser
     newName: ghcr.io/activescott/browser-chaperone/browser # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:name"}
-    newTag: v0.5.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
+    newTag: v0.11.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-browser:tag"}
   - name: browser-chaperone-image-slack-relay
     newName: ghcr.io/activescott/browser-chaperone/slack-relay # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:name"}
-    newTag: v0.7.1 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
+    newTag: v0.10.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-slack-relay:tag"}
   - name: browser-chaperone-image-mcp-gateway
     newName: ghcr.io/activescott/browser-chaperone/mcp-gateway # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:name"}
-    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
+    newTag: v0.9.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-mcp-gateway:tag"}
   - name: browser-chaperone-image-network-proxy
     newName: ghcr.io/activescott/browser-chaperone/network-proxy # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:name"}
-    newTag: v0.2.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}
+    newTag: v0.4.0 # {"$imagepolicy": "flux-system:policy-browser-chaperone-network-proxy:tag"}

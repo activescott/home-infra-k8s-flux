@@ -27,44 +27,44 @@ jobs:
         with:
           version: v4.3.0
 
-      - name: Build apps/production
-        run: |
-          output=$(kustomize build apps/production --enable-helm)
-          lines=$(echo "$output" | wc -l)
-          echo "apps/production line count: $lines"
-          [ "$lines" -gt 0 ]
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: scripts/.nvmrc
 
-      - name: Build infrastructure/prod/configs
-        run: |
-          output=$(kustomize build infrastructure/prod/configs --enable-helm)
-          lines=$(echo "$output" | wc -l)
-          echo "infrastructure/prod/configs line count: $lines"
-          [ "$lines" -gt 0 ]
-
-      - name: Build infrastructure/prod/dns
-        run: |
-          output=$(kustomize build infrastructure/prod/dns --enable-helm)
-          lines=$(echo "$output" | wc -l)
-          echo "infrastructure/prod/dns line count: $lines"
-          [ "$lines" -gt 0 ]
-
-      # The stock self-hosted runner image does not ship yq.
+      # GitHub-hosted runners ship yq; the stock self-hosted runner image does not.
       - name: Install yq
         run: |
           curl -fsSL -o /tmp/yq https://github.com/mikefarah/yq/releases/download/v4.44.6/yq_linux_amd64
           sudo install -m 0755 /tmp/yq /usr/local/bin/yq
 
-      # vcluster only delivers a changed Corefile under a new ConfigMap name; see the coredns
-      # comment in the HelmRelease for why.
-      - name: vcluster Corefile ConfigMap name matches its content
+      - name: Build apps/production
         run: |
-          f=apps/production/agent-sandbox-k8s/helmrelease.yaml
-          manifests=$(yq '.spec.values.controlPlane.coredns.overwriteManifests' "$f")
-          name=$(echo "$manifests" | yq 'select(.kind == "ConfigMap" and .metadata.name == "coredns-corefile-*") | .metadata.name')
-          hash=$(echo "$manifests" | yq 'select(.kind == "ConfigMap" and .metadata.name == "coredns-corefile-*") | .data.Corefile' | sha256sum | cut -c1-10)
-          mounted=$(echo "$manifests" | yq 'select(.kind == "Deployment" and .metadata.name == "coredns") | .spec.template.spec.volumes[].projected.sources[]?.configMap.name | select(. == "coredns-corefile-*")')
-          if [ "$name" != "coredns-corefile-$hash" ] || [ "$mounted" != "coredns-corefile-$hash" ]; then
-            echo "FAIL: ConfigMap is '$name' and the Deployment mounts '$mounted', expected coredns-corefile-$hash"
-            echo "Fix: sed -i 's/$name/coredns-corefile-$hash/g' $f"
-            exit 1
-          fi
+          kustomize build apps/production --enable-helm > /tmp/apps-production.yaml
+          lines=$(wc -l < /tmp/apps-production.yaml)
+          echo "apps/production line count: $lines"
+          [ "$lines" -gt 0 ]
+
+      - name: Build infrastructure/prod/configs
+        run: |
+          kustomize build infrastructure/prod/configs --enable-helm > /tmp/infra-configs.yaml
+          lines=$(wc -l < /tmp/infra-configs.yaml)
+          echo "infrastructure/prod/configs line count: $lines"
+          [ "$lines" -gt 0 ]
+
+      - name: Build infrastructure/prod/dns
+        run: |
+          kustomize build infrastructure/prod/dns --enable-helm > /tmp/infra-dns.yaml
+          lines=$(wc -l < /tmp/infra-dns.yaml)
+          echo "infrastructure/prod/dns line count: $lines"
+          [ "$lines" -gt 0 ]
+
+      # kustomize build emits a volume referencing a ConfigMap/Secret the build
+      # never defines without complaint (#335), so this checks the built output.
+      - name: Check volume references resolve (apps/production)
+        run: yq -o=json ea '[.]' /tmp/apps-production.yaml | ./scripts/check-volume-refs.mts
+
+      - name: Check volume references resolve (infrastructure/prod/configs)
+        run: yq -o=json ea '[.]' /tmp/infra-configs.yaml | ./scripts/check-volume-refs.mts
+
+      - name: Check volume references resolve (infrastructure/prod/dns)
+        run: yq -o=json ea '[.]' /tmp/infra-dns.yaml | ./scripts/check-volume-refs.mts

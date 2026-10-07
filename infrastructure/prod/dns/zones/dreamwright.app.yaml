@@ -1,9 +1,14 @@
-# dreamwright.app sends and receives no mail: SPF that authorizes nothing and DMARC at
-# p=reject. There is no rua= address, so no Email Routing rule for dmarc@ exists for this
-# zone, and enabling routing would write apex MX records.
+# dreamwright.app now routes mail through Cloudflare Email Routing -- see
+# ../email-routing/dreamwright.app.yaml for the rules, the destinations and the
+# EmailRoutingSettings resource that turns the feature on. SPF widens only as far as that
+# needs (Cloudflare's routing relay, not a blanket allow) and DMARC matches the p=none
+# monitoring policy the other routed domains start at, with rua= to this zone's own
+# dmarc@ rule.
 #
-# No null MX (RFC 7505): the composition renders priority with `with`, which skips 0, so
-# a `priority: 0` MX would reach Cloudflare without a priority.
+# The three apex MX records and the cf2024-1 DKIM TXT record Email Routing requires are
+# not declared here yet: enabling the feature makes Cloudflare create them, same as every
+# other routed zone, and they still need to be pulled into git with
+# scripts/generate-dnszones.sh and adopted once they exist.
 apiVersion: dns.activescott.com/v1alpha1
 kind: DNSZone
 metadata:
@@ -15,21 +20,38 @@ spec:
     ttl: 300
     proxied: false
   records:
-    - key: apex-cname
+    # dreamwright.app is served by aws-prod (ping-poet/dreamwright#278); the address is the
+    # aws-prod NLB's Elastic IP. The provider can't change a record's type in place, so
+    # these got new keys to delete the old CNAMEs and create A records.
+    - key: apex-a
       name: dreamwright.app
-      type: CNAME
+      type: A
       ttl: 1
-      content: k8s.activescott.com
-    - key: www-cname
+      content: 54.71.229.250
+    - key: www-a
       name: www.dreamwright.app
-      type: CNAME
+      type: A
       ttl: 1
-      content: k8s.activescott.com
+      content: 54.71.229.250
     - key: apex-spf-txt
       name: dreamwright.app
       type: TXT
-      content: v=spf1 -all
+      content: v=spf1 include:_spf.mx.cloudflare.net ~all
     - key: dmarc-txt
       name: _dmarc.dreamwright.app
       type: TXT
-      content: v=DMARC1; p=reject
+      content: v=DMARC1; p=none; rua=mailto:dmarc@dreamwright.app
+    # SES domain identity DKIM for dreamwright.app, from the aws-prod account
+    # (ping-poet/dreamwright#273).
+    - key: ses-dkim-1-cname
+      name: lxyi3vwb7kh5w6sapovrlcizuan2sdk4._domainkey.dreamwright.app
+      type: CNAME
+      content: lxyi3vwb7kh5w6sapovrlcizuan2sdk4.dkim.amazonses.com
+    - key: ses-dkim-2-cname
+      name: 5jkusntjkdazjv63tglif5abvgh76fpf._domainkey.dreamwright.app
+      type: CNAME
+      content: 5jkusntjkdazjv63tglif5abvgh76fpf.dkim.amazonses.com
+    - key: ses-dkim-3-cname
+      name: odi3d4n3dmm5thmewnpsfwwhaqqntnji._domainkey.dreamwright.app
+      type: CNAME
+      content: odi3d4n3dmm5thmewnpsfwwhaqqntnji.dkim.amazonses.com

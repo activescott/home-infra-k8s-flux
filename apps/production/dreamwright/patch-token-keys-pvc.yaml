@@ -1,6 +1,0 @@
-- op: add
-  path: /spec/storageClassName
-  value: local-path
-- op: add
-  path: /spec/volumeName
-  value: dreamwright-prod-token-keys-pv

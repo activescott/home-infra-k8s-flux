@@ -270,139 +270,44 @@ OPNsense exposes no Prometheus or OTel endpoint natively. Two plugins are availa
 
 Caveat before assuming this replaces the log-derived WAN drop counter: node_exporter's FreeBSD collector coverage is narrower than Linux. CPU, memory, filesystem, and per-interface byte/packet/error counters are available, but `node_network_carrier_changes_total` is Linux-specific (it reads `/sys/class/net`, which FreeBSD does not have). Adding node_exporter would give throughput and error-rate context; the syslog-derived counter stays authoritative for carrier drops.
 
-### debeth remote write
+### Remote write
 
-debeth's eth-docker Alloy pushes a subset of its metrics here, so the nas can alert on the validator without any route into debeth (activescott/activeassistant#648). The Alloy side lives in `hosts/debeth/` in the private repo.
+Two senders push metrics here: debeth's eth-docker Alloy, so the nas can alert on the validator without any route into debeth (activescott/activeassistant#648), and the Dreamwright agents host (ping-poet/dreamwright#122). debeth's Alloy config lives in `hosts/debeth/` in the private repo.
 
 ```
-debeth Alloy --HTTPS POST--> Traefik prometheus.activescott.com/api/v1/write --> prometheus-server (--web.enable-remote-write-receiver)
+debeth Alloy / agents host --HTTPS POST--> Traefik prometheus.activescott.com/api/v1/write --> prometheus-server (--web.enable-remote-write-receiver)
 ```
 
-- `prometheus/prometheus-remote-write-ingress.yaml` routes only that exact path, through `prometheus-remote-write-lan` (allows `10.1.111.25/32`), `prometheus-remote-write-inflight` (4 concurrent requests), `prometheus-remote-write-auth` (basic auth, user `debeth`) and `prometheus-remote-write-body-limit` (4 MiB). Everything else on the host stays on `prometheus-ingress.yaml` and Scott's read credential, which cannot write.
-- debeth resolves the name to `10.1.111.20` through the LAN DNS override, so its source address survives to the allowlist. Publicly the name resolves to the WAN address, which is why the path has an allowlist and not only a password.
-- `scripts/create-debeth-remote-write-auth.mts` creates and rotates the credential. Scott runs it piped straight into debeth over ssh (`./scripts/create-debeth-remote-write-auth.mts | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'`, with the secrets directory created first; see `hosts/debeth/README.md` in the private repo for the full order). It writes the bcrypt line into `.env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted`; the password is never shown, only piped. Nothing else keeps a copy; if it is lost, rerun the whole line, which rotates it. The file first committed is a placeholder whose hash Traefik rejects for every password.
+- `prometheus/prometheus-remote-write-ingress.yaml` routes only that exact path, through `prometheus-remote-write-lan` (allows `10.1.111.25/32` for debeth and `52.11.188.6/32` for the agents host), `prometheus-remote-write-inflight` (4 concurrent requests), `prometheus-remote-write-auth` (basic auth, users `debeth` and `dreamwright-agents`) and `prometheus-remote-write-body-limit` (4 MiB). Everything else on the host stays on `prometheus-ingress.yaml` and Scott's read credential, which cannot write.
+- debeth resolves the name to `10.1.111.20` through the LAN DNS override, so its source address survives to the allowlist. Publicly the name resolves to the WAN address, which is why the path has an allowlist and not only a password. The agents host comes in from the internet; the edge firewall's port forward keeps its public address, as Traefik's access log shows for every public client.
+- `scripts/add-ingest-user.mts prometheus-remote-write <user>` creates and rotates a sender's credential. Scott runs it piped straight into the sender over ssh, for debeth `./scripts/add-ingest-user.mts prometheus-remote-write debeth | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'` (with the secrets directory created first; see `hosts/debeth/README.md` in the private repo for the full order). It rewrites the user's bcrypt line in `prometheus/prometheus-remote-write-users.public-key-encrypted.encrypted` and keeps the other users' lines, so it needs the age key from 1Password. The password is never shown, only piped. Nothing else keeps a copy; if it is lost, rerun the whole line, which rotates it. A line whose hash is too short to be bcrypt is a placeholder that Traefik rejects for every password.
+- The first run against `prometheus-remote-write` carries debeth's line over from `.env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted`, where it lived as a single dotenv value, and deletes that file.
 - Every series debeth sends carries `host="debeth"`.
+- Every series the agents host sends carries its instance name as `host` and a `job` starting `dreamwright-host/`. The `dreamwright-host` alert group selects on the job, since the name changes when the instance is replaced: `DreamwrightHostSilent` when no metrics arrive for 15 minutes, `DreamwrightHostLogsDropped` when Loki refuses its log lines.
 
 The receiver also accepts writes on the in-cluster Service from any pod that can reach it; Traefik's allowlist does not apply there.
 
-After Flux applies, from a LAN host other than debeth, `curl -X POST https://prometheus.activescott.com/api/v1/write` gets a 403. From debeth, the same request gets a 401 without the credential and with Scott's read credential.
+After Flux applies, from a LAN host other than debeth, `curl -X POST https://prometheus.activescott.com/api/v1/write` gets a 403, and so does the same request from any internet address but the agents host. From debeth or the agents host, the same request gets a 401 without the credential and with Scott's read credential, and reaches Prometheus with the sender's own: an empty body gets a 400 from Prometheus itself, and the sender's real writes get a 2xx (`prometheus_http_requests_total{handler="/api/v1/write",code=~"2.."}`).
 
-The check with Scott's read credential is mandatory after every change to the remote-write Ingress or its middlewares. If the Ingress names a middleware that does not exist, Traefik 3.3.6 drops the whole `/api/v1/write` router and the path falls through to `prometheus-ingress.yaml`, where the read credential can write. Nothing else reports this: debeth's writes fail with a 401 either way. Run it from debeth and expect 401 (curl prompts for the password):
+The check with Scott's read credential is mandatory after every change to the remote-write Ingress or its middlewares. If the Ingress names a middleware that does not exist, Traefik 3.3.6 drops the whole `/api/v1/write` router and the path falls through to `prometheus-ingress.yaml`, where the read credential can write. Nothing else reports this: the senders' writes fail with a 401 either way. Run it from debeth and expect 401 (curl prompts for the password):
 
 ```
 curl -s -o /dev/null -w '%{http_code}\n' -X POST -u '<read user>' https://prometheus.activescott.com/api/v1/write
 ```
 
-## Kubernetes audit log
+### Loki push
 
-**k3s on nas1 does not write one today.** Checked by looking for the stream in Loki: the only
-`job` values are `loki.source.kubernetes.pods` and `syslog`, and nothing in this repo passes
-the API server an audit flag. So the control-plane half of
-activescott/activeassistant#348 is wired but not yet fed.
+The Dreamwright agents host pushes its logs to Loki over the internet (ping-poet/dreamwright#122). Only the push path is public; queries stay in-cluster.
 
-Everything downstream of the file is in place and reconciled by Flux: Alloy mounts
-`/var/log/kubernetes/audit` (`DirectoryOrCreate`, so it is harmless while empty), tails
-`*.log` there, and mints three counters that the `agent-sandbox-security` alert group reads.
-Until the flags below are set, those counters stay at zero and the three audit alerts cannot
-fire. **Their silence is not coverage.**
-
-What remains is a node-level change, and k3s server flags on TrueNAS are Scott's to set.
-
-### 1. Write the audit policy
-
-Keep it narrow. A default-everything policy on this cluster is tens of MB a day of Flux and
-kubelet chatter, and none of it is what #348 asks for. This one records the two things the
-alerts read and drops the rest:
-
-```bash
-sudo mkdir -p /var/lib/rancher/k3s/server
-sudo tee /var/lib/rancher/k3s/server/audit-policy.yaml >/dev/null <<'EOF'
-apiVersion: audit.k8s.io/v1
-kind: Policy
-omitStages:
-  - RequestReceived
-rules:
-  # RBAC and NetworkPolicy writes in the sandbox namespaces. RequestResponse
-  # so the alert can say what changed, not only that something did.
-  - level: RequestResponse
-    verbs: ["create", "update", "patch", "delete"]
-    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
-    resources:
-      - group: "rbac.authorization.k8s.io"
-        resources: ["roles", "rolebindings"]
-      - group: "networking.k8s.io"
-        resources: ["networkpolicies"]
-  # Services, also RequestResponse, and the level is the point rather than a
-  # detail: SandboxServiceExternalIP looks for the word externalIPs in
-  # the request body, and at Metadata the body is not there. Dropping this rule
-  # to Metadata leaves an alert that can never fire and looks healthy.
-  - level: RequestResponse
-    verbs: ["create", "update", "patch"]
-    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
-    resources:
-      - group: ""
-        resources: ["services"]
-  # Everything else in the sandbox namespaces at Metadata, which is enough:
-  # a Pod Security denial puts its reason in responseStatus.message, and
-  # Metadata records responseStatus.
-  - level: Metadata
-    namespaces: ["agent-sandbox-k8s", "agent-sandbox-docker"]
-  - level: None
-EOF
-sudo chmod 600 /var/lib/rancher/k3s/server/audit-policy.yaml
+```
+agents host --HTTPS POST--> Traefik loki.activescott.com/loki/api/v1/push --> loki:3100
 ```
 
-### 2. Create the log directory
+- `loki/loki-push-ingress.yaml` routes only that exact path, through `loki-push-allowlist` (allows `52.11.188.6/32`), `loki-push-inflight` (4 concurrent requests), `loki-push-auth` (basic auth, user `dreamwright-agents`) and `loki-push-body-limit` (4 MiB), in that order, as on the remote-write path. Loki runs with `auth_enabled: false`, so basic auth is the only credential.
+- `scripts/add-ingest-user.mts loki-push <user>` creates and rotates a credential, the same way as for remote write. It writes `loki/loki-push-users.public-key-encrypted.encrypted`. The file first committed is a placeholder, so the path denies every push until it has run.
+- `networkpolicy.yaml` admits Traefik to Loki on 3100 for this route.
 
-```bash
-sudo mkdir -p /var/log/kubernetes/audit
-```
-
-The path is not arbitrary: it is what Alloy's hostPath in `alloy/helmrelease.yaml` mounts, and
-the two have to agree.
-
-### 3. Pass the flags to the API server
-
-```bash
-sudo tee -a /etc/rancher/k3s/config.yaml >/dev/null <<'EOF'
-kube-apiserver-arg:
-  - audit-policy-file=/var/lib/rancher/k3s/server/audit-policy.yaml
-  - audit-log-path=/var/log/kubernetes/audit/audit.log
-  - audit-log-maxage=7
-  - audit-log-maxbackup=3
-  - audit-log-maxsize=100
-EOF
-sudo systemctl restart k3s
-```
-
-If `/etc/rancher/k3s/config.yaml` already has a `kube-apiserver-arg` key, merge into it rather
-than appending a second one: k3s reads the last occurrence and silently drops the first.
-If k3s here is started from a systemd unit's `ExecStart` rather than a config file, the same
-five arguments go there as `--kube-apiserver-arg=...` instead.
-
-### 4. Confirm
-
-```bash
-sudo ls -l /var/log/kubernetes/audit/
-```
-
-then, after a minute, in Grafana:
-
-```logql
-{app="kube-apiserver-audit"}
-```
-
-Two things to check while confirming, both of which fail silently:
-
-- The file is created `0600 root:root`. Alloy's container runs as root (the chart sets no
-  `securityContext` on it) so it can read that, but if the chart ever gains one, the tail goes
-  quiet with no error anywhere.
-- TrueNAS updates have been known to rewrite k3s configuration. Re-check after each one; a
-  missing audit log looks exactly like a cluster where nothing happened.
-
-Then force one of the alerts rather than waiting: apply a pod manifest the namespace's Pod
-Security level forbids and watch `SandboxPodSecurityDenied`. The counters do not exist until
-the first matching line, so an unverified selector and a quiet cluster are indistinguishable.
+After Flux applies, from the agents host, `curl -X POST https://loki.activescott.com/loki/api/v1/push` gets a 401 without the credential and a 2xx with it (send a real push, for example `-H 'Content-Type: application/json' -d '{"streams":[{"stream":{"host":"check"},"values":[["'"$(date +%s%N)"'","push check"]]}]}'`, which returns 204). From any other address the same request gets a 403.
 
 ## Alert Runbooks
 

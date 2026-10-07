@@ -1,22 +1,27 @@
-# Restricts what the assistant can reach on the local network.
+# Restricts what the assistant can reach, on the local network and the internet.
 #
 # She is the one workload in this cluster that acts on untrusted input: anything arriving over
 # Slack, and any web page a sub-agent fetches, can carry an instruction aimed at her. Without
 # this, a successful prompt injection makes outbound requests from inside the LAN, where services
 # largely authenticate by network position.
 #
-# Internet access is unrestricted and stays that way; it is inherent to the job. What this
-# removes is her ability to reach other namespaces in the cluster, and LAN hosts that are not
-# already published at the edge. It is NOT a full LAN block: anything reachable through the
-# edge firewall stays reachable by hairpin, since that traffic leaves with a public destination
-# address. Hosts that are only reachable from inside are the ones this protects.
+# The internet is reachable only through her egress proxy, the last rule below, which logs every
+# host and asks the approval app about the ones not on its standing list
+# (activescott/activeassistant#317). A process that ignores HTTP_PROXY, HTTPS_PROXY or the ssh
+# ProxyCommand times out, and that includes ACP children and MCP servers, since they run in this
+# pod. DNS is still open and can still carry data out; that is activescott/activeassistant#289.
+#
+# Beyond the proxy, what this allows is the named in-cluster services below. Other namespaces
+# and the LAN are not reachable directly. It is NOT a full LAN block: anything published at the
+# edge firewall stays reachable through the proxy by hairpin when its name resolves to the public
+# address, since that traffic leaves with a public destination address. Hosts that are only
+# reachable from inside are the ones this protects.
 #
 # TWO THINGS TO KNOW BEFORE EDITING:
 #
 #  1. Egress rules match the packet's DESTINATION address, not the next hop. The default
-#     gateway at 10.1.111.1 does not need a rule for internet traffic to work, and is
-#     deliberately not allowed: reaching OPNsense itself should be a decision, not a side
-#     effect.
+#     gateway at 10.1.111.1 is deliberately not allowed: reaching OPNsense itself should be a
+#     decision, not a side effect.
 #  2. A destination that is missing from this file fails as a CONNECTION TIMEOUT, with nothing
 #     logged. If something that should work hangs, suspect this file first.
 #
@@ -24,8 +29,9 @@
 # LAN 10.1.111.0/24.
 ---
 # cert-manager stands up a short-lived HTTP-01 solver pod IN THIS NAMESPACE for every issuance
-# and renewal. The policy below uses `podSelector: {}`, which selects it too -- so without this,
-# Traefik cannot reach the solver on 8089 and the challenge hangs.
+# and renewal. It carries its own label, not `app: olya`, so the `olya` policy below does not
+# reach it -- this policy is what admits Traefik to the solver on 8089, and without it the
+# challenge hangs.
 #
 # The symptom is confusing: the app answers normally (a fast 401 from basicAuth on /), while
 # only the /.well-known/acme-challenge/ path times out, and the Certificate sits `pending` with
@@ -56,9 +62,14 @@ metadata:
   name: olya
   namespace: olya
 spec:
-  # Selects EVERY pod in the namespace, including cert-manager's HTTP-01 solver pods. See the
-  # companion policy above, which is what keeps ACME working.
-  podSelector: {}
+  # Scoped to olya-0 only. The hourly olya-memory-sync CronJob pod (app=olya-memory-sync) in
+  # this namespace is deliberately NOT covered: it clones over HTTPS with no proxy env, and the
+  # egress proxy's ingress only admits app=olya, so a podSelector: {} here would cut its egress
+  # with nothing logged (activescott/activeassistant#317). Left unrestricted pending a separate
+  # change.
+  podSelector:
+    matchLabels:
+      app: olya
   policyTypes:
     - Ingress
     - Egress
@@ -103,20 +114,7 @@ spec:
           protocol: TCP
 
   egress:
-    # The internet, and nothing on any private network. The `except` blocks carve out all of
-    # RFC1918 plus link-local and loopback; everything she is allowed to reach inside those
-    # ranges is named explicitly in the rules below.
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 10.0.0.0/8 # the LAN, and the node itself
-              - 172.16.0.0/12 # cluster pods and services
-              - 192.168.0.0/16
-              - 169.254.0.0/16 # link-local, including cloud metadata endpoints
-              - 127.0.0.0/8
-
-    # DNS. Without this nothing else resolves and every rule above looks broken.
+    # DNS. Without this nothing else resolves and every rule below looks broken.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -162,8 +160,8 @@ spec:
     # logs, so this is load-bearing for ordinary work, not just for diagnosis.
     #
     # This allows the IN-CLUSTER addresses only. grafana.activescott.com resolves to the LAN
-    # override 10.1.111.20, which the except list above denies, so the public hostnames time out
-    # from in here. Use:
+    # override 10.1.111.20, which nothing here allows and the proxy refuses, so the public
+    # hostnames fail from in here. Use:
     #   http://loki.monitoring.svc:3100
     #   http://grafana.monitoring.svc
     #   http://prometheus-server.monitoring.svc
@@ -187,9 +185,9 @@ spec:
 
     # The Slack relay (activescott/activeassistant#315). Her SLACK_API_URL points at this
     # Service, and the relay holds the workspace's real tokens, so this is the only route from
-    # here to Slack. It is deliberately the relay and not slack.com: the internet rule above
-    # would let her reach slack.com directly, and what stops that being useful is that no
-    # Slack credential exists in this pod. The relay pod's own policy in
+    # here to Slack's Web API. It is deliberately the relay and not slack.com: the proxy would
+    # let her reach slack.com, and what stops that being useful is that no Slack credential
+    # exists in this pod. The relay pod's own policy in
     # apps/production/browser-chaperone admits her on this port and nothing else.
     - to:
         - namespaceSelector:
@@ -202,8 +200,11 @@ spec:
         - port: 3600
           protocol: TCP
 
-    # The MCP gateway (browser-chaperone#39). Her google-workspace MCP server is this Service,
-    # and the gateway holds the Google credential. Its own policy in
+    # The MCP gateway (browser-chaperone#39). Her google-workspace and tinkerbell MCP servers
+    # are this Service, and the gateway holds the Google credential and the tinkerbell token
+    # (#44). tinkerbellbot.com itself is public, so the internet rule above still reaches it;
+    # what closes that path is that no tinkerbell token is in this pod, and her egress proxy
+    # denies the host. Its own policy in
     # apps/production/browser-chaperone admits her on this port and nothing else.
     - to:
         - namespaceSelector:
@@ -216,38 +217,9 @@ spec:
         - port: 3700
           protocol: TCP
 
-    # The sandbox vcluster's API, so an agent can run tests against a real Kubernetes API
-    # instead of against nas1 (activescott/activeassistant#346). The kubeconfig for it is the
-    # Secret `vc-agent-sandbox`, which apps/production/agent-sandbox-k8s/olya-kubeconfig-rbac.yaml
-    # grants her `get` on.
-    #
-    # The control-plane pod only. The pods the syncer creates in that namespace on an agent's
-    # behalf are workloads an agent wrote, and this policy exists to keep her off exactly that
-    # sort of thing; the API is the whole of what she needs to reach.
-    #
-    # Port 8443 rather than the 443 in the kubeconfig's server URL, for the same nat/filter
-    # reason worked out for the Kubernetes API above: the `agent-sandbox` Service maps 443 to
-    # 8443 on the pod, and the filter table sees the translated port. 443 is listed too so this
-    # does not rest on being right about that.
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: agent-sandbox-k8s
-          podSelector:
-            matchLabels:
-              app: vcluster
-              release: agent-sandbox
-      ports:
-        - port: 8443
-          protocol: TCP
-        - port: 443
-          protocol: TCP
-
-    # Her egress proxy (activescott/activeassistant#316), which logs every outbound host. The
-    # path opens here first; the HTTP_PROXY and HTTPS_PROXY that actually send her traffic
-    # through it come with the statefulset change, so nothing routes differently yet. The
-    # internet rule above still lets anything that ignores them connect directly; #317 removes
-    # it.
+    # Her egress proxy (activescott/activeassistant#316), which logs every outbound host. Her
+    # only route to the internet: HTTP_PROXY and HTTPS_PROXY in olya-proxy-env send her traffic
+    # here, and git over ssh arrives as CONNECT host:22 through scripts/ssh-proxy-connect.mts.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -257,4 +229,19 @@ spec:
               app: olya-egress-proxy
       ports:
         - port: 3128
+          protocol: TCP
+
+    # GPU Poet's production Postgres, for the monthly market report
+    # (activescott/activeassistant#705). She logs in as olya_ro, a read-only role, with the
+    # PGHOST and PGPASSWORD set in olya-statefulset.yaml. The db pod's own policy in
+    # apps/production/gpupoet admits her on this port and nothing else.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gpupoet-prod
+          podSelector:
+            matchLabels:
+              app: db
+      ports:
+        - port: 5432
           protocol: TCP

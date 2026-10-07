@@ -78,6 +78,18 @@ spec:
     alertmanager:
       enabled: true
 
+      # Never calls the Kubernetes API; its configmap-reload sidecar watches the mounted file.
+      automountServiceAccountToken: false
+
+      # Picked up by the chart's default kubernetes-pods scrape job (see "Adding a scrape
+      # target" in the README) rather than a static extraScrapeConfigs entry, since
+      # Alertmanager is already a discoverable pod. Without this there were zero
+      # alertmanager_* series in Prometheus — no way to tell a delivered-but-ignored
+      # notification from a silently failed one. Port 9093 is Alertmanager's listener.
+      podAnnotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9093"
+
       persistence:
         enabled: false
 
@@ -129,6 +141,10 @@ spec:
           # OlyaPodNotReady fires because Olya is down, so it's the one alert that must
           # skip her hook rather than go through it -- she can't triage her own outage.
           # Matching it here, ahead of the olya-hook route, sends it straight to Scott.
+          # OlyaPodNotReadyExtended is matched the same way for the same reason, which also
+          # means it still reaches Scott over the same Telegram receiver as OlyaPodNotReady
+          # rather than a distinct path (activescott/activeassistant#812) -- the only other
+          # receiver configured here is olya-hook, and that one is the outage itself.
           #
           # Every other alert also goes to Olya, who files and triages it. `continue` lets the
           # alert carry on to the route below it. The second route is not redundant: once any
@@ -141,7 +157,7 @@ spec:
           routes:
             - receiver: on_call_operator_default
               matchers:
-                - alertname="OlyaPodNotReady"
+                - alertname=~"OlyaPodNotReady|OlyaPodNotReadyExtended"
             - receiver: olya-hook
               group_by: ["..."]
               repeat_interval: 24h
@@ -210,10 +226,18 @@ spec:
                 annotations:
                   summary: Crossplane is using over half the Cloudflare API budget
                   description: >-
-                    Over 600 Cloudflare API calls in 5 minutes; the limit is 1200 per token,
-                    after which every call 429s for 5 minutes and Crossplane stops reconciling.
-                    Raise --poll in provider-cloudflare-runtimeconfig.yaml. Do NOT set
-                    --max-reconcile-rate, which silently stops controllers.
+                    Known cause so far: a DNS or network outage makes every failed read requeue
+                    with error backoff instead of waiting out --poll, so reconcile attempts spike
+                    even though calls reaching Cloudflare drop to zero. Confirm with the query
+                    below -- if the increase is all operation="connect" with create/update flat,
+                    this is the retry-storm pattern, not real usage nearing the budget. See
+                    activescott/home-infra-k8s-flux#237. Anything that doesn't match is a new
+                    failure and does mean the budget is genuinely close: raise --poll in
+                    provider-cloudflare-runtimeconfig.yaml. Do NOT set --max-reconcile-rate,
+                    which silently stops controllers.
+                  query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgethigh
+                  repo: activescott/home-infra-k8s-flux
               - alert: CloudflareAPIBudgetCritical
                 expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 1000'
                 for: 2m
@@ -222,8 +246,18 @@ spec:
                 annotations:
                   summary: Crossplane is about to exhaust the Cloudflare API budget
                   description: >-
-                    Over 1000 Cloudflare API calls in 5 minutes against a 1200 limit. At the
-                    limit every call 429s for 5 minutes and no managed resource can be observed.
+                    Known cause so far: same retry-storm pattern as CloudflareAPIBudgetHigh, past
+                    the second threshold. On 2026-09-24 this fired for 12 minutes during Ziply
+                    Fiber's planned maintenance -- CoreDNS returned SERVFAIL for
+                    api.cloudflare.com, so every read requeued with error backoff instead of
+                    waiting out --poll, and the reconcile-attempt counter hit 1200/5m with
+                    essentially zero calls reaching Cloudflare. See
+                    activescott/home-infra-k8s-flux#237. Anything that doesn't match -- no
+                    DNS/network trouble in the same window, or create/update actually rising --
+                    is a new failure and means the budget is genuinely exhausted.
+                  query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgetcritical
+                  repo: activescott/home-infra-k8s-flux
               # The symptom rather than the cause: resources that cannot sync.
               # Catches throttling, credential problems and dead controllers
               # alike, which is the point -- on 2026-08-28 all three looked
@@ -376,8 +410,16 @@ spec:
                   summary: >-
                     gpupoet.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app) -- gpupoet-prod also logged ErrImagePull failures
+                    resolving registry-1.docker.io in the same window. See
+                    activescott/gpu-poet#75. Confirm with the query below: if other sites are
+                    down at the same time, this is the shared outage, not an app or ingress
+                    problem. Anything that doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#gpupoetsiteprobefailing
+                  repo: activescott/gpu-poet
               - alert: GpupoetCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://gpupoet.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -718,10 +760,16 @@ spec:
                   summary: >-
                     ramblefeed.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes. Could be a pod/ingress problem, or Cloudflare's
-                    SSL/TLS mode drifting away from Full -- see
-                    tinkerbellbot.com's 2026-08-30 incident.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app), not Cloudflare's SSL/TLS mode drifting off Full as
+                    first suspected -- DNS kept resolving correctly throughout. See
+                    activescott/ramblefeed#112. Confirm with the query below: if other sites are
+                    down at the same time, this is the shared outage. Anything that doesn't
+                    match -- only this site down, or a pod/ingress problem -- is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#ramblefeedsiteprobefailing
+                  repo: activescott/ramblefeed
               - alert: RamblefeedCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -743,10 +791,16 @@ spec:
                   summary: >-
                     tinkerbellbot.com is not answering its https probe.
                   description: >-
-                    The https probe to {{ $labels.instance }} has failed for 5
-                    minutes. Could be a pod/ingress problem, or Cloudflare's
-                    SSL/TLS mode drifting away from Full -- see the
-                    2026-08-30 flexible-mode redirect-loop incident.
+                    Known cause so far: every blackbox_https target failed together during
+                    Ziply Fiber's planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage
+                    upstream of any one app), a connection-level failure rather than an HTTP
+                    error, which rules out an app or ingress-specific cause like the 2026-08-30
+                    flexible-mode redirect loop. See activescott/tinkerbell#197. Confirm with
+                    the query below: if other sites are down at the same time, this is the
+                    shared outage. Anything that doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#tinkerbellbotsiteprobefailing
+                  repo: activescott/tinkerbell
               - alert: TinkerbellbotCertExpiringSoon
                 expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"} - time()) / 86400 < 14'
                 for: 1h
@@ -851,7 +905,20 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'OpenRouter budget exhausted for {{ $labels.app }} in {{ $labels.namespace }}, model calls are failing.'
-                  description: '{{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15 minutes: that namespace''s workspace or key budget is spent and every call on it fails until the cap is raised or the month resets. Check Loki for the exact message: {namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403".'
+                  description: >-
+                    {{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in
+                    the last 15 minutes: that namespace's workspace or key budget is spent and
+                    every call on it fails until the cap is raised or the month resets. Known
+                    cause so far: this alert exists because Olya's OpenClaw workspace ($50/month
+                    cap, namespace olya) hit its budget silently with nothing surfacing it until
+                    noticed by hand; Job Accelerator holds a separate $100/month key in
+                    job-accelerator-prod and can exhaust independently. See
+                    activescott/home-infra-k8s-flux#220. There is no in-cluster fix -- raise the
+                    cap in the OpenRouter dashboard for the workspace/key named by the firing
+                    labels, or wait for the monthly reset.
+                  query: '{namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OpenRouterBudgetExceeded.md
+                  repo: activescott/job-accelerator (namespace job-accelerator-prod) or activescott/activeassistant (namespace olya)
           - name: browser-chaperone
             rules:
               # The approval app runs two replicas now (browser-chaperone#89), so a rollout
@@ -1162,7 +1229,16 @@ spec:
                     addresses at TCP accept, so there is no request log to find. Confirm with the
                     "In-cluster addresses blocked" panel on the Email dashboard. If only
                     /api/health is failing, mail delivery is unaffected and nothing else will
-                    alert; that is the webmail alone.
+                    alert; that is the webmail alone. Known cause so far: on 2026-09-24 every
+                    blackbox_https target failed together for 12 minutes during Ziply Fiber's
+                    planned maintenance, not a Stalwart ban -- three unrelated backends failing
+                    and recovering in lockstep rules that out. See
+                    activescott/home-infra-k8s-flux#238. Confirm with the query below: if other
+                    sites are down at the same time, this is the shared outage. Anything that
+                    doesn't match is a new failure.
+                  query: 'count(probe_success{job="blackbox_https"} == 0)'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#stalwartwebsurfacedown
+                  repo: activescott/home-infra-k8s-flux
               - alert: StalwartBlockingClusterAddress
                 # The direct detector for that ban, rather than its 502 symptom.
                 # Bans never expire here (no *BanPeriod is set), so one occurrence
@@ -1574,7 +1650,21 @@ spec:
                   severity: warning
                 annotations:
                   summary: 'WAN gateway monitor alarmed (loss/latency/down) on the edge firewall.'
-                  description: 'One or more gateway-monitor alarm transitions in the last 10 minutes — upstream packet loss or outage even though igb0 carrier held. Pull details in Grafana Explore with {host="theshield"} |= "MONITOR:".'
+                  description: >-
+                    One or more gateway-monitor alarm transitions in the last 10 minutes —
+                    upstream packet loss or outage even though igb0 carrier held. Known cause so
+                    far: fired 2026-09-24 during Ziply Fiber's planned maintenance -- the
+                    upstream gateway alarmed none -> loss -> down and was unreachable for 12m29s,
+                    then alarmed back through down -> loss -> none as it recovered. The blackbox
+                    site probes and the Cloudflare API budget alerts fired from the same outage
+                    in the same window. It fired again 2026-09-25 on a single 40s loss alarm with
+                    no down transition, outside the announced maintenance window -- compare
+                    against home-infra-private docs/specs/wan-link-flapping-ziply/ before
+                    assuming it's the same known cause. See
+                    activescott/home-infra-k8s-flux#239.
+                  query: '{host="theshield"} |= "MONITOR:"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/WanGatewayDegraded.md#wangatewaydegraded
+                  repo: activescott/home-infra-k8s-flux
               - alert: WanGatewayDegradedBurst
                 expr: 'sum(increase(loki_process_custom_wan_gateway_alarm_total[1h])) > 3'
                 for: 0m
@@ -1582,7 +1672,18 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'WAN gateway monitor alarming repeatedly on the edge firewall.'
-                  description: 'More than 3 gateway-monitor alarm transitions in the last hour, matching the dense-burst outage signature from the ongoing ISP investigation. Capture the timestamps for the ticket.'
+                  description: >-
+                    More than 3 gateway-monitor alarm transitions in the last hour, matching the
+                    dense-burst outage signature from the ongoing ISP investigation. Same counter
+                    and triage path as WanGatewayDegraded (activescott/home-infra-k8s-flux#239) at
+                    a higher bar: pull theshield's MONITOR: lines for the firing window and
+                    check whether the transitions cluster inside an announced Ziply maintenance
+                    window or match a pattern already recorded in home-infra-private
+                    docs/specs/wan-link-flapping-ziply/. Capture the timestamps for the ticket
+                    either way.
+                  query: '{host="theshield"} |= "MONITOR:"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/WanGatewayDegraded.md#wangatewaydegradedburst
+                  repo: activescott/home-infra-k8s-flux
               # Meta-alert: if the firewall stops shipping syslog, the two
               # alerts above go silent instead of firing. The firewall logs
               # continuously, so a 15m gap means the feed is broken (Alloy
@@ -1643,7 +1744,19 @@ spec:
                   summary: "Flux controller {{ $labels.controller }} has sustained errors"
                   description: >-
                     The {{ $labels.controller }} controller in flux-system has been producing
-                    reconciliation errors for 15 minutes. Check its logs.
+                    reconciliation errors for 15 minutes. Known cause so far: fired 2026-09-24
+                    for the gitrepository controller during Ziply Fiber's planned maintenance --
+                    source-controller logged 10 errors in 6 minutes failing to reach GitHub (a
+                    dial tcp i/o timeout, then lookup github.com ... server misbehaving), then
+                    recovered on its own once DNS came back. WanGatewayDegraded and the site
+                    probe alerts fired from the same outage in the same window. This is a
+                    10-minute rate window, so a genuine blip like this clears itself. See
+                    activescott/activeassistant#378. Anything that doesn't match -- no DNS or
+                    network error in the named controller's logs, or errors that don't stop once
+                    network access is restored -- is a new failure; check its logs.
+                  query: '{namespace="flux-system"} |~ "i/o timeout|server misbehaving"'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/FluxReconcileErrors.md
+                  repo: activescott/home-infra-k8s-flux
           - name: cluster-wide
             rules:
               # activescott/home-infra-k8s-flux#276: every per-project group
@@ -1797,177 +1910,109 @@ spec:
                   query: 'kubectl -n olya describe pod olya-0'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
                   repo: activescott/home-infra-k8s-flux
+              # Same condition as OlyaPodNotReady, escalated. A prior outage had
+              # OlyaPodNotReady fire for hours at one severity with no way to tell "she just
+              # restarted" from "she has been gone a long time" — this distinguishes the two
+              # by firing a second time, severity unchanged, once the first alert has been
+              # firing for an hour. Routed the same way as OlyaPodNotReady (see the route
+              # matcher above) rather than through olya-hook.
+              - alert: OlyaPodNotReadyExtended
+                expr: >-
+                  kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
+                  or kube_pod_init_container_status_waiting_reason{namespace="olya",pod="olya-0",reason="CrashLoopBackOff"} > 0
+                  or kube_pod_status_phase{namespace="olya",pod="olya-0",phase="Pending"} > 0
+                for: 60m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: olya-0 has not been Ready for over an hour
+                  description: >-
+                    OlyaPodNotReady has now been firing for over an hour. Check whether the
+                    StatefulSet is wedged on a stale revision rather than assuming a revert
+                    hasn't deployed — see "Wedged single-replica StatefulSet" in the runbook.
+                  query: 'kubectl -n olya describe pod olya-0'
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md#wedged-single-replica-statefulset
+                  repo: activescott/home-infra-k8s-flux
+              # A session wedged on a tool call that never returns, while the pod stays
+              # Ready (activescott/activeassistant#99). Fed by
+              # olya_stalled_session_progress_age_seconds; see the stage.match comment in
+              # alloy/helmrelease.yaml for the log line and why it reads lastProgressAge.
+              #
+              # 900 is above every value seen in the week to 2026-10-04 (max 886s, from
+              # subagents waiting on CI), and `for: 1h` on top means the session has made
+              # no progress for 75 minutes before this fires. The series is per session
+              # and disappears 5m after the session stops logging, so a recovery or a pod
+              # restart resolves it. max by rather than sum(): it is a gauge of seconds,
+              # and adding two series of it together gives a number that means nothing.
+              - alert: OlyaSessionStalled
+                expr: 'max by (session_id, session_key) (loki_process_custom_olya_stalled_session_progress_age_seconds) > 900'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'Olya session {{ $labels.session_key }} has made no progress for over an hour.'
+                  description: >-
+                    OpenClaw has logged "stalled session" for {{ $labels.session_id }}
+                    ({{ $labels.session_key }}) with lastProgressAge above 900s for an hour,
+                    and the line says recovery=none: OpenClaw will not unstick it. If the key
+                    is agent:olya:main or a Slack thread, Olya is not answering there. The fix
+                    is restarting the pod, kubectl --context nas -n olya delete pod olya-0,
+                    which drops whatever that session was doing.
+                  query: '{namespace="olya", app="olya"} |= "stalled session: sessionId={{ $labels.session_id }}"'
+                  repo: activescott/activeassistant
 
-          # Runtime security for the agent sandboxes (activescott/activeassistant#348,
-          # part of #345). Two independent feeds: Falco watching syscalls, and
-          # kube-apiserver's audit log watching the control plane. Both mint their
-          # counters in Alloy's loki.process; see alloy/helmrelease.yaml.
+          # Alertmanager's own delivery health. Scraped via the podAnnotations block under
+          # alertmanager: above, not extraScrapeConfigs, since it's already a discoverable
+          # pod — see "Adding a scrape target" in the README.
           #
-          # These fire on a single event rather than on a rate. A sandbox that
-          # tried once to read a service account token has already told us what
-          # we needed to know, and the volume is expected to be zero, so there is
-          # no baseline to exceed. `for` is therefore omitted throughout.
+          # No route carve-out needed: an alertname that doesn't match the OlyaPodNotReady
+          # matcher above falls through to both olya-hook (webhook) and
+          # on_call_operator_default (Telegram), so a failure specific to one integration
+          # still reaches someone over the other.
           #
-          # sum() is not optional here, for the reason spelled out in the
-          # tinkerbell-log-health group above: these counters carry every stream
-          # label Alloy had at that point in the pipeline, so an unaggregated
-          # expression evaluates per pod and per node.
-          #
-          # The two Falco alerts also require Falco's own counter for the same
-          # rule to have moved (activescott/activeassistant#402). Alloy re-reads
-          # the last line of each stream when it reopens it every hour and
-          # counts it again (grafana/alloy#7192), so the Loki counter alone
-          # fired four times on 2026-09-24 with no Falco event behind it. The
-          # Loki side stays because it carries falco_ns and the line to triage
-          # from; Falco's counter only knows the rule. Falco emits a rule's
-          # series only once it has matched, so it is born at 1 like Alloy's,
-          # and increase() cannot see that first sample: the `unless ... offset
-          # 5m` arm is what catches it, per series, so a new Falco pod's first
-          # match counts too. FalcoMetricsDown covers the scrape, since without
-          # it both alerts are silent.
-          - name: agent-sandbox-security
+          # Expect this to fire during an olya outage itself: olya-hook's webhook calls fail
+          # while the pod is down, which is exactly when OlyaPodNotReady is also firing. Both
+          # reach Scott over the same Telegram receiver, which is expected overlap, not a
+          # second incident.
+          - name: alertmanager-self-monitoring
             rules:
-              # Split by priority so a container escape and a shell someone
-              # opened by hand do not arrive with the same severity. The rules
-              # file assigns the priorities; see falco/helmrelease.yaml.
-              - alert: FalcoSandboxCritical
-                expr: >-
-                  sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Critical|Alert|Emergency"}[5m])) > 0
-                  and on (falco_rule)
-                  label_replace(
-                  sum by (rule_name) (
-                  increase(falcosecurity_falco_rules_matches_total[5m]) > 0
-                  or (falcosecurity_falco_rules_matches_total unless falcosecurity_falco_rules_matches_total offset 5m)
-                  ),
-                  "falco_rule", "$1", "rule_name", "(.*)"
-                  )
+              - alert: AlertmanagerNotificationFailed
+                expr: 'sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0'
+                for: 0m
                 labels:
                   severity: critical
                 annotations:
-                  summary: 'Falco: {{ $labels.falco_rule }} in {{ $labels.falco_ns }}.'
+                  summary: 'Alertmanager failed to deliver a notification via {{ $labels.integration }}.'
                   description: >-
-                    Falco matched a rule it only raises at Critical: a namespace escape, a
-                    privileged container, a sensitive host mount, or a read of a Kubernetes
-                    credential. In the sandbox namespaces these are all things the sandbox
-                    design says cannot happen, so this is either a real escape or the sandbox
-                    manifests do not say what we think they say. It is not a tuning problem.
-                  query: '{namespace="falco", falco_priority=~"Critical|Alert|Emergency"} | json'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcosandboxcritical
+                    alertmanager_notifications_failed_total rose for integration
+                    {{ $labels.integration }} in the last 15 minutes. Every other alert in
+                    this file depends on this delivery path, so some other firing alert may
+                    not have reached anyone.
                   repo: activescott/home-infra-k8s-flux
-              - alert: FalcoSandboxWarning
-                expr: >-
-                  sum by (falco_rule, falco_ns) (increase(loki_process_custom_falco_sandbox_alerts_total{falco_priority=~"Warning|Error"}[5m])) > 0
-                  and on (falco_rule)
-                  label_replace(
-                  sum by (rule_name) (
-                  increase(falcosecurity_falco_rules_matches_total[5m]) > 0
-                  or (falcosecurity_falco_rules_matches_total unless falcosecurity_falco_rules_matches_total offset 5m)
-                  ),
-                  "falco_rule", "$1", "rule_name", "(.*)"
-                  )
+          # Catches a pod wedged at mount time in any namespace — no container ever starts,
+          # so there are no restarts and no logs, which is exactly the class OlyaPodNotReady's
+          # own Pending clause covers only for olya-0. namespace!="olya" so a wedged olya-0
+          # pages once via OlyaPodNotReady rather than twice.
+          #
+          # for: 60m: 14 days of history at 1m resolution put the longest legitimate Pending
+          # span in the cluster at gpupoet-prod's revalidation CronJob pods (amazon-revalidation,
+          # ebay-revalidation), around 11m, and arc-runners' queued runner pods, around 5m. 60m
+          # clears both with room to spare, so no namespace exclusion is needed for either.
+          - name: cluster-pod-health
+            rules:
+              - alert: PodStuckPending
+                expr: 'kube_pod_status_phase{phase="Pending", namespace!="olya"} > 0'
+                for: 60m
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'Falco: {{ $labels.falco_rule }} in {{ $labels.falco_ns }}.'
+                  summary: '{{ $labels.namespace }}/{{ $labels.pod }} has been Pending for over an hour.'
                   description: >-
-                    Falco matched a rule at Warning or Error: a terminal shell, a write to a
-                    sensitive /etc file or a binary directory, or a connection to an address
-                    the sandbox should not reach. Unlike the Critical tier these have a
-                    plausible innocent explanation (someone exec-ing in to look at something,
-                    a build installing a binary), so the first question is which.
-                  query: '{namespace="falco", falco_priority=~"Warning|Error"} | json'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcosandboxwarning
-                  repo: activescott/home-infra-k8s-flux
-              # Falco is the only thing watching these namespaces at syscall
-              # level, so it going away is itself the incident. The `absent`
-              # arm covers the DaemonSet not existing at all, which is what a
-              # failed HelmRelease looks like from here.
-              - alert: FalcoNotRunning
-                expr: >-
-                  kube_daemonset_status_number_unavailable{namespace="falco",daemonset="falco"} > 0
-                  or absent(kube_daemonset_status_number_ready{namespace="falco",daemonset="falco"})
-                for: 10m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: 'Falco has not been running on nas1 for 10 minutes.'
-                  description: >-
-                    The Falco DaemonSet has an unavailable pod or has disappeared. Every rule
-                    in the agent-sandbox-security group is blind while this is true, and the
-                    other alerts here cannot tell that apart from a quiet cluster. Most likely
-                    causes are a rules file Falco refused to load and a kernel that stopped
-                    satisfying the modern eBPF probe after a TrueNAS update.
-                  query: '{namespace="falco"} |= "Runtime error"'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falconotrunning
-                  repo: activescott/home-infra-k8s-flux
-              # The two alerts above need Falco's rule counter as well as the
-              # Loki one, so a scrape that stops working silences both tiers
-              # while Falco itself is healthy. The `absent` arm covers the
-              # target not existing, which is what a lost pod annotation or
-              # metrics.enabled going false looks like.
-              - alert: FalcoMetricsDown
-                expr: >-
-                  up{job="kubernetes-pods",namespace="falco"} == 0
-                  or absent(up{job="kubernetes-pods",namespace="falco"})
-                for: 10m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: 'Prometheus cannot scrape Falco on nas1, so FalcoSandboxCritical and FalcoSandboxWarning cannot fire.'
-                  description: >-
-                    Falco's /metrics endpoint has been down or missing for 10 minutes. Both
-                    Falco alerts require Falco's rule-match counter, so neither can fire while
-                    this is true, even though Falco may still be matching and logging to Loki.
-                  query: 'up{job="kubernetes-pods",namespace="falco"}'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#falcometricsdown
-                  repo: activescott/home-infra-k8s-flux
-              # The three below read counters that stay at zero until k3s is
-              # started with audit logging, which is a node-level change on
-              # TrueNAS. Until then they cannot fire, and their silence means
-              # nothing. See ../README.md, "Kubernetes audit log".
-              - alert: SandboxPodSecurityDenied
-                expr: 'sum(increase(loki_process_custom_k8s_audit_sandbox_podsecurity_denied_total[15m])) > 0'
-                labels:
-                  severity: warning
-                annotations:
-                  summary: 'Pod Security admission refused a pod in an agent sandbox namespace.'
-                  description: >-
-                    Something tried to create a pod the sandbox namespace's Pod Security level
-                    forbids, most often a privileged one or one asking for host namespaces. The
-                    request was refused, so this is an attempt rather than a breach, but the
-                    sandbox workload is either broken or trying to escalate.
-                  query: '{app="kube-apiserver-audit"} |= "violates PodSecurity" |~ "\"namespace\":\"agent-sandbox-"'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxpodsecuritydenied
-                  repo: activescott/home-infra-k8s-flux
-              - alert: SandboxAuthzChanged
-                expr: 'sum(increase(loki_process_custom_k8s_audit_sandbox_authz_changed_total[15m])) > 0'
-                labels:
-                  severity: critical
-                annotations:
-                  summary: 'RBAC or NetworkPolicy changed inside an agent sandbox namespace.'
-                  description: >-
-                    A Role, RoleBinding or NetworkPolicy in a sandbox namespace was created,
-                    updated, patched or deleted. Those are declared in this repo and reconciled
-                    by Flux, so a legitimate change shows up here as Flux's own service account
-                    shortly after a merge. Any other identity, or no matching commit, means the
-                    sandbox is editing the walls around itself.
-                  query: '{app="kube-apiserver-audit"} |~ "\"resource\":\"(roles|rolebindings|networkpolicies)\"" |~ "\"namespace\":\"agent-sandbox-" | json'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxauthzchanged
-                  repo: activescott/home-infra-k8s-flux
-              - alert: SandboxServiceExternalIP
-                expr: 'sum(increase(loki_process_custom_k8s_audit_sandbox_service_external_ip_total[15m])) > 0'
-                labels:
-                  severity: critical
-                annotations:
-                  summary: 'A Service with externalIPs was written in an agent sandbox namespace.'
-                  description: >-
-                    A Service carrying spec.externalIPs or spec.loadBalancerIP was created or
-                    updated in a sandbox namespace, and vcluster copies externalIPs from the
-                    virtual Service to the host one. kube-proxy installs a node-wide DNAT for
-                    that address and port, which hijacks traffic to it for every pod on nas1 and
-                    for the node itself. Nothing in the sandbox legitimately sets either field.
-                  query: '{app="kube-apiserver-audit"} |~ "\"resource\":\"services\"" |~ "\"namespace\":\"agent-sandbox-" |~ "(externalIPs|loadBalancerIP)" | json'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/AgentSandboxSecurityAlerts.md#sandboxserviceexternalip
+                    Pending also covers a pod whose init containers are still running, not
+                    just the time before any container starts. Check for a FailedMount event
+                    first (a ConfigMap or Secret a volume references may not exist), then node
+                    capacity and the PVC.
+                  query: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}'
                   repo: activescott/home-infra-k8s-flux
 
           # WordPress (apps/base/wordpress-upstream). The counters are minted from the wordpress
@@ -2035,16 +2080,52 @@ spec:
                   query: '{app="wordpress", container="wordpress"} |~ "(?i)/wp-content/uploads/[^ ?]*([.]|%2e)ph"'
                   repo: activescott/home-infra-k8s-flux
 
+          # The Dreamwright agents host (ping-poet/dreamwright#122). Its Alloy, a quadlet
+          # dreamwright-host installs, remote-writes here and pushes to Loki through the public
+          # routes that admit only 52.11.188.6, labelled host=<its name>. The job names are the
+          # selector, not the host name, which changes when the instance is replaced.
+          - name: dreamwright-host
+            rules:
+              - alert: DreamwrightHostSilent
+                expr: 'absent_over_time(up{job="dreamwright-host/node"}[15m])'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: No metrics from the Dreamwright agents host for 15 minutes
+                  description: >-
+                    The nas has received nothing from the agents host's Alloy for 15 minutes.
+                    Either the host is down, its alloy.service is down, or the remote-write path
+                    (Traefik ingress, the dreamwright-agents basic auth, the 52.11.188.6
+                    allowlist) is refusing it. On the host: sudo journalctl -u alloy.service.
+                  query: '{job="dreamwright-host/journal", unit="alloy.service"}'
+                  repo: ping-poet/dreamwright
+              - alert: DreamwrightHostLogsDropped
+                expr: 'sum by (host, reason) (increase(loki_write_dropped_entries_total{job="dreamwright-host/alloy"}[15m])) > 0'
+                for: 0m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'The Dreamwright agents host {{ $labels.host }} dropped log lines ({{ $labels.reason }}).'
+                  description: >-
+                    Metrics still arrive, but Loki refused log lines from the agents host and
+                    Alloy gave up on them. A 401 or 403 in alloy.service's journal on the host
+                    means the loki-push credential or allowlist; rate_limited or stream_limited
+                    means Loki's limits.
+                  query: '{job="dreamwright-host/journal", unit="alloy.service"} |= "loki.write"'
+                  repo: ping-poet/dreamwright
+
           # Scott's eth-docker validator host. Its Alloy remote-writes to this
           # Prometheus with external label host="debeth" (activescott/activeassistant#648),
           # so nothing here scrapes it and a dead pipeline looks like silence:
           # DebethMetricsAbsent is the dead-man for every rule below.
           #
-          # Alloy's `execution` job has never scraped Besu successfully (up has
-          # been 0 since the first sample on 2026-10-02), so it is left out of
-          # DebethClientDown. Execution-layer health comes from
-          # ethereum-metrics-exporter's eth_exe_* series instead: a stopped Besu
-          # freezes the block number and fires DebethExecutionNotSynced.
+          # Alloy's `execution` job scrapes Besu only because of an override in
+          # eth-docker's custom.yml on debeth (activescott/activeassistant#659);
+          # without it eth-docker switches Besu to OpenTelemetry and up stays 0.
+          # Execution-layer sync still comes from ethereum-metrics-exporter's
+          # eth_exe_* series: a stopped Besu freezes the block number and fires
+          # DebethExecutionNotSynced.
           #
           # Triage runs on debeth through the read-only wrappers only; the
           # runbook names the commands that must never be run from triage.
@@ -2066,7 +2147,7 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmetricsabsent
                   repo: activescott/home-infra-private
               - alert: DebethClientDown
-                expr: 'up{host="debeth",job=~"consensus|validator"} == 0'
+                expr: 'up{host="debeth",job=~"consensus|validator|execution"} == 0'
                 for: 5m
                 labels:
                   severity: critical
@@ -2080,7 +2161,7 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclientdown
                   repo: activescott/home-infra-private
               - alert: DebethExporterDown
-                expr: 'up{host="debeth",job=~"mev-boost|node-exporter|ethereum-metrics-exporter"} == 0'
+                expr: 'up{host="debeth",job=~"mev-boost|cb-pbs|node-exporter|ethereum-metrics-exporter"} == 0'
                 for: 10m
                 labels:
                   severity: warning
@@ -2249,38 +2330,34 @@ spec:
                     Attestations are slot-timed, so drift turns into late or missed votes.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclockunsynced
                   repo: activescott/home-infra-private
-              # mev-boost counts a status code only when a relay answers, so a DNS
-              # or TCP failure shows up only as latency samples without one. This
-              # counts registration attempts (one per epoch, about nine an hour)
-              # that got no HTTP response. The `or ... * 0` arm keeps a relay that
-              # has never answered from dropping out of the subtraction.
+              # Commit-Boost (cb-pbs, which replaced mev-boost) records a request
+              # that got no HTTP response, a DNS, TCP or timeout failure, as
+              # http_status_code 555 (TIMEOUT_ERROR_CODE in commit-boost-client
+              # v0.10.1). Registration runs once per epoch, about nine times an hour.
+              # cb-pbs serves these only with CB_METRICS_PORT set, from the
+              # custom.yml override in home-infra-private hosts/debeth.
               - alert: DebethMevRelayUnreachable
-                expr: >-
-                  sum by (relay) (increase(mev_boost_relay_latency_count{host="debeth",endpoint="/eth/v1/builder/validators"}[1h]))
-                  - (
-                  sum by (relay) (increase(mev_boost_relay_status_code_total{host="debeth",endpoint="/eth/v1/builder/validators"}[1h]))
-                  or sum by (relay) (increase(mev_boost_relay_latency_count{host="debeth",endpoint="/eth/v1/builder/validators"}[1h])) * 0
-                  ) > 0
+                expr: 'sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h])) > 0'
                 for: 1h
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'debeth cannot reach MEV relay {{ $labels.relay }}'
+                  summary: 'debeth cannot reach MEV relay {{ $labels.relay_id }}'
                   description: >-
-                    Validator registrations to {{ $labels.relay }} have been getting no HTTP
+                    Validator registrations to {{ $labels.relay_id }} have been getting no HTTP
                     response for an hour. Lodestar falls back to local blocks, so this costs MEV
                     rewards, not proposals.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
                   repo: activescott/home-infra-private
               - alert: DebethMevRelayErrors
-                expr: 'sum by (relay, http_status_code) (increase(mev_boost_relay_status_code_total{host="debeth",http_status_code!~"200|204"}[1h])) > 3'
+                expr: 'sum by (relay_id, http_status_code) (increase(cb_pbs_relay_status_code_total{host="debeth",http_status_code!~"200|204|555"}[1h])) > 3'
                 for: 0m
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'MEV relay {{ $labels.relay }} answered debeth with HTTP {{ $labels.http_status_code }}'
+                  summary: 'MEV relay {{ $labels.relay_id }} answered debeth with HTTP {{ $labels.http_status_code }}'
                   description: >-
-                    More than three non-2xx answers from {{ $labels.relay }} in an hour. Lodestar
+                    More than three non-2xx answers from {{ $labels.relay_id }} in an hour. Lodestar
                     falls back to local blocks, so this costs MEV rewards, not proposals.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayerrors
                   repo: activescott/home-infra-private
