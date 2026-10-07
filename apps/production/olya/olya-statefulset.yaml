@@ -529,7 +529,8 @@ spec:
             #
             # USER.md is deliberately NOT here. It is a reviewed instruction file now
             # (activescott/activeassistant#84), so the gateway reads the read-only checkout
-            # copy and changes to it arrive by PR like any other instruction file.
+            # copy and changes to it arrive by PR like any other instruction file. IDENTITY.md
+            # followed for the same reason (activescott/activeassistant#847).
             #
             # THESE FILES MUST ONLY EVER BE EDITED IN PLACE. A bind mount is tied to the inode
             # that existed when the container started, so anything that REPLACES a file under
@@ -549,9 +550,6 @@ spec:
             - name: state
               mountPath: /state/workspace/DREAMS.md
               subPath: memory/DREAMS.md
-            - name: state
-              mountPath: /state/workspace/IDENTITY.md
-              subPath: memory/IDENTITY.md
             - name: state
               mountPath: /state/workspace/memory
               subPath: memory/memory

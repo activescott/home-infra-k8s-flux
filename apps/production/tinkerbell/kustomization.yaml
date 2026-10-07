@@ -36,10 +36,10 @@ secretGenerator:
 images:
   - name: tinkerbell-image-app
     newName: ghcr.io/activescott/tinkerbell/app # {"$imagepolicy": "flux-system:policy-tinkerbell-app:name"}
-    newTag: v0.43.7 # {"$imagepolicy": "flux-system:policy-tinkerbell-app:tag"}
+    newTag: v0.44.0 # {"$imagepolicy": "flux-system:policy-tinkerbell-app:tag"}
   - name: tinkerbell-image-mcp-gateway
     newName: ghcr.io/activescott/tinkerbell/mcp-gateway # {"$imagepolicy": "flux-system:policy-tinkerbell-mcp-gateway:name"}
-    newTag: v0.3.2 # {"$imagepolicy": "flux-system:policy-tinkerbell-mcp-gateway:tag"}
+    newTag: v0.3.3 # {"$imagepolicy": "flux-system:policy-tinkerbell-mcp-gateway:tag"}
   - name: tinkerbell-image-db
     newName: postgres
     newTag: "18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280"

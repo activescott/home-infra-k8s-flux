@@ -71,7 +71,7 @@ export const CLI_IMAGES_LIVE = join(STATE, "openclaw", "cli-images")
  * read-only checkout copy while the hourly sync pushes an untouched file, with nothing to see;
  * check-memory-mounts.mts exists to turn that into a loud failure.
  */
-export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "IDENTITY.md", "memory"]
+export const MEMORY_PATHS = ["MEMORY.md", "DREAMS.md", "memory"]
 
 /**
  * The skills the coding harnesses need, canonical copy in the checkout. One directory per skill,
@@ -153,6 +153,8 @@ export function syncCheckoutToOrigin(dir: string, branch: string): void {
   // the memory files are never rewritten, including on this path.
   gitCheckout(["symbolic-ref", "HEAD", `refs/heads/${branch}`], dir)
   gitCheckout(["update-ref", `refs/heads/${branch}`, `origin/${branch}`], dir)
+  // Before the diff below, which cannot write a path still marked skip-worktree.
+  restoreReleasedMemoryFiles(dir)
   if (head === origin) return
 
   const exclude = trackedMemoryFiles(dir).map((path) => `:!${path}`)
@@ -209,6 +211,31 @@ export function markMemorySkipWorktree(dir: string): void {
   if (existing.length > 0) {
     gitCheckout(["update-index", "--skip-worktree", "--", ...existing], dir)
   }
+}
+
+/**
+ * Hands back to git any path still marked skip-worktree that is no longer in MEMORY_FILES.
+ *
+ * Nothing else clears the flag, so a file that leaves the memory list (IDENTITY.md in
+ * activescott/activeassistant#847) keeps it, and its checkout copy stays at whatever git last
+ * wrote there while the index follows origin. With the bind mount gone, that stale copy is what
+ * the gateway reads. Clearing the flag and checking the path out restores the
+ * index content, which syncCheckoutToOrigin keeps equal to HEAD.
+ *
+ * Replacing the file is safe only because the same change drops its volumeMount: the olya
+ * container that runs alongside this code has no mount on the path to detach.
+ */
+export function restoreReleasedMemoryFiles(dir: string): void {
+  // ls-files -v line: "<tag> <path>", where tag S means skip-worktree.
+  const released = gitCheckout(["ls-files", "-v"], dir)
+    .split("\n")
+    .filter((line) => line.startsWith("S "))
+    .map((line) => line.slice(2))
+    .filter((path) => !MEMORY_FILES.includes(path))
+  if (released.length === 0) return
+  console.log(`==> no longer memory, restoring from git: ${released.join(", ")}`)
+  gitCheckout(["update-index", "--no-skip-worktree", "--", ...released], dir)
+  gitCheckout(["checkout", "--", ...released], dir)
 }
 
 /**
