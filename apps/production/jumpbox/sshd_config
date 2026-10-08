@@ -20,9 +20,10 @@ HostbasedAuthentication no
 UsePAM no
 MaxAuthTries 3
 LoginGraceTime 20
-# The Deployment's probes connect on loopback and close without authenticating, which
-# OpenSSH 10 penalizes, and a penalized source is refused: the probe would then fail itself.
-PerSourcePenaltyExemptList 127.0.0.1/32
+# Off because ServiceLB masquerades every client to one address, so a few failed auths would
+# lock the agents host out along with everyone else. It also covers the Deployment's probes,
+# which connect on loopback and close without authenticating.
+PerSourcePenalties no
 
 # The ConfigMap from authorized_keys in this directory. StrictModes is off because a
 # ConfigMap volume's directory is mode 0777, which StrictModes rejects; the file itself is a

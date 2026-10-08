@@ -21,11 +21,21 @@ spec:
     - Egress
 
   ingress:
-    # sshd, from any source. The allowlist is loadBalancerSourceRanges in jumpbox-service.yaml
-    # and the OPNsense rule, not this: depending on how ServiceLB forwards, the packet can
-    # arrive here from the svclb pod's address rather than the client's, and an ipBlock for
-    # the agents host would then drop every connection.
-    - ports:
+    # sshd, from this Service's svclb pods only, which keeps every other pod in the cluster
+    # off the ClusterIP. The client allowlist is loadBalancerSourceRanges in
+    # jumpbox-service.yaml and the OPNsense rule, not this: svclb masquerades, so the client's
+    # address never arrives here. Traffic kube-proxy forwards straight from the LoadBalancer
+    # address is masqueraded to the node, which kube-router admits to every pod regardless of
+    # policy, as it does the kubelet's probes.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              svccontroller.k3s.cattle.io/svcname: jumpbox
+              svccontroller.k3s.cattle.io/svcnamespace: jumpbox
+      ports:
         - port: 2222
           protocol: TCP
 

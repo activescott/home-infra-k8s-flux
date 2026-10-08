@@ -6,7 +6,7 @@ It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys) a
 
 ## How a connection gets here
 
-The agents host connects to the home WAN address on the port OPNsense forwards to `10.1.111.20:2222`, which is this Service's ServiceLB address. Two allowlists apply, both admitting only the agents host's EIP: the OPNsense rule, and `loadBalancerSourceRanges` in [jumpbox-service.yaml](jumpbox-service.yaml). A connection from the LAN is refused too, by the second one.
+The agents host connects to the home WAN address on the port OPNsense forwards to `10.1.111.20:2222`, which is this Service's ServiceLB address. Two allowlists apply, both admitting only the agents host's EIP: the OPNsense rule, and `loadBalancerSourceRanges` in [jumpbox-service.yaml](jumpbox-service.yaml). A connection from the LAN is refused too, by the second one. The Service has no NodePort, because a NodePort would skip that check.
 
 ## Olya's ssh config
 

@@ -76,7 +76,7 @@ spec:
             - name: ssh
               containerPort: 2222
           # nc on loopback rather than a tcpSocket probe from the kubelet: see
-          # PerSourcePenaltyExemptList in sshd_config.
+          # PerSourcePenalties in sshd_config.
           readinessProbe:
             exec:
               command: ["nc", "-z", "127.0.0.1", "2222"]
