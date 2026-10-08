@@ -119,8 +119,8 @@ spec:
     - key: dmarc-txt
       name: _dmarc.pingpoet.com
       type: TXT
-      comment: monitor only; move to p=quarantine once aggregate reports are clean
-      content: v=DMARC1; p=none; rua=mailto:olya@pingpoet.com
+      comment: quarantine; aggregate reports to olya@pingpoet.com until every zone is at quarantine
+      content: v=DMARC1; p=quarantine; rua=mailto:olya@pingpoet.com
     - key: github-pages-challenge-ping-poet-txt
       name: _github-pages-challenge-ping-poet.pingpoet.com
       type: TXT
