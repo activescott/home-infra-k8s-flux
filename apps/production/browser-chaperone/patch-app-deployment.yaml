@@ -49,6 +49,12 @@
     # (browser-chaperone#39): Olya can always mail an operator and read what one sends her.
     - name: OPERATOR_EMAIL_ADDRESSES
       value: scott@willeke.com
+    # A forever connect grant on each host at start, so enforce mode doesn't stop a coding
+    # agent's build on a registry approval (ping-poet/dreamwright#453). The same list as
+    # Dreamwright's host template. Exact hosts only, and taking one out doesn't revoke its
+    # grant: revoke it in the app.
+    - name: DEFAULT_NETWORK_HOSTS
+      value: archive.ubuntu.com,security.ubuntu.com,cloud-images.ubuntu.com,deb.debian.org,security.debian.org,dl-cdn.alpinelinux.org,pypi.org,files.pythonhosted.org,bootstrap.pypa.io,proxy.golang.org,sum.golang.org,index.crates.io,static.crates.io,crates.io,registry.yarnpkg.com,repo.yarnpkg.com,npm.pkg.github.com,pkg-npm.githubusercontent.com,registry-1.docker.io,auth.docker.io,index.docker.io,production.cloudfront.docker.com,ghcr.io,pkg-containers.githubusercontent.com,registry.k8s.io,us-west1-docker.pkg.dev,registry.terraform.io,registry.opentofu.org,releases.hashicorp.com,charts.bitnami.com,repo.broadcom.com,actions.github.io,aws.github.io,charts.jetstack.io,charts.loft.sh,falcosecurity.github.io,grafana.github.io,grafana-community.github.io,helm.traefik.io,traefik.github.io,helm.vector.dev,nuclio.github.io,prometheus-community.github.io,zotregistry.dev,nodejs.org,dl.k8s.io,go.dev,dl.google.com,objects.githubusercontent.com,binaries.prisma.sh,cdn.playwright.dev,playwright.download.prss.microsoft.com,playwright.azureedge.net
     # Who may click Approve or Deny on the Slack notice (browser-chaperone#54, #51).
     # Separate from OPERATOR_SLACK_USER_IDS on purpose: that one is the standing DM grant,
     # this one decides who a click is honored from.
