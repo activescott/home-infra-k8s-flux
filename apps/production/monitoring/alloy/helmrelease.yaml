@@ -878,6 +878,27 @@ spec:
               }
             }
 
+            // ping-poet/dreamwright#398: when the check answers but raising
+            // the approval request itself fails (AllowlistUnavailableError
+            // on /internal/allowlist/requests), the helper logs msg="the
+            // request could not be raised" and the connection falls through
+            // to denied -- chaperone_unchecked_total above never sees it,
+            // and in enforce mode the agent gets a 403 with no request id
+            // to wait on.
+            stage.match {
+              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |= \"the request could not be raised\""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "chaperone_approval_raise_failed_total"
+                  description = "connections where the network chaperone could not raise an approval request after the check answered"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
             // activescott/home-infra-k8s-flux#276: kustomize-controller no
             // longer exposes gotk_reconcile_condition (confirmed absent from
             // Prometheus on 2026-09-30 -- see the flux-reconcile-log-health
