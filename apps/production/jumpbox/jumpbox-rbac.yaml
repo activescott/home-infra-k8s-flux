@@ -1,0 +1,159 @@
+# The same read-only access olya-0 has, for kubectl in an ssh session (ping-poet/dreamwright#123).
+#
+# A copy of ../olya/olya-rbac.yaml under jumpbox- names rather than a binding to olya's
+# ClusterRoles, so this keeps working once olya-0 is retired. The reasoning for every choice
+# here, including why ConfigMaps are cut and why the view role is aggregated rather than
+# hand-written, is in that file's comments. Change both together.
+#
+# Checking what this actually resolves to, after Flux applies it:
+#   kubectl --context nas get clusterrole jumpbox-view -o yaml
+#   kubectl --context nas auth can-i --as=system:serviceaccount:jumpbox:jumpbox get configmaps -A
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jumpbox
+  namespace: jumpbox
+---
+# `rules` is deliberately absent: the controller-manager owns that field on an aggregated role
+# and fills it in. Put rules in jumpbox-view-core instead.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jumpbox-view
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        rbac.authorization.k8s.io/aggregate-to-view: "true"
+      matchExpressions:
+        - key: kubernetes.io/bootstrapping
+          operator: NotIn
+          values: ["rbac-defaults"]
+    - matchLabels:
+        rbac.activescott.com/aggregate-to-jumpbox-view: "true"
+---
+# `system:aggregate-to-view` verbatim, with `configmaps` removed from the first rule. Same list
+# as olya-view-core.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jumpbox-view-core
+  labels:
+    rbac.activescott.com/aggregate-to-jumpbox-view: "true"
+rules:
+  - apiGroups: [""]
+    # configmaps omitted. Secrets were never in `view` to begin with.
+    resources:
+      - endpoints
+      - persistentvolumeclaims
+      - persistentvolumeclaims/status
+      - pods
+      - replicationcontrollers
+      - replicationcontrollers/scale
+      - serviceaccounts
+      - services
+      - services/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources:
+      - bindings
+      - events
+      - limitranges
+      - namespaces/status
+      - pods/log
+      - pods/status
+      - replicationcontrollers/status
+      - resourcequotas
+      - resourcequotas/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - controllerrevisions
+      - daemonsets
+      - daemonsets/status
+      - deployments
+      - deployments/scale
+      - deployments/status
+      - replicasets
+      - replicasets/scale
+      - replicasets/status
+      - statefulsets
+      - statefulsets/scale
+      - statefulsets/status
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers", "horizontalpodautoscalers/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "cronjobs/status", "jobs", "jobs/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources:
+      - daemonsets
+      - daemonsets/status
+      - deployments
+      - deployments/scale
+      - deployments/status
+      - ingresses
+      - ingresses/status
+      - networkpolicies
+      - replicasets
+      - replicasets/scale
+      - replicasets/status
+      - replicationcontrollers/scale
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets", "poddisruptionbudgets/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "ingresses/status", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jumpbox-view
+subjects:
+  - kind: ServiceAccount
+    name: jumpbox
+    namespace: jumpbox
+roleRef:
+  kind: ClusterRole
+  name: jumpbox-view
+  apiGroup: rbac.authorization.k8s.io
+---
+# Same as olya-email-routing: read-only on the Cloudflare Email Routing resources in the
+# `cloudflare` namespace, as a ClusterRole because this kustomization rewrites namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jumpbox-email-routing
+rules:
+  - apiGroups: ["email.cloudflare.m.cloudflare.com"]
+    resources:
+      - emailroutingaddresses
+      - emailroutingcatchalls
+      - emailroutingrules
+      - emailroutingsettings
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["email.activescott.com"]
+    resources: ["rolemailboxes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jumpbox-email-routing
+subjects:
+  - kind: ServiceAccount
+    name: jumpbox
+    namespace: jumpbox
+roleRef:
+  kind: ClusterRole
+  name: jumpbox-email-routing
+  apiGroup: rbac.authorization.k8s.io

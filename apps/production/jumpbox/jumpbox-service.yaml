@@ -1,0 +1,25 @@
+# LoadBalancer for the same reason as stalwart and alloy-syslog: ssh is not HTTP, and k3s's
+# ServiceLB binds the node address (10.1.111.20) directly. OPNsense forwards a WAN port here;
+# that rule is outside this repo.
+#
+# loadBalancerSourceRanges is enforced by ServiceLB's svclb pod on the packet's original
+# source, so it holds even if the hop to the pod is masqueraded. It is the in-cluster half of
+# the allowlist; the OPNsense rule is the other half. Adding an address here alone does not
+# let it in, and a LAN client is refused too.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jumpbox
+  namespace: jumpbox
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  loadBalancerSourceRanges:
+    - 52.11.188.6/32 # Dreamwright agents host EIP (ping-poet/dreamwright#123)
+  selector:
+    app: jumpbox
+  ports:
+    - name: ssh
+      port: 2222
+      targetPort: 2222
+      protocol: TCP

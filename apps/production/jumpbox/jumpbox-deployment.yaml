@@ -1,0 +1,134 @@
+# sshd, for Olya on the Dreamwright agents host to reach what olya-0 reaches from inside the
+# cluster (ping-poet/dreamwright#123). See README.md.
+#
+# The image is linuxserver/openssh-server, but its s6 init is bypassed: the container runs
+# sshd directly as the image's abc user (uid 911), with the config from this directory. The
+# init would otherwise copy sshd_config and authorized_keys onto the volume once and append
+# to them afterwards, so a key removed from git would stay authorized, and its sshd logs go
+# to a file rather than stdout. What the image still provides is sshd, curl, jq, bash and the
+# abc user.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jumpbox
+  namespace: jumpbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jumpbox
+  strategy:
+    # The host key volume is ReadWriteOnce.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: jumpbox
+    spec:
+      serviceAccountName: jumpbox
+      # kubectl in a session uses this token, through the kubeconfig in the ConfigMap.
+      automountServiceAccountToken: true
+      securityContext:
+        runAsUser: 911
+        runAsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # kubectl, copied in from the image the cluster already pins for it. Its tag is held
+        # within the API server's version skew by renovate.json5.
+        - name: kubectl
+          image: alpine/kubectl:1.34.2@sha256:96a7d245a74d461925a56e3024d2f027c2a7a822b3e9e0117ec558db42de9c35
+          command: ["cp", "/usr/local/bin/kubectl", "/opt/jumpbox/bin/kubectl"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 32Mi
+            limits:
+              cpu: "200m"
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tools
+              mountPath: /opt/jumpbox/bin
+      containers:
+        - name: sshd
+          image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
+          # The host key is generated on first start and kept on the volume, so the key Olya
+          # pins survives restarts. Its fingerprint is printed every start, which puts it in
+          # Loki for checking a known_hosts entry against.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              key=/hostkeys/ssh_host_ed25519_key
+              if [ ! -f "$key" ]; then
+                ssh-keygen -q -t ed25519 -N '' -C jumpbox -f "$key"
+              fi
+              ssh-keygen -l -f "$key.pub"
+              exec /usr/sbin/sshd.pam -D -e -f /etc/jumpbox/config/sshd_config
+          ports:
+            - name: ssh
+              containerPort: 2222
+          # nc on loopback rather than a tcpSocket probe from the kubelet: see
+          # PerSourcePenaltyExemptList in sshd_config.
+          readinessProbe:
+            exec:
+              command: ["nc", "-z", "127.0.0.1", "2222"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["nc", "-z", "127.0.0.1", "2222"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 32Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/jumpbox/config
+              readOnly: true
+            - name: authorized-keys
+              mountPath: /etc/jumpbox/keys
+              readOnly: true
+            - name: hostkeys
+              mountPath: /hostkeys
+            - name: tools
+              mountPath: /opt/jumpbox/bin
+              readOnly: true
+            # abc's home in the image. Writable for kubectl's discovery cache and anything a
+            # session leaves behind, none of which needs to outlive the pod.
+            - name: home
+              mountPath: /config
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: jumpbox-config
+        - name: authorized-keys
+          configMap:
+            name: jumpbox-authorized-keys
+        - name: hostkeys
+          persistentVolumeClaim:
+            claimName: jumpbox-hostkeys
+        - name: tools
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

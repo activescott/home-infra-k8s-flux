@@ -1,0 +1,74 @@
+# What a session on the jump box can reach: the targets olya-0 reaches today for diagnosis,
+# copied from ../olya/olya-networkpolicy.yaml and ../browser-chaperone/networkpolicy.yaml
+# (debeth). Nothing else, and no route to the internet.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+#
+# Phoenix is not here because olya-0 does not reach it in-cluster either: she goes through
+# her egress proxy to phoenix.activescott.com, which is public, so the agents host reaches it
+# directly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jumpbox
+  namespace: jumpbox
+spec:
+  podSelector:
+    matchLabels:
+      app: jumpbox
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # sshd, from any source. The allowlist is loadBalancerSourceRanges in jumpbox-service.yaml
+    # and the OPNsense rule, not this: depending on how ServiceLB forwards, the packet can
+    # arrive here from the svclb pod's address rather than the client's, and an ipBlock for
+    # the agents host would then drop every connection.
+    - ports:
+        - port: 2222
+          protocol: TCP
+
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # The Kubernetes API, for kubectl. All three addresses are needed; olya-networkpolicy.yaml
+    # explains why .10 is the one actually matched.
+    - to:
+        - ipBlock:
+            cidr: 172.17.0.1/32
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.10/32
+        - ipBlock:
+            cidr: 10.1.111.20/32
+      ports:
+        - port: 6443
+          protocol: TCP
+
+    # Grafana, Loki and Prometheus, by their in-cluster names. sshd_config's PermitOpen
+    # narrows forwards further, to the three Services.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+
+    # debeth, for ProxyJump. Same address and port as olya-0's route through her egress proxy.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.25/32
+      ports:
+        - port: 22
+          protocol: TCP

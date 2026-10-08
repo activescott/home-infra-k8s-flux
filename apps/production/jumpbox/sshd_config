@@ -1,0 +1,51 @@
+# sshd for the jump box. Read by the jumpbox Deployment as `sshd -f`; the image's own
+# /etc/ssh/sshd_config and its s6 init are not used. See README.md.
+
+# sshd runs as abc (uid 911), not root, so it can only ever log a client in as abc, and it
+# cannot bind below 1024.
+Port 2222
+AddressFamily inet
+HostKey /hostkeys/ssh_host_ed25519_key
+PidFile none
+# VERBOSE logs the fingerprint of the key each login used.
+LogLevel VERBOSE
+
+AllowUsers abc
+PermitRootLogin no
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+HostbasedAuthentication no
+UsePAM no
+MaxAuthTries 3
+LoginGraceTime 20
+# The Deployment's probes connect on loopback and close without authenticating, which
+# OpenSSH 10 penalizes, and a penalized source is refused: the probe would then fail itself.
+PerSourcePenaltyExemptList 127.0.0.1/32
+
+# The ConfigMap from authorized_keys in this directory. StrictModes is off because a
+# ConfigMap volume's directory is mode 0777, which StrictModes rejects; the file itself is a
+# read-only mount that abc cannot change.
+AuthorizedKeysFile /etc/jumpbox/keys/authorized_keys
+StrictModes no
+
+# Forwarding is what the box is for: `ssh -L` to Grafana, Loki and Prometheus, and
+# ProxyJump to debeth. PermitOpen narrows it to those destinations, as the client names
+# them. A forward to anything else is refused as "administratively prohibited"; the
+# NetworkPolicy would drop it anyway.
+AllowTcpForwarding local
+PermitOpen grafana.monitoring.svc:80 loki.monitoring.svc:3100 prometheus-server.monitoring.svc:80 10.1.111.25:22
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+GatewayPorts no
+X11Forwarding no
+PermitTunnel no
+PermitUserEnvironment no
+
+# A session gets a fresh environment, not the container's, so kubectl would not find the
+# in-cluster service account on its own.
+SetEnv PATH=/opt/jumpbox/bin:/usr/local/bin:/usr/bin:/bin KUBECONFIG=/etc/jumpbox/config/kubeconfig
+
+ClientAliveInterval 30
+ClientAliveCountMax 4
