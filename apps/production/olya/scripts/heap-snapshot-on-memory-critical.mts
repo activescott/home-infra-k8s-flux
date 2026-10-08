@@ -26,7 +26,21 @@ import { writeHeapSnapshot } from "node:v8"
 // The directory OpenClaw's own diagnostics.heapSnapshot RPC writes to.
 const DIRECTORY = join(process.env.OPENCLAW_STATE_DIR ?? "/state/openclaw", "diagnostics")
 const PREFIX = "memory-critical-"
-const MIN_HEAP_BYTES = 1024 ** 3
+// 3 GiB. Was 1 GiB, which fired on ordinary operation: the three snapshots this took in the 11h
+// to 2026-10-08T08:00Z each forced a GC and measured the live heap flat at 505/493/505 MiB, so
+// the 1 GiB floor was catching the normal pre-GC sawtooth -- 2 GiB of garbage over a 500 MiB
+// live set -- rather than anything retained. The 08:05:59Z one blocked the main thread 6301ms
+// writing 398MB and failed the 5s probes in place at the time.
+//
+// 3 GiB sits above that sawtooth and below the 6 GiB rssCritical threshold that the 8 GiB
+// --max-old-space-size in olya-statefulset.yaml produces, so a snapshot now means the heap
+// genuinely grew rather than just cycled. Keep this under that threshold: above it the pressure
+// event that triggers this never fires and the tripwire is dead code.
+//
+// The stall scales with heap size, so expect a 3 GiB heap to block past the 15s probe timeout.
+// That is accepted; the liveness failureThreshold of 12 x 20s = 240s absorbs it, and a heap that
+// large is worth recording even at the cost of flapping readiness.
+const MIN_HEAP_BYTES = 3 * 1024 ** 3
 const COOLDOWN_MS = 60 * 60 * 1000
 const KEEP = 3
 
