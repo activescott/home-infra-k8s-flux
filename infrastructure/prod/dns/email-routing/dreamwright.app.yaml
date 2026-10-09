@@ -83,6 +83,10 @@ spec:
     # Budget and anomaly alerts. Same shape as `aws-root` above.
     - localPart: alerts
       destination: scottandolya@pingpoet.com
+    # The production app's own accounts at vendors it calls, such as its Tinkerbell user.
+    # Same shape as `aws-root` above.
+    - localPart: dreamwright-prod
+      destination: scottandolya@pingpoet.com
     # Destination for the rua= address in _dmarc.dreamwright.app -- see
     # zones/dreamwright.app.yaml. Without this rule, aggregate reports bounce and the
     # p=none monitoring period observes nothing.
