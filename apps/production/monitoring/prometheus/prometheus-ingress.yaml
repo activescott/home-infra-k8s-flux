@@ -1,30 +1,45 @@
 # NOTE: We use ingress here rather than a simple service so we can route traffic
 #   based on hostname and not only IP. Ingress also has the advantage of being
 #   able to serve TLS.
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+#
+# Read-only. An IngressRoute rather than an Ingress because the routes match on the method, which
+# an Ingress cannot. A request no route matches gets a 404 from Traefik and never reaches
+# Prometheus, so the read credential cannot reach the lifecycle endpoints (/-/reload, /-/quit),
+# the admin API or /api/v1/write. prometheus-remote-write-ingress.yaml owns POST /api/v1/write
+# with its own credentials; if that router drops, the path now 404s here instead of falling
+# through to the read credential.
+#
+# GET /-/ready stays open because the Prometheus UI polls it and refuses to render the query page
+# without a 200. POST is allowed on /api/v1/labels and /api/v1/series only, because the UI's
+# PromQL autocomplete (codemirror-promql) sends those as POST. The UI runs queries with GET, and
+# Grafana talks to the in-cluster Service, not this host.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: prometheus-ingress
-  annotations:
-    # to reference the middleware use:  <middleware-namespace>-<middleware-name>@kubernetescrd
-    #   per https://doc.traefik.io/traefik/v2.2/middlewares/overview/#provider-namespace
-    traefik.ingress.kubernetes.io/router.middlewares: monitoring-prometheus-basic-auth@kubernetescrd
 spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: >-
+        Host(`prometheus.activescott.com`) && (Method(`GET`) || Method(`HEAD`))
+        && (Path(`/-/ready`) || !(PathPrefix(`/-/`) || PathPrefix(`/api/v1/admin`) || Path(`/api/v1/write`)))
+      middlewares:
+        - name: prometheus-basic-auth
+      services:
+        # Service created by the prometheus Helm chart
+        - name: prometheus-server
+          port: 80
+    - kind: Rule
+      match: >-
+        Host(`prometheus.activescott.com`) && Method(`POST`)
+        && (Path(`/api/v1/labels`) || Path(`/api/v1/series`))
+      middlewares:
+        - name: prometheus-basic-auth
+      services:
+        - name: prometheus-server
+          port: 80
   tls:
-  # The patches in kustomize are ugly here (the patch is basically the whole Ingress). This could probably be made cleaner using a configMap + configMapGenerator or something to grab these values from a simple property file or labels or something
-  - hosts:
-      - prometheus.activescott.com # e.g. photos.example.com
-    secretName: prometheus-activescott-com-tls #e.g. cert-example-com
-  rules:
-  # don't forget to set this up in DNS
-  - host: prometheus.activescott.com # e.g. photos.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            # Service created by the prometheus Helm chart
-            name: prometheus-server
-            port:
-              number: 80
+    # must match certificate.yaml's secretName
+    secretName: prometheus-activescott-com-tls
