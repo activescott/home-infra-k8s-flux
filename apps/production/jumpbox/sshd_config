@@ -31,12 +31,12 @@ PerSourcePenalties no
 AuthorizedKeysFile /etc/jumpbox/keys/authorized_keys
 StrictModes no
 
-# Forwarding is what the box is for: `ssh -L` to Grafana, Loki and Prometheus, and
-# ProxyJump to debeth. PermitOpen narrows it to those destinations, as the client names
-# them. A forward to anything else is refused as "administratively prohibited"; the
-# NetworkPolicy would drop it anyway.
+# Forwarding is what the box is for: `ssh -L` to Grafana, and ProxyJump to debeth.
+# PermitOpen narrows it to those destinations, as the client names them. A forward to
+# anything else is refused as "administratively prohibited"; the NetworkPolicy would drop it
+# anyway. Loki and Prometheus are not here: see jumpbox-networkpolicy.yaml.
 AllowTcpForwarding local
-PermitOpen grafana.monitoring.svc:80 loki.monitoring.svc:3100 prometheus-server.monitoring.svc:80 10.1.111.25:22
+PermitOpen grafana.monitoring.svc:80 10.1.111.25:22
 AllowAgentForwarding no
 AllowStreamLocalForwarding no
 GatewayPorts no

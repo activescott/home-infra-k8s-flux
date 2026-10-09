@@ -1,6 +1,8 @@
 # jumpbox
 
-An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, Loki and Prometheus, and debeth over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
+An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, and debeth over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
+
+Loki and Prometheus are not reachable directly, though olya-0 reaches both. Neither has auth: Prometheus runs with `web.enable-lifecycle` and the remote-write receiver, so a key holder could stop it or write fake series, and Loki's delete API could erase this box's own login records. Queries go through Grafana's datasources instead, which needs a login.
 
 It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys) and nothing else. A session can run `kubectl` (as the `jumpbox` ServiceAccount, the same read-only access as olya-0, see [jumpbox-rbac.yaml](jumpbox-rbac.yaml)), `curl` and `jq`, and can forward only to the destinations in `PermitOpen` in [sshd_config](sshd_config).
 
@@ -43,17 +45,15 @@ ssh nas1-jump kubectl get pods -A
 ssh debeth sudo -n /usr/local/sbin/eth-logs
 ```
 
-Grafana, Loki and Prometheus through local forwards, then at `http://localhost:3000`, `http://localhost:3100` and `http://localhost:9090` on the agents host:
+Grafana through a local forward, then at `http://localhost:3000` on the agents host:
 
 ```bash
-ssh -N \
-  -L 3000:grafana.monitoring.svc:80 \
-  -L 3100:loki.monitoring.svc:3100 \
-  -L 9090:prometheus-server.monitoring.svc:80 \
-  nas1-jump
+ssh -N -L 3000:grafana.monitoring.svc:80 nas1-jump
 ```
 
-The target names must be written exactly as above, since that is what `PermitOpen` lists. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [jumpbox-networkpolicy.yaml](jumpbox-networkpolicy.yaml).
+Olya authenticates to Grafana with a token for a Grafana service account with the Viewer role, which is enough to run Loki and Prometheus queries through the datasource proxy. Git cannot mint that token, so Scott creates it by hand: in Grafana, Administration > Users and access > Service accounts, add one named `olya-jumpbox` with role Viewer, add a token, and put it on the agents host.
+
+The target name must be written exactly as above, since that is what `PermitOpen` lists. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [jumpbox-networkpolicy.yaml](jumpbox-networkpolicy.yaml).
 
 ## Changing the key
 

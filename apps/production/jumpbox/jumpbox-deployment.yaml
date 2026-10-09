@@ -55,12 +55,11 @@ spec:
           volumeMounts:
             - name: tools
               mountPath: /opt/jumpbox/bin
-      containers:
-        - name: sshd
+        # The host key is generated on first start and kept on the volume, so the key Olya
+        # pins survives restarts. It is written here so that the sshd container, whose
+        # sessions run as the same uid, can mount it read-only.
+        - name: hostkey
           image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
-          # The host key is generated on first start and kept on the volume, so the key Olya
-          # pins survives restarts. Its fingerprint is printed every start, which puts it in
-          # Loki for checking a known_hosts entry against.
           command:
             - /bin/sh
             - -c
@@ -70,7 +69,32 @@ spec:
               if [ ! -f "$key" ]; then
                 ssh-keygen -q -t ed25519 -N '' -C jumpbox -f "$key"
               fi
-              ssh-keygen -l -f "$key.pub"
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 32Mi
+            limits:
+              cpu: "200m"
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: hostkeys
+              mountPath: /hostkeys
+      containers:
+        - name: sshd
+          image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
+          # The host key's fingerprint is printed every start, which puts it in Loki for
+          # checking a known_hosts entry against.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              ssh-keygen -l -f /hostkeys/ssh_host_ed25519_key.pub
               exec /usr/sbin/sshd.pam -D -e -f /etc/jumpbox/config/sshd_config
           ports:
             - name: ssh
@@ -107,6 +131,7 @@ spec:
               readOnly: true
             - name: hostkeys
               mountPath: /hostkeys
+              readOnly: true
             - name: tools
               mountPath: /opt/jumpbox/bin
               readOnly: true

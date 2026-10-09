@@ -1,6 +1,6 @@
 # What a session on the jump box can reach: the targets olya-0 reaches today for diagnosis,
 # copied from ../olya/olya-networkpolicy.yaml and ../browser-chaperone/networkpolicy.yaml
-# (debeth). Nothing else, and no route to the internet.
+# (debeth), less Loki and Prometheus. Nothing else, and no route to the internet.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
 #
@@ -68,12 +68,21 @@ spec:
         - port: 6443
           protocol: TCP
 
-    # Grafana, Loki and Prometheus, by their in-cluster names. sshd_config's PermitOpen
-    # narrows forwards further, to the three Services.
+    # Grafana's pod and port only. A session has a shell, so PermitOpen in sshd_config is not
+    # the only bound on what it can reach. Prometheus and Loki are left out on purpose: neither
+    # has auth, Prometheus runs with web.enable-lifecycle and the remote-write receiver, and
+    # Loki's delete API could erase this box's own login records. Queries go through Grafana.
+    # The other half is the `grafana` policy in ../monitoring/networkpolicy.yaml.
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - port: 3000
+          protocol: TCP
 
     # debeth, for ProxyJump. Same address and port as olya-0's route through her egress proxy.
     - to:
