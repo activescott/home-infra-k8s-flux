@@ -22,6 +22,11 @@ spec:
         # namespace/app, so logs are queryable as {app="olya"} with no extra config.
         app: olya
     spec:
+      # Covers the gateway's own shutdown budget (logged as shutdown=325000ms) plus margin. At
+      # the 30s default, SIGKILL arrived before the drain could run at all
+      # (activescott/activeassistant#722). The olya container's 10s preStop hook counts against
+      # this too, leaving 25s of margin.
+      terminationGracePeriodSeconds: 360
       serviceAccountName: olya
       imagePullSecrets:
         - name: github-container-registry-secret
@@ -42,6 +47,40 @@ spec:
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
       # with the ssh key mounted, so it is the last place to leave at the defaults.
       initContainers:
+        # A new olya-0 pod IP isn't in kube-router's ipset for the egress proxy's ingress
+        # NetworkPolicy for ~20-40s after the pod starts; until then the proxy's chain ends in
+        # REJECT and every connection to it fails ECONNREFUSED. seed-workspace hit this twice on
+        # most starts, each triggering OpenClaw's own retry/backoff on top of kubelet's
+        # (activescott/activeassistant#878). This blocks on a plain TCP connect to the proxy
+        # before anything else runs, so seed-workspace and every later step start with egress
+        # already working. A widened NetworkPolicy would not fix this: kube-router resolves a
+        # namespaceSelector to the same per-pod-IP ipset, so the race is the same either way.
+        - name: wait-for-egress-proxy
+          image: busybox:1.38@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+          command:
+            - sh
+            - -c
+            - |
+              start=$(date +%s)
+              while [ $(( $(date +%s) - start )) -lt 120 ]; do
+                nc -z -w 2 olya-egress-proxy.browser-chaperone-prod.svc.cluster.local 3128 && exit 0
+                sleep 2
+              done
+              echo "wait-for-egress-proxy: olya-egress-proxy:3128 still unreachable after 120s" >&2
+              exit 1
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 16Mi
+            limits:
+              cpu: "100m"
+              memory: 32Mi
+
         # Credentials and workspace. Clones activeassistant to /state/workspace, forces it to
         # origin/main, seeds the gateway config to /state/config, and relocates the memory files
         # to /state/memory, which the olya container bind-mounts back over workspace root.
@@ -101,23 +140,21 @@ spec:
         # so our image drops that entrypoint and this runs it here instead.
         #
         # Doctor also repairs the config file, so it gets a copy that is thrown away afterwards.
-        # /state/config keeps what seed-workspace wrote; install-plugins writes its plugin
-        # entries into it afterward, once doctor has already run. The /doctor/config directory is
-        # cleared first because a restarted initContainer keeps the emptyDir, and doctor can
-        # otherwise restore its earlier output from the backups it left there.
+        # /state/config keeps what seed-workspace wrote. The /doctor/config directory is cleared
+        # first because a restarted initContainer keeps the emptyDir, and doctor can otherwise
+        # restore its earlier output from the backups it left there.
         #
         # Right after seed-workspace, which is what first writes /state/config/openclaw.json, and
-        # before install-plugins or anything else that invokes the openclaw CLI or opens the
-        # state/agent databases, matching upstream's 2026.9.7 entrypoint order: doctor before
-        # anything touches state. The `.pre-startup-migration-*.bak` files doctor writes next to
-        # each database are only a usable rollback to 2026.9.5 if nothing has migrated those
-        # databases yet, and install-plugins' own openclaw CLI calls migrate the state DB (17 to
-        # 19) same as the gateway would. A failure here always exits 0 instead of keeping the pod
-        # in Init, including 2026.9.7's behavior where a plugin that fails to load fails doctor:
-        # Scott decided on 2026-09-24 (scripts/install-plugins.mts) that a broken plugin must
-        # never wedge the pod. A failure logs a "doctor: ERROR" line with doctor's exit code,
-        # grepped the same way as "install-plugins: ERROR". A failed DB migration still leaves the
-        # gateway exiting 78 on the old schema, so that case is not hidden.
+        # before anything else that invokes the openclaw CLI or opens the state/agent databases,
+        # matching upstream's 2026.9.7 entrypoint order: doctor before anything touches state.
+        # The `.pre-startup-migration-*.bak` files doctor writes next to each database are only a
+        # usable rollback to 2026.9.5 if nothing has migrated those databases yet, and any
+        # openclaw CLI call migrates the state DB (17 to 19) same as the gateway would. A failure
+        # here always exits 0 instead of keeping the pod in Init, including 2026.9.7's behavior
+        # where a plugin that fails to load fails doctor: Scott decided on 2026-09-24 that a
+        # broken plugin must never wedge the pod. A failure logs a "doctor: ERROR" line with
+        # doctor's exit code. A failed DB migration still leaves the gateway exiting 78 on the old
+        # schema, so that case is not hidden.
         - name: doctor
           image: olya-image
           command:
@@ -170,62 +207,6 @@ spec:
             - name: tmp
               mountPath: /tmp
 
-        # Installs managed plugins from /cfg/managed-plugins.txt via
-        # scripts/install-plugins.mts. Idempotent: skips plugins whose trust record already
-        # exists, and removes managed installs of packages marked "-" (slack, which now ships in
-        # the image). See managed-plugins.txt for the plugin list and pinning notes. Runs after
-        # seed-workspace because plugin commands need the seeded config in place. A failed
-        # upgrade keeps the installed version and logs "install-plugins: WARNING" instead of
-        # failing this container; .github/workflows/install-plugins.yml runs each path at the
-        # memory limit below.
-        - name: install-plugins
-          image: olya-image
-          command: ["/scripts/install-plugins.mts"]
-          # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
-          envFrom:
-            - configMapRef:
-                name: olya-proxy-env
-          env:
-            - name: HOME
-              value: /state/home
-            - name: OPENCLAW_STATE_DIR
-              value: /state/openclaw
-            # /state/config, not /state/openclaw. Read-only in the olya container and nowhere
-            # else, which is why this initContainer can still write plugin entries to it.
-            - name: OPENCLAW_CONFIG_PATH
-              value: /state/config/openclaw.json
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-          # 2Gi is load-bearing, not headroom. The skip path (`openclaw plugins inspect`)
-          # finishes in ~1s well under 256Mi, so the limit looks oversized until an OpenClaw
-          # upgrade invalidates the trust record on the PVC and this container takes the
-          # install path instead: `openclaw plugins install` runs a real npm install, which
-          # OOMKills at both 256Mi and 512Mi and completes in ~29s at 1Gi (measured against
-          # olya:main-1790035615 / OpenClaw 2026.9.5). The `--force` reinstall path (version
-          # mismatch, not just missing record) is heavier still: it OOMKilled at 1Gi after
-          # running ~5min before the kill, so it's bumped to 2Gi. Every OpenClaw major re-runs
-          # one of these paths, so do not size this back down to what a steady-state boot uses.
-          resources:
-            requests:
-              cpu: "50m"
-              memory: 64Mi
-            limits:
-              cpu: "1"
-              memory: 2Gi
-          volumeMounts:
-            - name: state
-              mountPath: /state
-            - name: config
-              mountPath: /cfg
-              readOnly: true
-            - name: scripts
-              mountPath: /scripts
-              readOnly: true
-            - name: tmp
-              mountPath: /tmp
         # The gateway refuses a group/world-writable temp dir without the sticky bit and disables
         # its session observer (activescott/activeassistant#440). fsGroup leaves the tmp
         # emptyDir root as root:node with mode 2777, and uid 1000 is not the owner so it cannot
@@ -257,6 +238,46 @@ spec:
       containers:
         - name: olya
           image: olya-image
+          # The image's CMD (image/Dockerfile in activeassistant) with two flags added. tini
+          # stays the ENTRYPOINT. If the image's CMD changes, change this with it.
+          #
+          # Both flags go here rather than in NODE_OPTIONS so only the gateway gets them, not
+          # every node process she runs. That matters more for the heap size than for the
+          # preload: NODE_OPTIONS is inherited, so the cap would be handed to every claude-cli
+          # and MCP server she spawns, and the cgroup would die long before any of them
+          # collected.
+          #
+          # --import: writes a heap snapshot on critical memory pressure; see
+          # scripts/heap-snapshot-on-memory-critical.mts.
+          #
+          # --max-old-space-size=8192: raises V8's heap cap from its default 4.19GiB
+          # (memoryLimit=4496293888 in the SIGURG reports) to 8GiB. This is NOT because the heap
+          # needs room. Three forced-GC heap snapshots an hour apart measured the live heap flat
+          # at 505MiB / 493MiB / 505MiB over 5h16m with a steady 4.1-4.2M nodes, so nothing is
+          # retained; the 2GiB heapUsed that triggers the snapshots is pre-GC garbage, i.e.
+          # allocation rate.
+          #
+          # The cap is here because OpenClaw derives its RSS pressure thresholds from the V8
+          # heap limit and ignores the cgroup limit. src/logging/diagnostic-memory.ts resolves
+          # rssCriticalBytes = min(max(3GiB, heapLimit * 0.75), cgroupLimit * 0.75), which at
+          # the default heap limit is min(3.14GiB, 15GiB) = 3.14GiB. This container's normal
+          # working RSS is 3.5GiB+, so every memory sample reported level=critical, and that one
+          # bogus signal drove two failure loops: the heap-snapshot preload blocking the main
+          # thread for 6.3s, and session-sqlite retiring and respawning V8 worker isolates
+          # (reason=pressure, 352 retirements in 11h) which ratcheted RSS and so re-triggered
+          # the pressure that caused it.
+          #
+          # At 8GiB the threshold becomes min(6GiB, 15GiB) = 6GiB, clear of the real working set.
+          # 8 rather than 16 deliberately: V8 grows old space to live-size * a factor bounded by
+          # the cap, so a larger cap removes the ceiling currently forcing collection and widens
+          # the sawtooth, and the claude-cli and MCP children already hold ~6GiB of the 20Gi
+          # limit. See ../home-infra-private/docs/specs/olya-memory-pressure-stalls/.
+          args:
+            - node
+            - --max-old-space-size=8192
+            - --import=/scripts/heap-snapshot-on-memory-critical.mts
+            - openclaw.mjs
+            - gateway
           # HTTP_PROXY, HTTPS_PROXY, NO_PROXY: see olya-proxy-env in kustomization.yaml.
           envFrom:
             - configMapRef:
@@ -406,6 +427,37 @@ spec:
                 secretKeyRef:
                   name: olya-gpupoet-db
                   key: gpupoet_ro_password
+            # Dumps a JS stack and heap summary to the volume on SIGURG, so the next event-loop
+            # stall (activescott/activeassistant#722) leaves evidence instead of just a liveness
+            # restart. /state/openclaw persists across restarts and is writable in this
+            # container. The preStop hook below sends it on every stop; see README.md for a
+            # manual trigger.
+            #
+            # Not SIGUSR2, Node's default: the gateway handles that one as a restart request, and
+            # with commands.restart unset and OPENCLAW_SUPERVISOR_MODE=external that exits the
+            # container. Nothing in OpenClaw handles SIGURG, and a process without the report
+            # flag ignores it (activescott/activeassistant#774, ping-poet/dreamwright#223).
+            - name: NODE_OPTIONS
+              value: "--report-on-signal --report-signal=SIGURG --report-directory=/state/openclaw"
+            # Caps glibc's per-thread malloc arenas. The default is 8 * ncores, which on this
+            # 20-core node is 160, and OpenClaw's session-sqlite pool churns worker threads
+            # hard (352 retire/respawn cycles in the 11h to 2026-10-08T08:00Z). Each new Worker
+            # is a fresh V8 isolate that mallocs heavily and, on exit, frees back to glibc
+            # rather than to the kernel -- so freed chunks stay resident, spread across arenas,
+            # and RSS ratchets while live memory stays flat. The SIGURG reports show the gap
+            # directly: 3.55GiB RSS against a 1.18GiB JS heap (559MB main + 623MB across 12
+            # workers). Fewer arenas means more reuse of already-resident chunks.
+            #
+            # Unlike the heap cap this is deliberately NOT restricted to the gateway: it is
+            # read by glibc in every process in the container, and the claude-cli and MCP
+            # children churn threads too. 2 rather than 1 because the main thread and the
+            # worker pool allocating from a single arena would contend on its lock.
+            #
+            # This is a mitigation for the symptom, not a fix for the churn. The churn itself
+            # is driven by the bogus pressure signal the --max-old-space-size flag above
+            # addresses; if that holds, this becomes belt-and-braces.
+            - name: MALLOC_ARENA_MAX
+              value: "2"
             # GPU Poet's excluder credentials, for her shell commands to use directly
             # (activescott/activeassistant#743, activescott/gpu-poet#83). The OpenClaw secret
             # store can't deliver these to her claude-cli Bash, so they ride in as pod env vars
@@ -436,6 +488,22 @@ spec:
             postStart:
               exec:
                 command: ["/scripts/check-memory-mounts.mts"]
+            # Asks the gateway for a diagnostic report before kubelet sends SIGTERM, including on
+            # a liveness kill, when nobody is there to send it (activescott/activeassistant#774).
+            # PID 1 is tini, which forwards the signal to the gateway. Node writes the report from
+            # the event loop, so a gateway still stalled after 10s writes it only once the loop
+            # frees up, if that happens before SIGKILL, and its JS stack is then the stack after
+            # the stall rather than during it. The heap summary, libuv handles and resource usage
+            # are still from the moment it is written. Keeps the 20 newest reports, since every
+            # stop now leaves one.
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >-
+                    kill -URG 1; sleep 10;
+                    ls -t /state/openclaw/report.*.json 2>/dev/null | tail -n +21 | xargs -r rm -f
           ports:
             - name: http
               containerPort: 18789
@@ -452,23 +520,40 @@ spec:
           # timeoutSeconds is explicit on all three: the default is 1s, and a single-threaded
           # Node process busy with a compaction or a large model response can plausibly miss
           # that. On the liveness probe a missed response restarts the pod mid-task.
+          #
+          # Raised 5s -> 15s on 2026-10-08. At 5s a single heap-snapshot write was enough to
+          # fail a probe: the preload blocks the main thread while V8 serializes, measured at
+          # 6301ms for a 398MB snapshot, so curl timed out with the gateway otherwise healthy.
+          # Over the 10.5h before the restart that produced 78 readiness and 43 liveness
+          # failures. 15s covers that write with margin and still leaves the liveness decision
+          # to failureThreshold below, which is the control that should decide "wedged".
+          #
+          # periodSeconds moved with it so no period is shorter than the timeout. Overlapping
+          # probes are legal but kubelet just serializes them, and on the startup probe a 15s
+          # timeout against the old 5s/60 would have stretched the startup budget from 300s to
+          # as much as 900s. 10s/30 keeps it at 300s.
           startupProbe:
             exec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/startupz"]
-            periodSeconds: 5
-            timeoutSeconds: 5
-            failureThreshold: 60
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 30
           readinessProbe:
             exec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/startupz"]
-            periodSeconds: 10
-            timeoutSeconds: 5
+            # 3 (default failureThreshold) x 20s = 60s to leave the Service endpoints.
+            periodSeconds: 20
+            timeoutSeconds: 15
           livenessProbe:
             exec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/health"]
             periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 6
+            timeoutSeconds: 15
+            # 4 minutes. A 98s event-loop stall that recovered on its own still tripped this at
+            # the previous threshold of 6, killing the pod mid-task 18s before it would have
+            # recovered (activescott/activeassistant#722). A gateway that is truly wedged still
+            # gets restarted.
+            failureThreshold: 12
           # 20Gi / 2Gi request: activescott/activeassistant#248 measured olya-0's working set
           # peaking at 7.93Gi (8,511,156,224 bytes) against the prior 8Gi limit, OOMKilling the
           # container mid-turn with three heavy agent sessions overlapping (install/build/test
@@ -496,8 +581,8 @@ spec:
             # THE enforcement boundary. Same PVC as the mount above, mounted a second time over
             # each declarative subdirectory with readOnly: true.
             #
-            # readOnly is per CONTAINER and per MOUNT ENTRY, so seed-workspace, install-plugins
-            # and instruction-sync keep writing these paths through their own read-write /state
+            # readOnly is per CONTAINER and per MOUNT ENTRY, so seed-workspace and
+            # instruction-sync keep writing these paths through their own read-write /state
             # mount while nothing in THIS container can: not her tools, not the gateway, not a
             # shell command she runs. A write here fails with EROFS, and that failure is the
             # correct outcome rather than a bug to route around.
@@ -540,7 +625,8 @@ spec:
             #
             # USER.md is deliberately NOT here. It is a reviewed instruction file now
             # (activescott/activeassistant#84), so the gateway reads the read-only checkout
-            # copy and changes to it arrive by PR like any other instruction file.
+            # copy and changes to it arrive by PR like any other instruction file. IDENTITY.md
+            # followed for the same reason (activescott/activeassistant#847).
             #
             # THESE FILES MUST ONLY EVER BE EDITED IN PLACE. A bind mount is tied to the inode
             # that existed when the container started, so anything that REPLACES a file under
@@ -560,9 +646,6 @@ spec:
             - name: state
               mountPath: /state/workspace/DREAMS.md
               subPath: memory/DREAMS.md
-            - name: state
-              mountPath: /state/workspace/IDENTITY.md
-              subPath: memory/IDENTITY.md
             - name: state
               mountPath: /state/workspace/memory
               subPath: memory/memory
@@ -643,9 +726,6 @@ spec:
         - name: state
           persistentVolumeClaim:
             claimName: olya-state
-        - name: config
-          configMap:
-            name: olya-config
         - name: scripts
           configMap:
             name: olya-scripts

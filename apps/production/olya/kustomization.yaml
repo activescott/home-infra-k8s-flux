@@ -15,26 +15,15 @@ resources:
   - ../../../infrastructure/prod/configs/ghcr-pull-secret/
 namespace: olya
 configMapGenerator:
-  # The gateway plugin list. seed-workspace copies the gateway config from the workspace
-  # repo into /state/config after cloning, so this ConfigMap no longer carries it. OpenClaw
-  # refuses to start on an invalid config, so validate before committing, from a checkout
-  # of activescott/activeassistant:
-  #   docker run --rm -v $PWD/openclaw.json:/cfg/openclaw.json:ro \
-  #     -e OPENCLAW_CONFIG_PATH=/cfg/openclaw.json \
-  #     -e OPENCLAW_GATEWAY_TOKEN=dummy \
-  #     ghcr.io/activescott/olya:v0.1.0 openclaw config validate
-  - name: olya-config
-    files:
-      - managed-plugins.txt
   - name: olya-scripts
     files:
       - scripts/seed-workspace.mts
       - scripts/instruction-sync.mts
       - scripts/memory-sync.mts
-      - scripts/install-plugins.mts
       - scripts/check-memory-mounts.mts
       - scripts/reconcile-automations.mts
       - scripts/ssh-proxy-connect.mts
+      - scripts/heap-snapshot-on-memory-critical.mts
       # Imported by the three above. Not a program, but it ships in the same ConfigMap because
       # all three resolve it as ./volume-layout.mts from /scripts.
       - scripts/volume-layout.mts
@@ -121,4 +110,4 @@ secretGenerator:
 images:
   - name: olya-image
     newName: ghcr.io/activescott/olya # {"$imagepolicy": "flux-system:policy-olya:name"}
-    newTag: main-1791179333 # {"$imagepolicy": "flux-system:policy-olya:tag"}
+    newTag: main-1791463713 # {"$imagepolicy": "flux-system:policy-olya:tag"}

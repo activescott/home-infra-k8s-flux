@@ -81,7 +81,24 @@ spec:
         # logging the same error after a Grafana upgrade, add it to this list.
         disable_plugins: "elasticsearch,mysql"
 
-    # Provision both Prometheus and Loki datasources
+    # Read by the datasources below. See ./datasource-auth-middleware.yaml.
+    envValueFrom:
+      GRAFANA_DATASOURCE_PASSWORD:
+        secretKeyRef:
+          name: grafana-datasource-password
+          key: password
+
+    # Provision both Prometheus and Loki datasources.
+    #
+    # Both go through Traefik's read-only routes, not the in-cluster Services, and the
+    # NetworkPolicy no longer lets Grafana reach the Services. Grafana's datasource proxy passes
+    # a Viewer's request through with its method, so a direct URL would let any Viewer write.
+    # The routes admit GET only, hence httpMethod: GET (Grafana's default for Prometheus is
+    # POST). The X-Read-Client header selects the Prometheus route that checks Grafana's user
+    # rather than prometheus-basic-auth's; it is not a credential.
+    #
+    # prometheus.activescott.com and loki.activescott.com resolve to the node through the LAN DNS
+    # overrides.
     datasources:
       datasources.yaml:
         apiVersion: 1
@@ -89,14 +106,26 @@ spec:
           - name: Prometheus
             uid: PBFA97CFB590B2093
             type: prometheus
-            url: http://prometheus-server.monitoring.svc:80
+            url: https://prometheus.activescott.com
             access: proxy
             isDefault: true
+            basicAuth: true
+            basicAuthUser: grafana
+            jsonData:
+              httpMethod: GET
+              httpHeaderName1: X-Read-Client
+            secureJsonData:
+              basicAuthPassword: $__env{GRAFANA_DATASOURCE_PASSWORD}
+              httpHeaderValue1: grafana
           - name: Loki
             uid: P8E80F9AEF21F6940
             type: loki
-            url: http://loki.monitoring.svc:3100
+            url: https://loki.activescott.com
             access: proxy
+            basicAuth: true
+            basicAuthUser: grafana
+            secureJsonData:
+              basicAuthPassword: $__env{GRAFANA_DATASOURCE_PASSWORD}
 
     resources:
       requests:
