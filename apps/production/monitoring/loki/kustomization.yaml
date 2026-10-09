@@ -4,6 +4,7 @@ resources:
   - ./certificate.yaml
   - ./loki-push-ingress.yaml
   - ./loki-push-middleware.yaml
+  - ./loki-read-ingress.yaml
 
 secretGenerator:
   # htpasswd lines for the Loki push senders (loki-push-middleware.yaml). Written by

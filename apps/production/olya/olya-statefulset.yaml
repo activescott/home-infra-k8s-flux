@@ -47,6 +47,40 @@ spec:
       # root filesystem. seed-workspace in particular executes code it cloned from a git repo,
       # with the ssh key mounted, so it is the last place to leave at the defaults.
       initContainers:
+        # A new olya-0 pod IP isn't in kube-router's ipset for the egress proxy's ingress
+        # NetworkPolicy for ~20-40s after the pod starts; until then the proxy's chain ends in
+        # REJECT and every connection to it fails ECONNREFUSED. seed-workspace hit this twice on
+        # most starts, each triggering OpenClaw's own retry/backoff on top of kubelet's
+        # (activescott/activeassistant#878). This blocks on a plain TCP connect to the proxy
+        # before anything else runs, so seed-workspace and every later step start with egress
+        # already working. A widened NetworkPolicy would not fix this: kube-router resolves a
+        # namespaceSelector to the same per-pod-IP ipset, so the race is the same either way.
+        - name: wait-for-egress-proxy
+          image: busybox:1.38@sha256:dc2d74b28e4cf8984fa52af1f39bc7c3d9c73760b41a74d629f5d11b1ab28616
+          command:
+            - sh
+            - -c
+            - |
+              start=$(date +%s)
+              while [ $(( $(date +%s) - start )) -lt 120 ]; do
+                nc -z -w 2 olya-egress-proxy.browser-chaperone-prod.svc.cluster.local 3128 && exit 0
+                sleep 2
+              done
+              echo "wait-for-egress-proxy: olya-egress-proxy:3128 still unreachable after 120s" >&2
+              exit 1
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 16Mi
+            limits:
+              cpu: "100m"
+              memory: 32Mi
+
         # Credentials and workspace. Clones activeassistant to /state/workspace, forces it to
         # origin/main, seeds the gateway config to /state/config, and relocates the memory files
         # to /state/memory, which the olya container bind-mounts back over workspace root.
@@ -204,13 +238,43 @@ spec:
       containers:
         - name: olya
           image: olya-image
-          # The image's CMD (image/Dockerfile in activeassistant) with one flag added: a preload
-          # that writes a heap snapshot on critical memory pressure; see
-          # scripts/heap-snapshot-on-memory-critical.mts. It goes here rather than in
-          # NODE_OPTIONS so only the gateway loads it, not every node process she runs. tini
+          # The image's CMD (image/Dockerfile in activeassistant) with two flags added. tini
           # stays the ENTRYPOINT. If the image's CMD changes, change this with it.
+          #
+          # Both flags go here rather than in NODE_OPTIONS so only the gateway gets them, not
+          # every node process she runs. That matters more for the heap size than for the
+          # preload: NODE_OPTIONS is inherited, so the cap would be handed to every claude-cli
+          # and MCP server she spawns, and the cgroup would die long before any of them
+          # collected.
+          #
+          # --import: writes a heap snapshot on critical memory pressure; see
+          # scripts/heap-snapshot-on-memory-critical.mts.
+          #
+          # --max-old-space-size=8192: raises V8's heap cap from its default 4.19GiB
+          # (memoryLimit=4496293888 in the SIGURG reports) to 8GiB. This is NOT because the heap
+          # needs room. Three forced-GC heap snapshots an hour apart measured the live heap flat
+          # at 505MiB / 493MiB / 505MiB over 5h16m with a steady 4.1-4.2M nodes, so nothing is
+          # retained; the 2GiB heapUsed that triggers the snapshots is pre-GC garbage, i.e.
+          # allocation rate.
+          #
+          # The cap is here because OpenClaw derives its RSS pressure thresholds from the V8
+          # heap limit and ignores the cgroup limit. src/logging/diagnostic-memory.ts resolves
+          # rssCriticalBytes = min(max(3GiB, heapLimit * 0.75), cgroupLimit * 0.75), which at
+          # the default heap limit is min(3.14GiB, 15GiB) = 3.14GiB. This container's normal
+          # working RSS is 3.5GiB+, so every memory sample reported level=critical, and that one
+          # bogus signal drove two failure loops: the heap-snapshot preload blocking the main
+          # thread for 6.3s, and session-sqlite retiring and respawning V8 worker isolates
+          # (reason=pressure, 352 retirements in 11h) which ratcheted RSS and so re-triggered
+          # the pressure that caused it.
+          #
+          # At 8GiB the threshold becomes min(6GiB, 15GiB) = 6GiB, clear of the real working set.
+          # 8 rather than 16 deliberately: V8 grows old space to live-size * a factor bounded by
+          # the cap, so a larger cap removes the ceiling currently forcing collection and widens
+          # the sawtooth, and the claude-cli and MCP children already hold ~6GiB of the 20Gi
+          # limit. See ../home-infra-private/docs/specs/olya-memory-pressure-stalls/.
           args:
             - node
+            - --max-old-space-size=8192
             - --import=/scripts/heap-snapshot-on-memory-critical.mts
             - openclaw.mjs
             - gateway
@@ -375,6 +439,25 @@ spec:
             # flag ignores it (activescott/activeassistant#774, ping-poet/dreamwright#223).
             - name: NODE_OPTIONS
               value: "--report-on-signal --report-signal=SIGURG --report-directory=/state/openclaw"
+            # Caps glibc's per-thread malloc arenas. The default is 8 * ncores, which on this
+            # 20-core node is 160, and OpenClaw's session-sqlite pool churns worker threads
+            # hard (352 retire/respawn cycles in the 11h to 2026-10-08T08:00Z). Each new Worker
+            # is a fresh V8 isolate that mallocs heavily and, on exit, frees back to glibc
+            # rather than to the kernel -- so freed chunks stay resident, spread across arenas,
+            # and RSS ratchets while live memory stays flat. The SIGURG reports show the gap
+            # directly: 3.55GiB RSS against a 1.18GiB JS heap (559MB main + 623MB across 12
+            # workers). Fewer arenas means more reuse of already-resident chunks.
+            #
+            # Unlike the heap cap this is deliberately NOT restricted to the gateway: it is
+            # read by glibc in every process in the container, and the claude-cli and MCP
+            # children churn threads too. 2 rather than 1 because the main thread and the
+            # worker pool allocating from a single arena would contend on its lock.
+            #
+            # This is a mitigation for the symptom, not a fix for the churn. The churn itself
+            # is driven by the bogus pressure signal the --max-old-space-size flag above
+            # addresses; if that holds, this becomes belt-and-braces.
+            - name: MALLOC_ARENA_MAX
+              value: "2"
             # GPU Poet's excluder credentials, for her shell commands to use directly
             # (activescott/activeassistant#743, activescott/gpu-poet#83). The OpenClaw secret
             # store can't deliver these to her claude-cli Bash, so they ride in as pod env vars
@@ -437,22 +520,35 @@ spec:
           # timeoutSeconds is explicit on all three: the default is 1s, and a single-threaded
           # Node process busy with a compaction or a large model response can plausibly miss
           # that. On the liveness probe a missed response restarts the pod mid-task.
+          #
+          # Raised 5s -> 15s on 2026-10-08. At 5s a single heap-snapshot write was enough to
+          # fail a probe: the preload blocks the main thread while V8 serializes, measured at
+          # 6301ms for a 398MB snapshot, so curl timed out with the gateway otherwise healthy.
+          # Over the 10.5h before the restart that produced 78 readiness and 43 liveness
+          # failures. 15s covers that write with margin and still leaves the liveness decision
+          # to failureThreshold below, which is the control that should decide "wedged".
+          #
+          # periodSeconds moved with it so no period is shorter than the timeout. Overlapping
+          # probes are legal but kubelet just serializes them, and on the startup probe a 15s
+          # timeout against the old 5s/60 would have stretched the startup budget from 300s to
+          # as much as 900s. 10s/30 keeps it at 300s.
           startupProbe:
             exec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/startupz"]
-            periodSeconds: 5
-            timeoutSeconds: 5
-            failureThreshold: 60
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 30
           readinessProbe:
             exec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/startupz"]
-            periodSeconds: 10
-            timeoutSeconds: 5
+            # 3 (default failureThreshold) x 20s = 60s to leave the Service endpoints.
+            periodSeconds: 20
+            timeoutSeconds: 15
           livenessProbe:
             exec:
               command: ["curl", "-sf", "http://127.0.0.1:18789/health"]
             periodSeconds: 20
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             # 4 minutes. A 98s event-loop stall that recovered on its own still tripped this at
             # the previous threshold of 6, killing the pod mid-task 18s before it would have
             # recovered (activescott/activeassistant#722). A gateway that is truly wedged still
