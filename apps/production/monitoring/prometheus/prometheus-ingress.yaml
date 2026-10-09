@@ -11,8 +11,13 @@
 #
 # GET /-/ready stays open because the Prometheus UI polls it and refuses to render the query page
 # without a 200. POST is allowed on /api/v1/labels and /api/v1/series only, because the UI's
-# PromQL autocomplete (codemirror-promql) sends those as POST. The UI runs queries with GET, and
-# Grafana talks to the in-cluster Service, not this host.
+# PromQL autocomplete (codemirror-promql) sends those as POST. The UI runs queries with GET.
+#
+# Grafana's Prometheus datasource comes through here too, with its own user
+# (../grafana/datasource-auth-middleware.yaml) and GET only. Its requests carry
+# X-Read-Client: grafana, which picks the first route; the explicit priority puts that route
+# ahead of the others, whose priority is their rule's length. The header only selects which
+# credential is checked, so sending it without Grafana's password gets a 401.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -21,6 +26,16 @@ spec:
   entryPoints:
     - websecure
   routes:
+    - kind: Rule
+      priority: 1000
+      match: >-
+        Host(`prometheus.activescott.com`) && Header(`X-Read-Client`, `grafana`) && Method(`GET`)
+        && PathPrefix(`/api/v1/`) && !(PathPrefix(`/api/v1/admin`) || Path(`/api/v1/write`))
+      middlewares:
+        - name: grafana-datasource-auth
+      services:
+        - name: prometheus-server
+          port: 80
     - kind: Rule
       match: >-
         Host(`prometheus.activescott.com`) && (Method(`GET`) || Method(`HEAD`))

@@ -1,7 +1,8 @@
 # Default deny for the namespace, then one policy per component (activescott/activeassistant#577).
 #
-# Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, and the Loki push
-# ingress for the Dreamwright agents host, ping-poet/dreamwright#122), Olya (Grafana, Loki,
+# Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, the Loki push
+# ingress for the Dreamwright agents host, ping-poet/dreamwright#122, and Grafana's own queries to
+# Prometheus and Loki, which go out through Traefik and come back), Olya (Grafana, Loki,
 # Prometheus and Alertmanager at their in-cluster addresses; the other half of the monitoring
 # rule in apps/production/olya/olya-networkpolicy.yaml), and the edge firewall's syslog. Nothing
 # else pushes to Loki or queries Prometheus directly: on 2026-09-30 Loki's only `job` values were
@@ -123,9 +124,6 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: traefik
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: grafana
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: olya
@@ -269,7 +267,11 @@ spec:
           protocol: TCP
 ---
 # Internet for the plugin preinstaller and the download-dashboards init container, both of which
-# fetch from grafana.com on every start.
+# fetch from grafana.com on every start. The same rule carries Grafana's Loki queries, which go to
+# loki.activescott.com's WAN address and come back through the edge firewall.
+#
+# No rule to Prometheus or Loki: Grafana queries them through Traefik's read-only routes (the
+# comment above the datasources in grafana/helmrelease.yaml says why).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -300,20 +302,28 @@ spec:
         - port: 3000
           protocol: TCP
   egress:
+    # Traefik, for prometheus.activescott.com, which resolves to the node through the LAN DNS
+    # override. Same two rules as wp-cron's in
+    # apps/production/wordpress-micah-mmm-v2/networkpolicy.yaml, which explains why both.
     - to:
-        - podSelector:
+        - namespaceSelector:
             matchLabels:
-              app.kubernetes.io/name: prometheus
-              app.kubernetes.io/component: server
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              svccontroller.k3s.cattle.io/svcname: traefik
       ports:
-        - port: 9090
+        - port: 443
           protocol: TCP
     - to:
-        - podSelector:
+        - namespaceSelector:
             matchLabels:
-              app.kubernetes.io/name: loki
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
       ports:
-        - port: 3100
+        - port: 8443
           protocol: TCP
     - to:
         - podSelector:
@@ -359,9 +369,6 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: alloy
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: grafana
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: olya
