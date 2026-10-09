@@ -3,6 +3,22 @@ resources:
   - ./grafana-ingress.yaml
   - ./grafana-pv.yaml
   - ./helmrelease.yaml
+  - ./datasource-auth-middleware.yaml
+
+secretGenerator:
+  # Grafana's datasource credential, in two Secrets; see datasource-auth-middleware.yaml.
+  - name: grafana-datasource-auth
+    namespace: monitoring
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.grafana-datasource-auth.public-key-encrypted.encrypted
+  - name: grafana-datasource-password
+    namespace: monitoring
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.grafana-datasource-password.public-key-encrypted.encrypted
 
 # Dashboards checked in here are picked up by the Grafana sidecar (enabled in
 # helmrelease.yaml under sidecar.dashboards). The sidecar watches ConfigMaps
