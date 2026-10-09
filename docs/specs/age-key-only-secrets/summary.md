@@ -113,7 +113,7 @@ agent's to run. In order.
    ```bash
    [ "$(op read "op://Private/home-infra kubernetes secrets sops-age-key/home-infra-private.agekey" \
         | age-keygen -y)" = \
-     "$(sed -n 's/^age_key_public="\(.*\)"/\1/p' scripts/_sops_config.include.sh)" ] \
+     "$(sed -n 's/^.*age: *\(age1[0-9a-z]*\).*$/\1/p' .sops.yaml)" ] \
      && echo "1Password copy matches" && rm home-infra-private.agekey
    ```
 
