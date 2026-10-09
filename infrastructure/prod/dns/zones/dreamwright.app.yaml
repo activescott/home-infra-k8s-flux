@@ -55,3 +55,9 @@ spec:
       name: odi3d4n3dmm5thmewnpsfwwhaqqntnji._domainkey.dreamwright.app
       type: CNAME
       content: odi3d4n3dmm5thmewnpsfwwhaqqntnji.dkim.amazonses.com
+    # Elastic IP of the Dreamwright agents host, from tofu/live/agents in
+    # ping-poet/dreamwright-infra.
+    - key: olya-agents-a
+      name: olya.agents.dreamwright.app
+      type: A
+      content: 52.11.188.6
