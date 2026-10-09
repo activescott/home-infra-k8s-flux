@@ -4,8 +4,9 @@
 # ingress for the Dreamwright agents host, ping-poet/dreamwright#122, and Grafana's own queries to
 # Prometheus and Loki, which go out through Traefik and come back), Olya (Grafana, Loki,
 # Prometheus and Alertmanager at their in-cluster addresses; the other half of the monitoring
-# rule in apps/production/olya/olya-networkpolicy.yaml), and the edge firewall's syslog. Nothing
-# else pushes to Loki or queries Prometheus directly: on 2026-09-30 Loki's only `job` values were
+# rule in apps/production/olya/olya-networkpolicy.yaml), the jump box (Grafana only; the other
+# half of apps/production/jumpbox/jumpbox-networkpolicy.yaml), and the edge firewall's syslog.
+# Nothing else pushes to Loki or queries Prometheus directly: on 2026-09-30 Loki's only `job` values were
 # Alloy's two, and every other client goes through an ingress, including the agents host's
 # pushes, which arrive from Traefik. A new direct client, say a CI job querying Loki, has to be
 # added here.
@@ -297,6 +298,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: olya
+        # Grafana only, not Prometheus, Loki or Alertmanager: their APIs have no auth, and
+        # Prometheus's lifecycle endpoints and Loki's delete API are destructive.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: jumpbox
+          podSelector:
+            matchLabels:
+              app: jumpbox
       ports:
         - port: 3000
           protocol: TCP

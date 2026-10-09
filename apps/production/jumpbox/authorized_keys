@@ -1,0 +1,5 @@
+# PLACEHOLDER. No key is authorized yet, so every login is refused.
+#
+# Replace this comment with the public key generated on the Dreamwright agents host
+# (ping-poet/dreamwright#123), one key per line, e.g.
+#   ssh-ed25519 AAAA... olya@dreamwright-agents

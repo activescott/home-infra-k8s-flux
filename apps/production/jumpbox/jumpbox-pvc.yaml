@@ -1,0 +1,15 @@
+# The sshd host key, generated on first start. Provisioned by local-path rather than pinned
+# to a hostPath PV on the pool like the other apps: the key is not worth backing up, and
+# losing it costs one known_hosts update rather than any data.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jumpbox-hostkeys
+  namespace: jumpbox
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 16Mi
