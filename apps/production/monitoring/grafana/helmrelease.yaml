@@ -85,7 +85,7 @@ spec:
     envValueFrom:
       GRAFANA_DATASOURCE_PASSWORD:
         secretKeyRef:
-          name: grafana-datasource-auth
+          name: grafana-datasource-password
           key: password
 
     # Provision both Prometheus and Loki datasources.
@@ -97,8 +97,8 @@ spec:
     # POST). The X-Read-Client header selects the Prometheus route that checks Grafana's user
     # rather than prometheus-basic-auth's; it is not a credential.
     #
-    # prometheus.activescott.com resolves to the node through the LAN DNS override and
-    # loki.activescott.com to the WAN address, which the edge firewall hairpins back.
+    # prometheus.activescott.com and loki.activescott.com resolve to the node through the LAN DNS
+    # overrides.
     datasources:
       datasources.yaml:
         apiVersion: 1

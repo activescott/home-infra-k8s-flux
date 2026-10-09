@@ -267,8 +267,7 @@ spec:
           protocol: TCP
 ---
 # Internet for the plugin preinstaller and the download-dashboards init container, both of which
-# fetch from grafana.com on every start. The same rule carries Grafana's Loki queries, which go to
-# loki.activescott.com's WAN address and come back through the edge firewall.
+# fetch from grafana.com on every start.
 #
 # No rule to Prometheus or Loki: Grafana queries them through Traefik's read-only routes (the
 # comment above the datasources in grafana/helmrelease.yaml says why).
@@ -302,8 +301,8 @@ spec:
         - port: 3000
           protocol: TCP
   egress:
-    # Traefik, for prometheus.activescott.com, which resolves to the node through the LAN DNS
-    # override. Same two rules as wp-cron's in
+    # Traefik, for prometheus.activescott.com and loki.activescott.com, which resolve to the node
+    # through the LAN DNS overrides. Same two rules as wp-cron's in
     # apps/production/wordpress-micah-mmm-v2/networkpolicy.yaml, which explains why both.
     - to:
         - namespaceSelector:
