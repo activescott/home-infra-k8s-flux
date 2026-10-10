@@ -78,9 +78,10 @@ function updateEncryptedCredentials(output) {
   }
   lines[idx] = `${CREDENTIALS_KEY}=${JSON.stringify(output)}`;
 
-  const include = readFileSync(join(repoDir, "scripts/_sops_config.include.sh"), "utf8");
-  const recipient = include.match(/^age_key_public="([^"]+)"/m)?.[1];
-  if (!recipient) fail("no age_key_public in scripts/_sops_config.include.sh");
+  const sopsConfig = readFileSync(join(repoDir, ".sops.yaml"), "utf8");
+  const recipients = [...sopsConfig.matchAll(/^[ \t]*(?:-[ \t]+)?age:[ \t]*(age1[0-9a-z]+)[ \t]*$/gm)];
+  if (recipients.length !== 1) fail("expected exactly one age: recipient in .sops.yaml");
+  const recipient = recipients[0][1];
   // Through `cat` so sops reads /dev/stdin from a real pipe: Node's child stdin is a
   // socket on Linux, which /dev/stdin cannot open.
   const encrypted = execFileSync(

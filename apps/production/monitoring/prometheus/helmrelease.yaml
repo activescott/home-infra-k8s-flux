@@ -972,6 +972,27 @@ spec:
                 annotations:
                   summary: "The network chaperone is refusing an unusual number of connections."
                   description: '{{ $labels.pod }} logged more than 150 would-deny or denied connections in 15 minutes. Check {namespace="browser-chaperone-prod", app="olya-egress-proxy"} |= "chaperone=" in Loki for the host: a one-off burst from a new registry is normal, a single host retrying in a loop is not.'
+              # mcp-gateway stays unready when a backing credential is empty or a
+              # placeholder (browser-chaperone#127), and today that's only visible
+              # through kubectl. Second half of browser-chaperone#126
+              # (activescott/home-infra-k8s-flux#368). Filtered on namespace as well as
+              # deployment: apps/base/tinkerbell has its own Deployment named
+              # mcp-gateway, in a different namespace, and the metric carries no other
+              # label to tell them apart.
+              - alert: BrowserChaperoneMcpGatewayUnavailable
+                expr: 'kube_deployment_status_replicas_unavailable{namespace="browser-chaperone-prod",deployment="mcp-gateway"} > 0'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'mcp-gateway in browser-chaperone-prod has an unavailable replica.'
+                  description: >-
+                    The mcp-gateway Deployment in browser-chaperone-prod has had at least one
+                    replica unavailable for 15 minutes. Check readiness -- kubectl -n
+                    browser-chaperone-prod get pods -l app=mcp-gateway -- and the pod's logs in
+                    Loki for which backing credential is empty or a placeholder.
+                  query: 'kubectl -n browser-chaperone-prod get pods -l app=mcp-gateway'
+                  repo: activescott/browser-chaperone
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
@@ -1071,6 +1092,24 @@ spec:
                     failure.
                   query: '{namespace="tinkerbell-prod", level=~"error|fatal"} | json'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppErrorVolumeElevated.md
+                  repo: activescott/tinkerbell
+              # tinkerbell-prod's access log recording 401s on POST /mcp
+              # (activescott/home-infra-k8s-flux#338). Fed by
+              # loki_process_custom_tinkerbell_mcp_unauthorized_total; see the stage.match
+              # comment in alloy/helmrelease.yaml for the log line. More than 5 in 15m, held
+              # for 10m, to ride out a handful of stray probes without paging.
+              - alert: TinkerbellMcpUnauthorized
+                expr: 'sum(increase(loki_process_custom_tinkerbell_mcp_unauthorized_total[15m])) > 5'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'tinkerbell-prod is rejecting POST /mcp with 401.'
+                  description: >-
+                    More than 5 401 responses from tinkerbell's /mcp endpoint in 15 minutes,
+                    still elevated after 10 minutes. Check whether a caller is using a stale
+                    or missing credential.
+                  query: '{namespace="tinkerbell-prod", app="app"} |= "POST /mcp 401"'
                   repo: activescott/tinkerbell
           - name: email-relay
             rules:
@@ -1983,6 +2022,24 @@ spec:
                     is restarting the pod, kubectl --context nas -n olya delete pod olya-0,
                     which drops whatever that session was doing.
                   query: '{namespace="olya", app="olya"} |= "stalled session: sessionId={{ $labels.session_id }}"'
+                  repo: activescott/activeassistant
+              # olya-0 failed to start a bundled MCP server (activescott/home-infra-k8s-flux#338).
+              # Fed by loki_process_custom_olya_mcp_server_start_failed_total; see the
+              # stage.match comment in alloy/helmrelease.yaml for the log line. Any failure in
+              # 15m is enough to fire -- a healthy gateway doesn't log this at all -- and
+              # `for: 10m` requires it to persist rather than resolving on a single blip.
+              - alert: OlyaMcpServerStartFailed
+                expr: 'sum(increase(loki_process_custom_olya_mcp_server_start_failed_total[15m])) > 0'
+                for: 10m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'olya-0 failed to start an MCP server.'
+                  description: >-
+                    OpenClaw's bundle-mcp subsystem logged "failed to start server" at least
+                    once in the last 15 minutes and it has not cleared in 10 minutes. Tool
+                    calls routed to that server are failing.
+                  query: '{namespace="olya", app="olya"} |= "failed to start server"'
                   repo: activescott/activeassistant
 
           # Alertmanager's own delivery health. Scraped via the podAnnotations block under

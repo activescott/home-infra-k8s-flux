@@ -71,3 +71,7 @@ resources:
   # browser-chaperone: the approval app, its database, the browser service, and the browser's
   # egress proxy and NetworkPolicies (activescott/activeassistant#196, #229).
   - ./browser-chaperone
+  # SSH jump box for Olya on the Dreamwright agents host: read-only kubectl, Grafana, Loki and
+  # Prometheus, and debeth (ping-poet/dreamwright#123). Logins are refused until a real key is
+  # in jumpbox/authorized_keys. See apps/production/jumpbox/README.md.
+  - ./jumpbox

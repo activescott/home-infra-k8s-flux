@@ -1,8 +1,11 @@
 # debeth's Alloy (activescott/activeassistant#648) and the Dreamwright agents host
 # (ping-poet/dreamwright#122) push metrics here. A second Ingress for
-# the same host because middleware annotations are per-Ingress. Traefik prefers the longer
-# rule, so Path(`/api/v1/write`) wins over prometheus-ingress's PathPrefix(`/`): the read
-# credential cannot write, and the sender credentials work on this one path only.
+# the same host because middleware annotations are per-Ingress. Rule priority does not keep the
+# read credential off this path; prometheus-ingress.yaml's routes outrank this one by length.
+# What does is that they never match POST /api/v1/write: they admit GET and HEAD, and POST only
+# on /api/v1/labels and /api/v1/series. Adding POST to the GET/HEAD route leaves this path
+# guarded by that route's one Path(`/api/v1/write`) exclusion. The sender credentials work on
+# this one path only.
 #
 # Middleware order is the annotation's order: the allowlist first, so a request from anywhere
 # but a sender gets a 403 before anything else runs. Then the in-flight cap, so a stuck or
@@ -14,11 +17,12 @@ metadata:
   name: prometheus-remote-write-ingress
   annotations:
     # <middleware-namespace>-<middleware-name>@kubernetescrd. Nothing validates the string.
-    # On Traefik 3.3.6 a reference to a middleware that does not exist drops this whole
-    # router, not just the middleware, and /api/v1/write falls through to prometheus-ingress's
-    # PathPrefix(`/`) router. debeth then gets a 401, but Scott's read credential can write.
-    # That is why the post-merge check with the read credential in ../README.md
-    # ("Remote write") is mandatory after any change to this line.
+    # A reference to a middleware that does not exist drops this whole router, not just the
+    # middleware (seen on Traefik 3.3.6; the cluster now runs 3.7.13). POST /api/v1/write then
+    # matches no route and gets a 404, because prometheus-ingress.yaml admits POST only on
+    # /api/v1/labels and /api/v1/series. That method allowlist is what stops the read
+    # credential writing, so the post-merge check in ../README.md ("Remote write") is mandatory
+    # after any change to this line or to prometheus-ingress.yaml's methods.
     traefik.ingress.kubernetes.io/router.middlewares: monitoring-prometheus-remote-write-lan@kubernetescrd,monitoring-prometheus-remote-write-inflight@kubernetescrd,monitoring-prometheus-remote-write-auth@kubernetescrd,monitoring-prometheus-remote-write-body-limit@kubernetescrd
 spec:
   tls:

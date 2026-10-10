@@ -46,7 +46,7 @@ enumerate it is to read the vault. That is what `migrate --verify` is for.
 | Where the age key lives | 1Password only, item `home-infra kubernetes secrets sops-age-key`, vault `Private` (or `$OP_VAULT`), file attachment `home-infra-private.agekey` |
 | How the script gets it | `op read` into `SOPS_AGE_KEY` in the child process env, once per run, never to disk |
 | Re-encrypt mechanism for rotation | `sops rotate -i --add-age <new> --rm-age <old>`, not `sops updatekeys` (see below) |
-| Recipient of record | `age_key_public` in `scripts/_sops_config.include.sh`, unchanged as the single declaration |
+| Recipient of record | the `age:` recipient in the root `.sops.yaml`, the single declaration; `scripts/_sops_config.include.sh` reads it into `age_key_public` |
 | Old age keys | never destroyed; every commit in this repo's history is encrypted to them |
 | Deleting 1Password attachments | by hand, in the UI, after `migrate --verify` exits 0 and Scott has read the report. No delete path in any script |
 
@@ -57,6 +57,9 @@ from `.sops.yaml` creation rules, and this repo has no `.sops.yaml`: the recipie
 is passed explicitly as `--age "$age_key_public"` by every encrypting script. Adding
 a `.sops.yaml` would put the recipient in a second place that can drift from
 `_sops_config.include.sh`, which is the class of problem this issue exists to remove.
+
+Superseded: reversed 2026-10-08. `.sops.yaml` is now the only declaration of the
+recipient, and every script reads it from there.
 
 `sops rotate -i --add-age <new> --rm-age <old> --input-type <fmt> --output-type <fmt>`
 needs no config file, takes the recipients as arguments, and additionally mints a
@@ -203,7 +206,7 @@ On any failure it stops, prints the failed path and `git checkout -- .` as the
 rollback, and leaves the rest alone: the tree was clean at the start, so that
 command restores it exactly.
 
-Finally it rewrites `age_key_public` in `scripts/_sops_config.include.sh` and prints
+Finally it rewrites the `age:` recipient in `.sops.yaml` and prints
 the remaining manual steps. `--dry-run` prints the file list and the recipient
 change and writes nothing.
 
