@@ -975,9 +975,9 @@ spec:
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
-              # refines OxyLabs 407s using the X-Error-Description header
+              # refines proxy 407s using the X-Error-Description header
               # — when the response mentions traffic/bandwidth/limit/balance
-              # we land here. Indicates the OxyLabs subscription is out of
+              # we land here. Indicates the proxy plan is out of
               # paid bandwidth.
               - alert: ProxyOutOfBandwidth
                 expr: 'increase(tinkerbell_proxy_errors_total{error_type="payment"}[5m]) > 0'
@@ -986,7 +986,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} reports out-of-bandwidth/billing failure — fetch path is broken.'
-                  description: 'tinkerbell_proxy_errors_total{error_type=payment, proxy={{ $labels.proxy }}} fired. OxyLabs returned a 4xx with X-Error-Description matching traffic/bandwidth/quota/balance. Top up the OxyLabs plan or check billing immediately.'
+                  description: 'tinkerbell_proxy_errors_total{error_type=payment, proxy={{ $labels.proxy }}} fired. The proxy returned a 4xx with X-Error-Description matching traffic/bandwidth/quota/balance. Top up the DataImpulse plan or check billing immediately.'
               - alert: ProxyAuthFailing
                 expr: 'increase(tinkerbell_proxy_errors_total{error_type="auth"}[5m]) > 3'
                 for: 5m
@@ -994,7 +994,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} is rejecting authentication.'
-                  description: 'Multiple 407 responses from {{ $labels.proxy }} in the last 5 minutes. Verify OXYLABS_USERNAME/OXYLABS_PASSWORD secrets and whitelisted IPs in the OxyLabs dashboard.'
+                  description: 'Multiple 407 responses from {{ $labels.proxy }} in the last 5 minutes. Verify the PROXY_USERNAME/PROXY_PASSWORD secrets and the sub-user in the DataImpulse dashboard.'
               - alert: ProxyConnectionFailures
                 expr: 'rate(tinkerbell_proxy_errors_total{error_type="connection"}[10m]) > 0.1'
                 for: 10m
@@ -1002,7 +1002,7 @@ spec:
                   severity: warning
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} connection failures elevated.'
-                  description: 'Sustained ETIMEDOUT/ECONNREFUSED/ERR_TUNNEL errors against {{ $labels.proxy }} — could be transient network or a hard-down OxyLabs account.'
+                  description: 'Sustained ETIMEDOUT/ECONNREFUSED/ERR_TUNNEL errors against {{ $labels.proxy }} — could be transient network or a hard-down DataImpulse account.'
           - name: tinkerbell-log-health
             rules:
               # General backstop, not tied to any one failure mode: counts
