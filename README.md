@@ -259,7 +259,7 @@ The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we
 `./scripts/create-sops-age-decryption-secret.sh` builds it from the age key(s) in 1Password.
 Pass no arguments to include every `*.agekey` attachment on the item except retired ones
 (`-retired-` in the name), which is what you want mid-rotation; name one explicitly to narrow
-it afterwards. It refuses to apply unless one of the keys matches `age_key_public`.
+it afterwards. It refuses to apply unless one of the keys matches the `age:` recipient in `.sops.yaml`.
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
@@ -282,12 +282,12 @@ command succeed while the 1Password copy is wrong.
 Keep a second copy of the key somewhere that is not the laptop and not 1Password. Losing it
 loses every secret in this repo, and 1Password is one account with one recovery path. Write
 it to an encrypted volume or print it, include the `# public key:` comment line, label it with
-the date, and verify it before trusting it. The public key it derives must be `age_key_public`
+the date, and verify it before trusting it. The public key it derives must be the `age:` recipient in `.sops.yaml`
 (or, mid-rotation, the `--new-recipient` you are about to rotate to):
 
 ```bash
 [ "$(age-keygen -y /Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey)" = \
-  "$(sed -n 's/^age_key_public="\(.*\)"/\1/p' scripts/_sops_config.include.sh)" ] \
+  "$(sed -n 's/^.*age: *\(age1[0-9a-z]*\).*$/\1/p' .sops.yaml)" ] \
   && echo "offline copy matches"
 ```
 

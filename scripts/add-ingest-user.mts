@@ -36,7 +36,7 @@ const TARGETS: Record<string, string> = {
 // sender. The first run against prometheus-remote-write carries that line over and deletes it.
 const LEGACY_REMOTE_WRITE_FILE =
   "apps/production/monitoring/prometheus/.env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted"
-const SOPS_CONFIG_INCLUDE = "scripts/_sops_config.include.sh"
+const SOPS_CONFIG = ".sops.yaml"
 const ONEPASSWORD_SECRETS = "scripts/onepassword-secrets.mts"
 const USER_NAME = /^[a-z0-9][a-z0-9-]*$/
 // A placeholder line (a hash too short to be bcrypt) fails this and is dropped.
@@ -75,11 +75,14 @@ function run(command: string, args: string[], input: string): CommandResult {
 }
 
 function configuredRecipient(repoRoot: string): string {
-  const path = join(repoRoot, SOPS_CONFIG_INCLUDE)
-  if (!existsSync(path)) fail(`${SOPS_CONFIG_INCLUDE} not found under ${repoRoot}`)
-  const match = readFileSync(path, "utf8").match(/^age_key_public="([^"]+)"/m)
-  if (!match) fail(`no age_key_public assignment in ${SOPS_CONFIG_INCLUDE}`)
-  return match[1]
+  const path = join(repoRoot, SOPS_CONFIG)
+  if (!existsSync(path)) fail(`${SOPS_CONFIG} not found under ${repoRoot}`)
+  const text = readFileSync(path, "utf8")
+  const matches = [...text.matchAll(/^[ \t]*(?:-[ \t]+)?age:[ \t]*(age1[0-9a-z]+)[ \t]*$/gm)]
+  if (matches.length !== 1) {
+    fail(`expected exactly one age: recipient in ${SOPS_CONFIG}, found ${matches.length}`)
+  }
+  return matches[0][1]
 }
 
 /** Decrypted contents of a committed file. Callers must not log the result. */
