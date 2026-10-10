@@ -31,14 +31,13 @@ spec:
     # DMARC record survives onboarding decides who can own this record on the real sending
     # domains, so it is established here first and re-read afterwards.
     #
-    # rua= already names a dmarc@ address on this zone, but nothing delivers it: this zone
-    # has no apex MX and Email Routing is unconfigured, so aggregate reports sent here
-    # bounce. Fixing that means turning Email Routing on and letting it write the apex MX,
-    # which is a change to a zone already onboarded to Email Sending and is not made here.
+    # This domain sends no mail, so the policy is p=reject. There is no rua=: it named
+    # dmarc@ on this zone, which has no apex MX and no Email Routing, so every aggregate
+    # report sent there bounced and none ever arrived.
     - key: dmarc-txt
       name: _dmarc.productpoet.com
       type: TXT
-      content: v=DMARC1; p=none; rua=mailto:dmarc@productpoet.com
+      content: v=DMARC1; p=reject
       comment: probe -- does Email Sending onboarding overwrite an existing DMARC record?
     # Created by Cloudflare Email Sending when this zone was onboarded, not by us. Every
     # one comes back from the API with `meta.read_only: true`, and Cloudflare's docs say
