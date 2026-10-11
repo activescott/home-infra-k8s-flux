@@ -10,7 +10,7 @@ metadata:
   name: olya
   namespace: olya
 spec:
-  replicas: 1
+  replicas: 0
   serviceName: olya
   selector:
     matchLabels:
