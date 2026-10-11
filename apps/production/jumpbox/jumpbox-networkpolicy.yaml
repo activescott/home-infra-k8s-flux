@@ -1,0 +1,93 @@
+# What a session on the jump box can reach: the targets olya-0 reaches today for diagnosis,
+# copied from ../olya/olya-networkpolicy.yaml and ../browser-chaperone/networkpolicy.yaml
+# (debeth), less Loki and Prometheus. Nothing else, and no route to the internet.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+#
+# Phoenix is not here because olya-0 does not reach it in-cluster either: she goes through
+# her egress proxy to phoenix.activescott.com, which is public, so the agents host reaches it
+# directly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jumpbox
+  namespace: jumpbox
+spec:
+  podSelector:
+    matchLabels:
+      app: jumpbox
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # sshd, from this Service's svclb pods only, which keeps every other pod in the cluster
+    # off the ClusterIP. The client allowlist is loadBalancerSourceRanges in
+    # jumpbox-service.yaml and the OPNsense rule, not this: svclb masquerades, so the client's
+    # address never arrives here. Traffic kube-proxy forwards straight from the LoadBalancer
+    # address is masqueraded to the node, which kube-router admits to every pod regardless of
+    # policy, as it does the kubelet's probes.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              svccontroller.k3s.cattle.io/svcname: jumpbox
+              svccontroller.k3s.cattle.io/svcnamespace: jumpbox
+      ports:
+        - port: 2222
+          protocol: TCP
+
+  egress:
+    # DNS.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+    # The Kubernetes API, for kubectl. All three addresses are needed; olya-networkpolicy.yaml
+    # explains why .10 is the one actually matched.
+    - to:
+        - ipBlock:
+            cidr: 172.17.0.1/32
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.10/32
+        - ipBlock:
+            cidr: 10.1.111.20/32
+      ports:
+        - port: 6443
+          protocol: TCP
+
+    # Grafana's pod and port only. A session has a shell, so PermitOpen in sshd_config is not
+    # the only bound on what it can reach. Prometheus and Loki are left out on purpose: neither
+    # has auth, Prometheus runs with web.enable-lifecycle and the remote-write receiver, and
+    # Loki's delete API could erase this box's own login records. Queries go through Grafana.
+    # The other half is the `grafana` policy in ../monitoring/networkpolicy.yaml.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - port: 3000
+          protocol: TCP
+
+    # debeth, for ProxyJump. Same address and port as olya-0's route through her egress proxy.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.25/32
+      ports:
+        - port: 22
+          protocol: TCP

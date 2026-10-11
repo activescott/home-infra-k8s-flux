@@ -1,0 +1,130 @@
+# Default deny for the namespace, then Traefik to Phoenix, Phoenix to Postgres, and Prometheus's
+# scrape (activescott/activeassistant#577).
+#
+# Traces arrive through the ingress: Traefik logs POST /v1/traces from the edge. tinkerbell-prod
+# is also admitted on the collector ports because its app secret carries a
+# PHOENIX_COLLECTOR_ENDPOINT that may be the in-cluster address the README suggests; drop that
+# rule once it is known to be the public URL. Any other in-cluster sender needs a rule here.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+---
+# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# which explains the failure mode.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cert-manager-resolver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: phoenix
+spec:
+  podSelector:
+    matchLabels:
+      app: phoenix
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: 6006
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tinkerbell-prod
+      ports:
+        - port: 6006
+          protocol: TCP
+        - port: 4317
+          protocol: TCP
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+              app.kubernetes.io/component: server
+      ports:
+        - port: 9090
+          protocol: TCP
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - port: 5432
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # The internet, for the prompt playground, which calls whichever LLM provider a user picks
+    # with a key entered in the UI. Telemetry is off (PHOENIX_TELEMETRY_ENABLED), so nothing
+    # else goes out.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+      ports:
+        - port: 443
+          protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  # No egress rule: default-deny covers it, and Postgres makes no outbound connections.
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: phoenix
+      ports:
+        - port: 5432
+          protocol: TCP

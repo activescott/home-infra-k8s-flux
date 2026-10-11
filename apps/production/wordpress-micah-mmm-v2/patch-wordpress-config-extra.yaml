@@ -30,8 +30,12 @@ spec:
             # WP_HTTP_BLOCK_EXTERNAL matches networkpolicy.yaml, which gives
             # this pod no internet egress: WordPress refuses outbound
             # requests at once instead of each one hanging until its timeout.
-            # Requests to the site's own host, which is how wp-cron runs,
-            # are still allowed.
+            # Requests to the site's own host are still allowed.
+            #
+            # DISABLE_WP_CRON stops page views from spawning wp-cron.php. The
+            # base's wp-cron CronJob runs due events every five minutes
+            # instead, with this same env (see `replacements` in
+            # kustomization.yaml).
             - name: WORDPRESS_CONFIG_EXTRA
               value: |
                 define('WP_HOME',    'https://mmm.willeke.com');
@@ -40,3 +44,4 @@ spec:
                 define('DISALLOW_FILE_EDIT', true);
                 define('DISALLOW_FILE_MODS', true);
                 define('WP_HTTP_BLOCK_EXTERNAL', true);
+                define('DISABLE_WP_CRON', true);

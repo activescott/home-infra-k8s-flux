@@ -2,3 +2,10 @@
   path: /spec/template/spec/imagePullSecrets
   value:
     - name: github-container-registry-secret
+# Overrides the stale AI_MODEL_PLLM (claude-sonnet-4-5) in .env.secret.app.encrypted,
+# since env wins over envFrom. Drop the encrypted entry when next editing that file.
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: AI_MODEL_PLLM
+    value: anthropic:claude-sonnet-5

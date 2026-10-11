@@ -112,6 +112,20 @@ spec:
                   name: app-creds
                   key: ADMIN_PASSWORD
 
+            - name: EXCLUDER_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EXCLUDER_USERNAME
+                  optional: true
+
+            - name: EXCLUDER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: EXCLUDER_PASSWORD
+                  optional: true
+
             - name: AMAZON_SEARCHER_URL
               value: "http://amazon-searcher:3001"
 

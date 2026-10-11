@@ -1,0 +1,27 @@
+# install-core copies any bundled theme or plugin directory missing from wp-content, and
+# hello.php on every start since it is a file, so deleting one on the host does not stick. It
+# removes these after the copy instead.
+#
+# The site's theme is garden-lawn-care, which is not a child theme. twentytwentyfive stays as the
+# fallback: it is WP_DEFAULT_THEME, which WordPress switches to if the active theme breaks, and
+# Site Health does not count it. Akismet goes even if active: WP_HTTP_BLOCK_EXTERNAL stops it from
+# reaching its API, so it filters nothing.
+#
+# Inactive themes and plugins that did not come with WordPress are removed on the host; see
+# README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: install-core
+          args:
+            - sh
+            - -c
+            - >-
+              mkdir -p wp-content/uploads &&
+              rm -rf wp-content/themes/twentytwentythree wp-content/themes/twentytwentyfour
+              wp-content/plugins/akismet wp-content/plugins/hello.php

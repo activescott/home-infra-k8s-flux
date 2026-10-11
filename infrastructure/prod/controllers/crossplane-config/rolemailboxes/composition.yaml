@@ -13,6 +13,9 @@
 # Secret cloudflare/email-routing-destination (key `destination`), via
 # ExtraResources. It is not in any manifest in this repo. An alias may name its
 # own `destination` instead, which is only for addresses DNS already publishes.
+# Cloudflare's forward action allows only one destination per rule, so an alias that
+# should reach more than one person forwards to a group address instead -- see
+# dreamwright.app.yaml's `it` and `aws-root` entries.
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
@@ -145,14 +148,20 @@ spec:
                   - type: literal
                     field: to
                     value: {{ printf "%s@%s" $entry.localPart $xr.spec.zoneName | quote }}
+                # The Secret's address unless the alias named its own in
+                # `destination`. An override has to be verified on the
+                # Cloudflare account first; until it is, Cloudflare refuses
+                # the update and this rule keeps delivering to whatever it
+                # delivered to before, which is the failure worth having.
+                #
+                # The provider's own schema caps a single action's value at
+                # one address ("Currently limited to a single value"), and
+                # Cloudflare rejects a second forward action on the same rule
+                # with a 422 -- an alias that should reach more than one
+                # person needs a destination that is itself a group address.
                 actions:
                   - type: forward
                     value:
-                      # The Secret's address unless the alias named its own. An
-                      # override has to be verified on the Cloudflare account
-                      # first; until it is, Cloudflare refuses the update and
-                      # this rule keeps delivering to whatever it delivered to
-                      # before, which is the failure worth having.
                       - {{ $entry.destination | default $destination | quote }}
             {{- end }}
             {{- end }}

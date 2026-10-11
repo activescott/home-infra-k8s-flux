@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - jumpbox-rbac.yaml
+  - jumpbox-pvc.yaml
+  - jumpbox-deployment.yaml
+  - jumpbox-service.yaml
+  - jumpbox-networkpolicy.yaml
+namespace: jumpbox
+configMapGenerator:
+  - name: jumpbox-config
+    files:
+      - sshd_config
+      - kubeconfig
+  # Edited by hand when a key is added or rotated. The name hash changes with the content, so
+  # the pod restarts onto the new list, and a key deleted here stops working.
+  - name: jumpbox-authorized-keys
+    files:
+      - authorized_keys

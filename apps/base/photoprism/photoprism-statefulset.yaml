@@ -18,6 +18,7 @@ spec:
         app: photoprism
         role: photoprism
     spec:
+      automountServiceAccountToken: false
       containers:
         # documentation : https://docs.photoprism.app/getting-started/docker-compose/
         # Also there is now https://docs.photoprism.app/getting-started/advanced/kubernetes/

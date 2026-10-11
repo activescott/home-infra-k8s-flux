@@ -29,6 +29,23 @@ spec:
         kind: GitRepository
         name: cvat
       reconcileStrategy: Revision
+  # No CVAT pod calls the Kubernetes API (it only checks KUBERNETES_SERVICE_HOST to pick a nuclio
+  # invoke method, and nuclio is off), and the chart has no value for turning off the token.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+            patch: |
+              - op: add
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false
+          - target:
+              kind: Job
+            patch: |
+              - op: add
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false
   values:
     cvat:
       backend:

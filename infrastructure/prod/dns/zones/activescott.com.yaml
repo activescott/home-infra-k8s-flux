@@ -143,6 +143,12 @@ spec:
       ttl: 1
       proxied: true
       content: activescott.github.io
+    - key: loki-cname
+      name: loki.activescott.com
+      type: CNAME
+      ttl: 1
+      comment: Loki push for the Dreamwright agents host, ping-poet/dreamwright#122
+      content: k8s.activescott.com
     - key: mail-cname
       name: mail.activescott.com
       type: CNAME

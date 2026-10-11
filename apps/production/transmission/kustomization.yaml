@@ -1,5 +1,6 @@
 resources:
   - ./namespace.yaml
+  - ./networkpolicy.yaml
   - ../../base/transmission
 
 buildMetadata: [originAnnotations, transformerAnnotations]

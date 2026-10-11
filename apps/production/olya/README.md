@@ -26,14 +26,14 @@ main thing to understand before editing the StatefulSet or the scripts.
 | ------------------ | ---------------- | --------------------------------------------- |
 | `/state/workspace` | **read-only**    | the `activeassistant` checkout: instructions, skills, subagent rules |
 | `/state/config`    | **read-only**    | the live `openclaw.json` the gateway reads    |
-| `/state/memory`    | read-write       | `MEMORY.md`, `DREAMS.md`, `IDENTITY.md`, `memory/` |
+| `/state/memory`    | read-write       | `MEMORY.md`, `DREAMS.md`, `memory/` |
 | `/state/home`      | read-write       | `$HOME`, credentials, harness config          |
 | `/state/openclaw`  | read-write       | OpenClaw state dir: SQLite, transcripts       |
 | `/state/repos`     | read-write       | work repos she clones on demand               |
 | `/state/archive`   | read-write       | nightly audit and transcript exports          |
 
 **The read-only mounts are the control.** `volumeMounts[].readOnly` is per container and per
-mount entry, so `seed-workspace`, `install-plugins` and `instruction-sync` write those two paths
+mount entry, so `seed-workspace` and `instruction-sync` write those two paths
 through their own read-write `/state` mount while nothing in the `olya` container can. A write
 from her tools fails with `EROFS`, which is the correct outcome. `OPENCLAW_CONFIG_READONLY=1` is
 set as a second layer for a better error message, and is explicitly *not* what enforces this.
@@ -52,12 +52,12 @@ Two consequences that look like bugs and are not:
 - **Her working directory is not writable.** `/state/workspace` is her agent workspace *and* the
   read-only checkout. Scratch files belong in `/tmp`, `/state/repos`, or `/state/memory`.
 - **The memory paths at workspace root are bind mounts** of `/state/memory`, declared on the
-  `olya` container. OpenClaw reads `IDENTITY.md` from workspace root, so it has
+  `olya` container. OpenClaw reads `MEMORY.md` from workspace root, so it has
   to appear there, and it must be a real file: OpenClaw refuses to read a symlinked bootstrap
   file and memory-core refuses to write a symlinked `DREAMS.md`. An earlier attempt used symlinks
   and broke both — see `docs/specs/olya-readonly-instructions/plan-memory-bind-mounts.md`.
-  `USER.md` is not mounted: it is a reviewed instruction file
-  (`activescott/activeassistant#84`), so the gateway reads the read-only checkout copy.
+  `USER.md` and `IDENTITY.md` are not mounted: they are reviewed instruction files
+  (`activescott/activeassistant#84`, `#847`), so the gateway reads the read-only checkout copies.
 
   Two things follow. The mounts exist only in the `olya` container, so `seed-workspace`,
   `instruction-sync` and `memory-sync` all see the ordinary tracked files from the checkout;
@@ -191,6 +191,36 @@ To confirm from Alertmanager's side, this Loki query shows no failures after tha
 ```logql
 {namespace="monitoring", pod="prometheus-alertmanager-0"} |= "olya-hook"
 ```
+
+## Capturing a diagnostic report during a stall
+
+`NODE_OPTIONS` on the `olya` container carries `--report-on-signal --report-signal=SIGURG
+--report-directory=/state/openclaw`, so a main-thread stall like
+activescott/activeassistant#722 can be captured without killing the pod. PID 1 is tini, which
+forwards the signal to the gateway:
+
+```bash
+kubectl --context nas -n olya exec olya-0 -c olya -- kill -URG 1
+```
+
+Not SIGUSR2: the gateway treats that as a restart request and exits the container.
+
+The report lands as `/state/openclaw/report.<timestamp>.<pid>.<seq>.json`, with the JS and
+native stack, heap summary, and event loop and libuv handle info. Node writes it from the event
+loop, so during a stall it is written only once the loop frees up, and the JS stack is the one
+after the stall.
+
+The container's preStop hook sends the same signal and waits 10s on every stop, liveness kills
+included, then keeps only the 20 newest reports.
+
+## Heap snapshots on critical memory pressure
+
+The gateway runs with `--import=/scripts/heap-snapshot-on-memory-critical.mts`, which writes
+`/state/openclaw/diagnostics/memory-critical-<time>.heapsnapshot` when OpenClaw reports
+`level=critical` memory pressure with more than 1 GiB of heap in use. It takes at most one per
+hour per process and keeps the 3 newest. The main thread blocks while it writes: expect tens of
+seconds and a file about twice the heap's size. Each one is logged as
+`heap-snapshot-on-memory-critical: wrote ...`. Open one in Chrome DevTools, Memory tab, Load.
 
 ## Things that will bite
 

@@ -35,3 +35,6 @@
 - op: replace
   path: /spec/template/spec/containers/0/volumeMounts/0/mountPath
   value: /var/lib/postgresql/data
+- op: add
+  path: /spec/template/spec/automountServiceAccountToken
+  value: false

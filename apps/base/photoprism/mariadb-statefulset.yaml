@@ -18,6 +18,7 @@ spec:
         lib: mariadb
         role: mariadb
     spec:
+      automountServiceAccountToken: false
       containers:
         # documentation: https://hub.docker.com/_/mariadb
         - name: mariadb

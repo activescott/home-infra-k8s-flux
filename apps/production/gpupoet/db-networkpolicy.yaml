@@ -1,6 +1,9 @@
-# Only the app and the nightly backup may reach Postgres. Without this the db
-# Service answers anyone in the cluster who has the password
+# Only the app, the nightly backup and Olya may reach Postgres. Without this
+# the db Service answers anyone in the cluster who has the password
 # (activescott/home-infra-k8s-flux#178).
+#
+# Olya connects as olya_ro, a read-only role, for the monthly market report
+# (activescott/activeassistant#705).
 #
 # Nothing else connects over the network. ebay-revalidation,
 # amazon-revalidation and cleanup-listings are curl images that POST to
@@ -29,6 +32,12 @@ spec:
         - podSelector:
             matchLabels:
               app: db-backup
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: olya
+          podSelector:
+            matchLabels:
+              app: olya
       ports:
         - port: 5432
           protocol: TCP

@@ -1,0 +1,31 @@
+# Grafana's Loki datasource queries through here (../grafana/helmrelease.yaml), as
+# ../grafana/datasource-auth-middleware.yaml's user. GET on the read endpoints Grafana's queries,
+# label browser and volume histogram use, and nothing else: Loki runs with auth_enabled: false,
+# so this route is the only thing between a Grafana user and Loki. Any other request gets a 404
+# from Traefik. The push path is loki-push-ingress.yaml's.
+#
+# An IngressRoute rather than an Ingress because the routes match on the method, which an Ingress
+# cannot.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: loki-read-ingress
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: >-
+        Host(`loki.activescott.com`) && Method(`GET`)
+        && (Path(`/loki/api/v1/query`) || Path(`/loki/api/v1/query_range`)
+        || Path(`/loki/api/v1/labels`) || PathRegexp(`^/loki/api/v1/label/[^/]+/values$`)
+        || Path(`/loki/api/v1/series`) || Path(`/loki/api/v1/index/stats`)
+        || Path(`/loki/api/v1/index/volume`) || Path(`/loki/api/v1/index/volume_range`))
+      middlewares:
+        - name: grafana-datasource-auth
+      services:
+        - name: loki
+          port: 3100
+  tls:
+    # must match certificate.yaml's secretName
+    secretName: loki-activescott-com-tls

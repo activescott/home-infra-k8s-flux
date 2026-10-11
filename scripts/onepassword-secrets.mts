@@ -68,7 +68,10 @@ function isActiveAgeKey(name: string): boolean {
 }
 
 // The one declaration of the recipient every *.encrypted file is encrypted to.
-const SOPS_CONFIG_INCLUDE = "scripts/_sops_config.include.sh"
+const SOPS_CONFIG = ".sops.yaml"
+// Its `age:` line. Read with a regex rather than a YAML parser so the script needs no
+// dependency; rotate-age-key rewrites the same line.
+const SOPS_CONFIG_AGE_LINE = /^([ \t]*(?:-[ \t]+)?age:[ \t]*)(age1[0-9a-z]+)[ \t]*$/gm
 
 // All three are surrogate pairs: same UTF-16 length and same terminal width, so padding
 // a status column stays aligned whichever one is used. Single-code-unit marks like ✅
@@ -630,11 +633,13 @@ function foreignKeysOf(encryptedPath: string, format: SopsFormat): string[] {
 
 /** The single declared recipient, read from the file that declares it. */
 function configuredRecipient(repoRoot: string): string {
-  const path = join(repoRoot, SOPS_CONFIG_INCLUDE)
-  if (!existsSync(path)) fail(`${SOPS_CONFIG_INCLUDE} not found under ${repoRoot}`)
-  const match = readFileSync(path, "utf8").match(/^age_key_public="([^"]+)"/m)
-  if (!match) fail(`no age_key_public assignment in ${SOPS_CONFIG_INCLUDE}`)
-  return match[1]
+  const path = join(repoRoot, SOPS_CONFIG)
+  if (!existsSync(path)) fail(`${SOPS_CONFIG} not found under ${repoRoot}`)
+  const matches = [...readFileSync(path, "utf8").matchAll(SOPS_CONFIG_AGE_LINE)]
+  if (matches.length !== 1) {
+    fail(`expected exactly one age: recipient in ${SOPS_CONFIG}, found ${matches.length}`)
+  }
+  return matches[0][2]
 }
 
 function shortRecipient(recipient: string): string {
@@ -884,7 +889,7 @@ function commandList(options: Options): void {
   let orphans = 0
   let localAgeKeys = 0
 
-  console.log(`recipient of record: ${expected}  (${SOPS_CONFIG_INCLUDE})`)
+  console.log(`recipient of record: ${expected}  (${SOPS_CONFIG})`)
   for (const group of groups) {
     console.log(`\n${group.title}  [${group.relDir}]`)
     for (const file of group.files) {
@@ -899,7 +904,7 @@ function commandList(options: Options): void {
         mark = BAD
         detail = "AGE PRIVATE KEY on disk"
         notes.push(
-          "delete it once `age-keygen -y` on the 1Password copy prints age_key_public " +
+          "delete it once `age-keygen -y` on the 1Password copy prints the recipient in .sops.yaml " +
             "(docs/specs/age-key-only-secrets/summary.md, step 7)",
         )
       } else if (!file.hasCiphertext) {
@@ -1121,14 +1126,14 @@ function assertKeyIsStored(recipient: string, vault: string): void {
 function commandRotateAgeKey(options: Options): void {
   const newRecipient = options.newRecipient
   if (!newRecipient) fail("rotate-age-key needs --new-recipient <age1...>")
-  // Rotating a subset would leave the rest on the retired key while age_key_public already
+  // Rotating a subset would leave the rest on the retired key while .sops.yaml already
   // named the new one, which is exactly the half-finished state `list` exists to catch.
   if (options.only.length > 0) fail("rotate-age-key rotates every file; --only is not allowed")
   requireSops()
 
   const oldRecipient = configuredRecipient(options.repoRoot)
   if (newRecipient === oldRecipient) {
-    fail(`--new-recipient is already the recipient of record in ${SOPS_CONFIG_INCLUDE}`)
+    fail(`--new-recipient is already the recipient of record in ${SOPS_CONFIG}`)
   }
 
   const status = git(options.repoRoot, ["status", "--porcelain"])
@@ -1210,20 +1215,20 @@ function commandRotateAgeKey(options: Options): void {
   if (options.dryRun) {
     console.log(
       `\nDRY RUN: ${targets.length - already} file(s) to rotate, ${already} already on the ` +
-        `new recipient. ${SOPS_CONFIG_INCLUDE} not touched.`,
+        `new recipient. ${SOPS_CONFIG} not touched.`,
     )
     return
   }
 
-  const configPath = join(options.repoRoot, SOPS_CONFIG_INCLUDE)
+  const configPath = join(options.repoRoot, SOPS_CONFIG)
   const updated = readFileSync(configPath, "utf8").replace(
-    /^age_key_public="[^"]+"/m,
-    `age_key_public="${newRecipient}"`,
+    SOPS_CONFIG_AGE_LINE,
+    `$1${newRecipient}`,
   )
   writeFileSync(configPath, updated)
 
   console.log(
-    `\n${rotated} rotated, ${already} already current. ${SOPS_CONFIG_INCLUDE} now declares ` +
+    `\n${rotated} rotated, ${already} already current. ${SOPS_CONFIG} now declares ` +
       `the new recipient.\n\nStill to do, in order (see docs/specs/age-key-only-secrets/plan.md):\n` +
       `  1. ./scripts/onepassword-secrets.mts list   # must exit 0\n` +
       `  2. review git diff --stat, commit, PR, merge\n` +
@@ -1899,7 +1904,7 @@ function usage(): void {
       "          The repo-side half of an age key rotation. Refuses to run unless the tree",
       "          is clean, the branch is not main, and a key in 1Password derives",
       "          --new-recipient under `age-keygen -y`. Then `sops rotate` over every",
-      `          ciphertext file and rewrites age_key_public in ${SOPS_CONFIG_INCLUDE}.`,
+      `          ciphertext file and rewrites the age: recipient in ${SOPS_CONFIG}.`,
       "          It does not touch 1Password or the cluster; both are Scott's steps. See",
       "          docs/specs/age-key-only-secrets/plan.md for the full order.",
       "",

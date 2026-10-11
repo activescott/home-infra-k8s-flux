@@ -1,0 +1,20 @@
+# Grafana's credential for the read-only routes it queries Prometheus and Loki through
+# (../prometheus/prometheus-ingress.yaml, ../loki/loki-read-ingress.yaml). A separate user from
+# prometheus-basic-auth, whose secret holds a single htpasswd line.
+#
+# The credential's two halves are in two Secrets: grafana-datasource-auth holds only `users`, the
+# htpasswd line Traefik checks, and grafana-datasource-password holds the plaintext Grafana sends
+# (envValueFrom in helmrelease.yaml). Traefik's CRD provider rejects an Opaque basicAuth Secret
+# with more than one key, and then drops every router that uses this middleware. Until the
+# operator writes the real files, `users` holds a hash too short to be bcrypt, which Traefik
+# rejects for any password, so Grafana's queries fail with 401.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: grafana-datasource-auth
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/basicauth/
+  basicAuth:
+    secret: grafana-datasource-auth
+    removeHeader: true

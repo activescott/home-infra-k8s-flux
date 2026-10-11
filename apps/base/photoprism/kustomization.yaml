@@ -6,6 +6,7 @@ resources:
   - photoprism-statefulset.yaml
   - photoprism-service.yaml
   - photoprism-ingress.yaml
+  - networkpolicy.yaml
 
 # NOTE: secretGenerator moved to individual overlays (scott/oksana)
 # Each overlay generates its own mariadb-creds secret from its local encrypted file

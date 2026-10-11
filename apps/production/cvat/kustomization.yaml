@@ -1,5 +1,6 @@
 resources:
   - namespace.yaml
+  - networkpolicy.yaml
   # own postgres/redis/kvrocks — the chart's Bitnami subcharts are banned/disabled
   - db.yaml
   - redis-inmem.yaml

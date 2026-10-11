@@ -17,9 +17,9 @@
 #   ./scripts/create-sops-age-decryption-secret.sh home-infra-private-20260918.agekey
 #
 # Either way it refuses to apply unless one of the keys has the public key declared in
-# scripts/_sops_config.include.sh. That file is read from this checkout, so the guard is
-# only as current as the checkout: pull main before narrowing, or a stale age_key_public
-# lets the old key through alone and Flux stalls on the re-encrypted files.
+# .sops.yaml. That file is read from this checkout, so the guard is only as current as
+# the checkout: pull main before narrowing, or a stale recipient there lets the old key
+# through alone and Flux stalls on the re-encrypted files.
 #
 # Written for bash 3.2 too (macOS /bin/bash): no mapfile, no here-docs.
 set -euo pipefail
@@ -77,7 +77,7 @@ key=""
 
 if [[ $found_recipient -ne 1 ]]; then
   echo "ERROR: none of ${attachments[*]} has the public key $age_key_public" >&2
-  echo "       (age_key_public in scripts/_sops_config.include.sh). Nothing was applied." >&2
+  echo "       (the age: recipient in .sops.yaml). Nothing was applied." >&2
   exit 1
 fi
 

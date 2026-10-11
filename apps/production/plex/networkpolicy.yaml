@@ -1,0 +1,80 @@
+# Default deny for the namespace, then clients to the published Plex ports and Plex out to the
+# internet and the LAN (activescott/activeassistant#577).
+#
+# Clients arrive through the `plex` LoadBalancer, whose externalTrafficPolicy is Cluster, so klipper
+# masquerades and the source is never the client. The ingress rule is therefore ports only, the
+# same ports the Service already publishes on the node.
+#
+# The LAN stays open because Plex's Live TV/DVR tuner and its LAN players are on it, and the Plex
+# logs are warning-level only, so they could not show that nothing there is used. What is refused
+# is the router, the node's two addresses, the rest of the cluster, and link-local.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: plex
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: plex
+  namespace: plex
+spec:
+  podSelector:
+    matchLabels:
+      app: plex
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: 32400
+          protocol: TCP
+        - port: 3005
+          protocol: TCP
+        - port: 8324
+          protocol: TCP
+        - port: 32469
+          protocol: TCP
+        - port: 32410
+          protocol: UDP
+        - port: 32412
+          protocol: UDP
+        - port: 32413
+          protocol: UDP
+        - port: 32414
+          protocol: UDP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.0/24
+            except:
+              - 10.1.111.1/32 # the router
+              - 10.1.111.10/32 # the node's second address, where the API server answers
+              - 10.1.111.20/32 # the node

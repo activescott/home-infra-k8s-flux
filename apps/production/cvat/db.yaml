@@ -18,6 +18,7 @@ spec:
         app: cvat
         role: db
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: postgres
           # same major version as the upstream docker-compose.yml this migrates from

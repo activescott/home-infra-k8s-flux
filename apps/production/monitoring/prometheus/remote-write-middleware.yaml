@@ -1,0 +1,63 @@
+# Gates the remote-write path (prometheus-remote-write-ingress.yaml) to its senders.
+# prometheus.activescott.com resolves to the WAN address publicly, so basic auth alone would
+# leave the write path open to anyone who got a credential; the allowlist means it also has to
+# come from a sender's address.
+#
+# debeth resolves the name to 10.1.111.20 through the LAN DNS override and reaches Traefik
+# without going through the router, so its own address survives as the source (Traefik runs
+# with externalTrafficPolicy: Local, infrastructure/prod/configs/traefik-config.yaml). Never
+# widen this to a range that includes .1 or .20: a hairpinned or SNAT'd request arrives as one
+# of those, and the allowlist would then admit everyone.
+#
+# The Dreamwright agents host comes in from the internet through the edge firewall's port
+# forward, which keeps the public source address (Traefik's access log shows public clients by
+# their own addresses, not 10.1.111.1).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: prometheus-remote-write-lan
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/ipallowlist/
+  ipAllowList:
+    sourceRange:
+      - 10.1.111.25/32 # debeth
+      - 52.11.188.6/32 # Dreamwright agents host EIP, ping-poet/dreamwright#122
+---
+# Separate users from prometheus-basic-auth, so the read credential cannot write and these
+# cannot read. One htpasswd line per sender, written by scripts/add-ingest-user.mts.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: prometheus-remote-write-auth
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/basicauth/
+  basicAuth:
+    secret: prometheus-remote-write-auth
+    removeHeader: true
+---
+# Prometheus has no receiver-side limit on concurrent writes, so cap them here. Excess requests
+# get a 429, which Alloy retries by default. Two senders with a single remote_write endpoint
+# each need few: Alloy only adds shards when it falls behind.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: prometheus-remote-write-inflight
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/inflightreq/
+  inFlightReq:
+    amount: 4
+---
+# Prometheus has no body limit for remote write either. Alloy's default max_samples_per_send
+# is 2000, which compresses to far less than 4 MiB; larger bodies get a 413.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: prometheus-remote-write-body-limit
+  namespace: monitoring
+spec:
+  # see https://doc.traefik.io/traefik/middlewares/http/buffering/
+  buffering:
+    maxRequestBodyBytes: 4194304 # 4 MiB

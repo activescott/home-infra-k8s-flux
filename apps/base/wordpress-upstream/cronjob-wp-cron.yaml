@@ -1,0 +1,121 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wp-cron
+  labels:
+    app: wordpress
+    role: cron
+spec:
+  # Runs WordPress's due scheduled events from the command line, so they run on time without
+  # page views and without WordPress requesting its own wp-cron.php over HTTP. The tenant sets
+  # DISABLE_WP_CRON so page views stop spawning that request.
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 240
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: wordpress
+            role: cron
+        spec:
+          restartPolicy: Never
+          securityContext:
+            fsGroup: 33
+            seccompProfile:
+              type: RuntimeDefault
+          automountServiceAccountToken: false
+          initContainers:
+            # Same image and script as install-core in the Deployment: it writes core and
+            # wp-config.php into the emptyDir. Unlike there, wp-content is not mounted, so the
+            # bundled themes and plugins land in the emptyDir and are covered by the volume
+            # below. Nothing in this pod can write wp-content outside uploads/.
+            #
+            # The first pass fails at the end of its copy: tar cannot chmod the emptyDir's root
+            # as uid 33. The Deployment gets past this because the kubelet reruns the init
+            # container and the second pass, finding index.php, skips the copy and writes
+            # wp-config.php. This pod has restartPolicy Never, so it makes the second pass itself.
+            - name: install-core
+              image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+              command: ["sh", "-c"]
+              args: ["docker-ensure-installed.sh true || docker-ensure-installed.sh true"]
+              workingDir: /var/www/html
+              env:
+                - name: WORDPRESS_DB_HOST
+                  value: mariadb
+              securityContext:
+                runAsUser: 33
+                runAsGroup: 33
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - mountPath: /var/www/html
+                  name: wordpress-core
+              resources:
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"
+                requests:
+                  memory: "64Mi"
+                  cpu: "50m"
+          containers:
+            # The tenant overlay copies the wordpress container's env here (see the
+            # `replacements` in its kustomization), so events run with the same database,
+            # keys and wp-config constants as the site.
+            #
+            # As uid 33 rather than root like the wordpress container: there is no Apache master
+            # here to drop privileges, and files an event writes to uploads/ must stay writable
+            # by www-data.
+            - name: wp-cron
+              # Keep in step with the Deployment; Renovate bumps both.
+              image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+              command: ["php", "/var/www/html/wp-cron.php"]
+              workingDir: /var/www/html
+              securityContext:
+                runAsUser: 33
+                runAsGroup: 33
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - mountPath: /var/www/html
+                  name: wordpress-core
+                  readOnly: true
+                - mountPath: /var/www/html/wp-content
+                  name: wp-content
+                  readOnly: true
+                - mountPath: /var/www/html/wp-content/uploads
+                  subPath: uploads
+                  name: wp-content
+                - mountPath: /tmp
+                  name: tmp
+              resources:
+                limits:
+                  memory: "1Gi"
+                  cpu: "1"
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+          # The wp-content claim is ReadWriteOnce, which binds it to a node, not a pod. The
+          # cluster has one node and the volume is a hostPath, so this pod mounts it alongside
+          # the running wordpress pod, and the Deployment's Recreate rollouts are unaffected.
+          volumes:
+            - name: wp-content
+              persistentVolumeClaim:
+                claimName: wordpress-wp-content
+            - name: wordpress-core
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi

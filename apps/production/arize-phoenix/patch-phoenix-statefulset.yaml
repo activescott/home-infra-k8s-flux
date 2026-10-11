@@ -32,3 +32,7 @@
   value:
     name: PHOENIX_ROOT_URL
     value: "https://phoenix.activescott.com"
+# Phoenix never calls the Kubernetes API.
+- op: add
+  path: /spec/template/spec/automountServiceAccountToken
+  value: false
