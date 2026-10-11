@@ -154,13 +154,8 @@ spec:
             valid_status_codes: [404]
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
-        # No passkey provider configured (email only), so a passing gate 404s
-        # here. Confirmed live 2026-09-30: dreamwright.app currently answers
-        # 400, the same bug, even though its server.js sets `trust proxy` and
-        # carries a passing regression test for exactly this case -- so
-        # whatever is wrong here is not the same missing-setting bug the other
-        # hosts had. Needs its own investigation; this probe will alert on it
-        # from the moment it ships.
+        # Passkey provider configured (ping-poet/dreamwright#484), so a passing
+        # gate returns 200 with authentication options.
         auth_origin_dreamwright:
           prober: http
           timeout: 10s
@@ -170,7 +165,7 @@ spec:
               Origin: https://dreamwright.app
               Content-Type: application/json
             body: "{}"
-            valid_status_codes: [404]
+            valid_status_codes: [200]
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
 
