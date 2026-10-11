@@ -41,15 +41,25 @@ homeassistant:
     #security_package: !include packages/security.yaml
     #lights_package: !include packages/lights.yaml
 
-# Setup certificates via the HTTP integration/component
-# https://www.home-assistant.io/integrations/http:
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    # Kubernetes cluster pod network CIDR. This may change when the cluster is reset.
-    # To find current CIDRs run:
-    #   kubectl --context nas cluster-info dump | grep -oE '(cluster-cidr|service-cidr)[^,]*'
-    - 172.16.0.0/16
+# HTTP settings are NOT configurable here anymore. HA migrated the `http:` block
+# to UI-managed storage (/config/.storage/http, `yaml_migration_done: true`) and
+# ignores YAML; a `http:` key here only re-raises the "HTTP YAML configuration is
+# ignored after migration" repair. Manage it at Settings > System > Network.
+#
+# Current values, migrated 2026-09-03:
+#   use_x_forwarded_for: true
+#   trusted_proxies: [172.16.0.0/16]   <- Kubernetes pod network CIDR
+#
+# The CIDR changes if the cluster is rebuilt, and when it is wrong HA answers
+# 400 to every proxied request, so the UI you would fix it in is unreachable.
+# Recovery is a port-forward (bypasses the proxy, so no X-Forwarded-For header
+# and no 400):
+#   kubectl --context nas -n home-assistant port-forward pod/home-assistant-0 8123:8123
+#   # then open http://localhost:8123 -> Settings > System > Network
+# Find the new CIDR with:
+#   kubectl --context nas cluster-info dump | grep -oE '(cluster-cidr|service-cidr)[^,]*'
+# Full procedure, including the edit-.storage fallback: see ../AGENTS.md
+# ("HTTP settings are UI-owned") and ../README.md ("HTTP / trusted proxies").
 
 # Notify Groups:
 ## See https://www.home-assistant.io/integrations/notify.group/
