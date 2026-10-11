@@ -33,6 +33,50 @@ live-updated by kubelet.
 first. The host is the source of truth for anything HA wrote; mounting over it
 without capturing it loses that content silently.
 
+## HTTP settings are UI-owned, not YAML
+
+HA migrated `http:` out of `configuration.yaml` into UI-managed storage
+(`/config/.storage/http` on the PVC, `yaml_migration_done: true`). YAML is
+ignored and breaks outright in 2027.2.0. Do not re-add an `http:` key — it only
+re-raises the "HTTP YAML configuration is ignored after migration" repair.
+Change these at Settings > System > Network.
+
+This is a "declare what git does not own" case (see the root `AGENTS.md`): the
+UI owns the value, so git's job is to record that the setting exists, who owns
+it, and what it currently is. `configuration.yaml` carries that comment, listing
+`use_x_forwarded_for` and the pod-network `trusted_proxies`. **After changing
+either in the UI, update that comment** or the repo stops describing reality.
+
+### Recovering trusted_proxies when the UI is unreachable
+
+`trusted_proxies` is the pod network CIDR (`172.16.0.0/16`), not a pod IP, so
+ordinary Traefik pod churn needs no change. A cluster rebuild with a different
+pod CIDR does — and it is self-locking: with `use_x_forwarded_for: true` and a
+non-matching CIDR, HA answers **400** to every request arriving through the
+ingress, so the UI that holds the setting cannot be reached. Verified by
+`curl`: direct request → 200, same request with an untrusted
+`X-Forwarded-For` → 400.
+
+Fix it over a port-forward, which bypasses Traefik entirely — no
+`X-Forwarded-For` header, so no 400 and no need to touch root-owned files:
+
+```sh
+kubectl --context nas cluster-info dump | grep -oE '(cluster-cidr|service-cidr)[^,]*'
+kubectl --context nas -n home-assistant port-forward pod/home-assistant-0 8123:8123
+# open http://localhost:8123 -> Settings > System > Network -> trusted proxies
+```
+
+Fallback, only if HA will not start at all (the UI is gone, not just proxied):
+edit `data.stable.trusted_proxies` in the storage file on the NAS and restart
+the pod. It is root-owned, so this needs `sudo`:
+
+```sh
+ssh scott@nas.activescott.com 'sudo vi /mnt/thedatapool/app-data/home-assistant/.storage/http'
+kubectl --context nas -n home-assistant rollout restart statefulset/home-assistant
+```
+
+Either way, finish by updating the comment in `configuration.yaml`.
+
 ## Template entities
 
 `configuration.yaml` must contain exactly **one** top-level template key, and
