@@ -1,7 +1,7 @@
 # The login portal, at https://auth.activescott.com/
 #
-# Unlike olya.activescott.com this one has no LAN restriction: every host Authelia protects
-# redirects the browser here, so anywhere a protected host is reachable, this must be too.
+# This one has no LAN restriction: every host Authelia protects redirects the browser here, so
+# anywhere a protected host is reachable, this must be too.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -17,7 +17,6 @@ spec:
     - auth.activescott.com
 ---
 # The middleware other namespaces attach to their Ingress to require a login.
-# olya.activescott.com uses it (see apps/production/olya/olya-ingress.yaml).
 #
 # Traefik resolves a cross-namespace middleware by the annotation value
 # `authelia-authelia-forwardauth@kubernetescrd`. A typo in that string fails closed: Traefik

@@ -17,9 +17,10 @@
 # file refuses wp-login.php, wp-admin and xmlrpc.php to non-LAN clients, so the admin surface
 # does not rest on Traefik's reading of the path alone.
 #
-# REQUIRES the LAN DNS override mmm.willeke.com -> 10.1.111.20, for the same reason as
-# olya.activescott.com: without it LAN clients hairpin through the router, arrive as its
-# address, and lan-only correctly refuses them. See "New hostname checklist" in the repo README.
+# REQUIRES the LAN DNS override mmm.willeke.com -> 10.1.111.20: without it LAN clients resolve
+# the public IP and hairpin through the router, whose NAT reflection can rewrite the source
+# address to the gateway's, and lan-only correctly refuses them. See "New hostname checklist" in
+# the repo README.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -33,10 +34,10 @@ spec:
   dnsNames:
     - mmm.willeke.com
 ---
-# Same ranges as olya-lan-only in apps/production/olya/olya-ingress.yaml, which explains why the
-# gateway and the node (.1, .10, .20) are excluded and must stay excluded: a source-address
-# regression then locks the LAN out instead of letting the internet in. Matching is on the TCP
-# source address, not X-Forwarded-For.
+# The gateway and the node (.1, .10, .20) are excluded and must stay excluded: including them
+# would turn a source-address regression into letting the internet in instead of locking the
+# LAN out, which is the direction a security control should fail. Matching is on the TCP source
+# address, not X-Forwarded-For.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

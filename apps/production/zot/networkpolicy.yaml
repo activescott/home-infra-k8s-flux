@@ -9,7 +9,7 @@
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. A mirror that
 # cannot reach its upstream serves what it has cached and times out on anything new.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# Same shape as `allow-cert-manager-resolver` in apps/production/monitoring/networkpolicy.yaml,
 # which explains the failure mode. Every instance's ingress renews over HTTP-01.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

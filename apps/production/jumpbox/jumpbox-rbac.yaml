@@ -1,9 +1,29 @@
-# The same read-only access olya-0 has, for kubectl in an ssh session (ping-poet/dreamwright#123).
+# Full read-only cluster access for a session here, equivalent to the built-in `view` role,
+# minus ConfigMaps (ping-poet/dreamwright#123).
 #
-# A copy of ../olya/olya-rbac.yaml under jumpbox- names rather than a binding to olya's
-# ClusterRoles, so this keeps working once olya-0 is retired. The reasoning for every choice
-# here, including why ConfigMaps are cut and why the view role is aggregated rather than
-# hand-written, is in that file's comments. Change both together.
+# `view` already excludes Secrets. ConfigMaps are the remaining gap: they routinely hold values
+# that are credential-adjacent or otherwise not meant to be read casually. Removing them keeps
+# that class of data out of reach entirely rather than relying on whoever is in the session not
+# to look.
+#
+# RBAC has no deny rules, so "`view` minus ConfigMaps" cannot be expressed as a modification of
+# `view`. It has to be built by re-doing what `view` does.
+#
+# `view` is an AGGREGATED role: it ships with an empty authored rules list and an aggregationRule
+# selecting `rbac.authorization.k8s.io/aggregate-to-view: "true"`, and the controller-manager
+# unions every labeled ClusterRole's rules into it. Two kinds of role feed it:
+#
+#   - `system:aggregate-to-view`, labeled `kubernetes.io/bootstrapping: rbac-defaults`. A literal
+#     list compiled into Kubernetes covering core, apps, batch, autoscaling, policy,
+#     networking.k8s.io, discovery.k8s.io and extensions. `configmaps` is in it. No wildcards,
+#     and it knows nothing about CRDs.
+#   - Third-party roles shipped by operators: `cert-manager-view`, `flux-view-flux-system`,
+#     `system:aggregated-metrics-reader` today. This is the ONLY reason `kubectl get kustomization`
+#     or `get certificate` works under `view`, and it is why a fully hand-rolled ClusterRole is
+#     the wrong answer: it would lose all CRD coverage and never pick up the next operator.
+#
+# So jumpbox-view aggregates the same way, excluding only the bootstrap role, and
+# jumpbox-view-core below replaces that role's rules with the same list minus configmaps.
 #
 # Checking what this actually resolves to, after Flux applies it:
 #   kubectl --context nas get clusterrole jumpbox-view -o yaml
@@ -15,7 +35,8 @@ metadata:
   namespace: jumpbox
 ---
 # `rules` is deliberately absent: the controller-manager owns that field on an aggregated role
-# and fills it in. Put rules in jumpbox-view-core instead.
+# and fills it in. Do not add rules here, or they will fight the aggregation controller. Put
+# rules in jumpbox-view-core instead.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -31,8 +52,7 @@ aggregationRule:
     - matchLabels:
         rbac.activescott.com/aggregate-to-jumpbox-view: "true"
 ---
-# `system:aggregate-to-view` verbatim, with `configmaps` removed from the first rule. Same list
-# as olya-view-core.
+# `system:aggregate-to-view` verbatim, with `configmaps` removed from the first rule.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -127,8 +147,8 @@ roleRef:
   name: jumpbox-view
   apiGroup: rbac.authorization.k8s.io
 ---
-# Same as olya-email-routing: read-only on the Cloudflare Email Routing resources in the
-# `cloudflare` namespace, as a ClusterRole because this kustomization rewrites namespaces.
+# Read-only on the Cloudflare Email Routing resources in the `cloudflare` namespace, as a
+# ClusterRole because this kustomization rewrites namespaces.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

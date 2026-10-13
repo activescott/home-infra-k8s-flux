@@ -1,5 +1,5 @@
-# sshd, for Olya on the Dreamwright agents host to reach what olya-0 reaches from inside the
-# cluster (ping-poet/dreamwright#123). See README.md.
+# sshd, for Olya on the Dreamwright agents host to reach into the cluster
+# (ping-poet/dreamwright#123). See README.md.
 #
 # The image is linuxserver/openssh-server, but its s6 init is bypassed: the container runs
 # sshd directly as the image's abc user (uid 911), with the config from this directory. The

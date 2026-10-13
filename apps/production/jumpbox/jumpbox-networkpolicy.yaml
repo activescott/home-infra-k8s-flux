@@ -1,12 +1,10 @@
-# What a session on the jump box can reach: the targets olya-0 reaches today for diagnosis,
-# copied from ../olya/olya-networkpolicy.yaml and ../browser-chaperone/networkpolicy.yaml
-# (debeth), less Loki and Prometheus. Nothing else, and no route to the internet.
+# What a session on the jump box can reach for read-only diagnosis: the Kubernetes API,
+# Grafana, and debeth, less Loki and Prometheus. Nothing else, and no route to the internet.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
 #
-# Phoenix is not here because olya-0 does not reach it in-cluster either: she goes through
-# her egress proxy to phoenix.activescott.com, which is public, so the agents host reaches it
-# directly.
+# Phoenix is not here because it is reachable directly: phoenix.activescott.com is public, so
+# the agents host reaches it without going through this box at all.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -51,8 +49,8 @@ spec:
         - port: 53
           protocol: TCP
 
-    # The Kubernetes API, for kubectl. All three addresses are needed; olya-networkpolicy.yaml
-    # explains why .10 is the one actually matched.
+    # The Kubernetes API, for kubectl. All three addresses are needed; the `allow-kubernetes-api`
+    # policy in ../monitoring/networkpolicy.yaml explains why .10 is the one actually matched.
     - to:
         - ipBlock:
             cidr: 172.17.0.1/32
@@ -84,7 +82,7 @@ spec:
         - port: 3000
           protocol: TCP
 
-    # debeth, for ProxyJump. Same address and port as olya-0's route through her egress proxy.
+    # debeth, for ProxyJump.
     - to:
         - ipBlock:
             cidr: 10.1.111.25/32

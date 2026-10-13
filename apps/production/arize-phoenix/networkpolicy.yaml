@@ -8,7 +8,7 @@
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# Same shape as `allow-cert-manager-resolver` in apps/production/monitoring/networkpolicy.yaml,
 # which explains the failure mode.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

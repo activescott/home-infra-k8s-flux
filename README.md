@@ -66,8 +66,8 @@ To give an app a new public URL like `myapp.activescott.com`:
    (10.1.111.1).
 
    **Exception — required, not optional, for any host behind an `ipAllowList`
-   middleware** (currently `olya.activescott.com`, and `mmm.willeke.com` once its
-   ingress is enabled). Hairpinned requests can reach
+   middleware** (currently `mmm.willeke.com` once its ingress is enabled).
+   Hairpinned requests can reach
    Traefik with the router's address as the source instead of the client's, and
    those allowlists deliberately exclude `10.1.111.1` so that a source-IP
    regression fails closed rather than admitting everyone. Skip the override and
@@ -249,8 +249,8 @@ and encrypted straight to the public age recipient, which every encrypted file r
 no plaintext anywhere. Only the cluster can read them.
 
 They are named `.env.secret.<name>.public-key-encrypted.encrypted`. Rotation instructions live
-in the README next to the app, starting with the Alertmanager hook token in
-[apps/production/olya/README.md](apps/production/olya/README.md#alertmanager-hook-token).
+in the README next to the app, starting with the master key in
+[apps/production/job-accelerator/README.md](apps/production/job-accelerator/README.md#master-key).
 
 #### Decrypting
 

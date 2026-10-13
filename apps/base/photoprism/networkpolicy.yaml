@@ -10,7 +10,7 @@
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. The probes are
 # kubelet httpGet and exec, which need no rule; backup-mariadb.sh runs through `kubectl exec`.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
+# Same shape as `allow-cert-manager-resolver` in apps/production/monitoring/networkpolicy.yaml,
 # which explains the failure mode.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

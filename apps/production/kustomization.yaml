@@ -57,20 +57,9 @@ resources:
   # 2000:2000 before the pod starts, or Stalwart silently re-bootstraps and
   # looks exactly like data loss. Created 2026-08-28.
   - ./email-stalwart
-  # Olya, an OpenClaw assistant that opens PRs under her own GitHub identity.
-  #
-  # /mnt/thedatapool/app-data/olya (covered by the B2 backup's /app-data/** include) must exist
-  # and be owned by 1000:1000 before the pod starts, or OpenClaw treats the unreadable state dir
-  # as a first run and bootstraps an empty one -- the same silent failure as stalwart above.
-  # Created 2026-09-12. Enabled 2026-09-12, once that directory, the published image tag, and
-  # both DNS views were in place. See apps/production/olya/README.md.
-  - ./olya
   # Authelia login portal at auth.activescott.com. Secrets and data dir
   # created 2026-09-14; see apps/production/authelia/ for configuration.
   - ./authelia
-  # browser-chaperone: the approval app, its database, the browser service, and the browser's
-  # egress proxy and NetworkPolicies (activescott/activeassistant#196, #229).
-  - ./browser-chaperone
   # SSH jump box for Olya on the Dreamwright agents host: read-only kubectl, Grafana, Loki and
   # Prometheus, and debeth (ping-poet/dreamwright#123). Logins are refused until a real key is
   # in jumpbox/authorized_keys. See apps/production/jumpbox/README.md.

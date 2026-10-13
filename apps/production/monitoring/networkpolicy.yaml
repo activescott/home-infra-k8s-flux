@@ -2,10 +2,9 @@
 #
 # Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, the Loki push
 # ingress for the Dreamwright agents host, ping-poet/dreamwright#122, and Grafana's own queries to
-# Prometheus and Loki, which go out through Traefik and come back), Olya (Grafana, Loki,
-# Prometheus and Alertmanager at their in-cluster addresses; the other half of the monitoring
-# rule in apps/production/olya/olya-networkpolicy.yaml), the jump box (Grafana only; the other
-# half of apps/production/jumpbox/jumpbox-networkpolicy.yaml), and the edge firewall's syslog.
+# Prometheus and Loki, which go out through Traefik and come back), the jump box (Grafana only;
+# the other half of apps/production/jumpbox/jumpbox-networkpolicy.yaml), and the edge firewall's
+# syslog.
 # Nothing else pushes to Loki or queries Prometheus directly: on 2026-09-30 Loki's only `job` values were
 # Alloy's two, and every other client goes through an ingress, including the agents host's
 # pushes, which arrive from Traefik. A new direct client, say a CI job querying Loki, has to be
@@ -19,8 +18,18 @@
 # nas1 addressing, for reference: pods 172.16.0.0/16, services 172.17.0.0/16, node 10.1.111.20
 # (API server endpoint 10.1.111.10), LAN 10.1.111.0/24.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
-# which explains the failure mode. Grafana and Prometheus both renew over HTTP-01.
+# cert-manager stands up a short-lived HTTP-01 solver pod IN THIS NAMESPACE for every issuance
+# and renewal. It carries its own label, not one of the component labels above, so none of the
+# other policies in this file admit Traefik to it on 8089 -- this policy is what does, and
+# without it the challenge hangs.
+#
+# The symptom is confusing: the app answers normally, while only the
+# /.well-known/acme-challenge/ path times out, and the Certificate sits `pending` with "failed
+# to perform self check". Nothing points at this file.
+#
+# Any namespace, because the solver serves one public ACME token and nothing else, and because
+# a tighter rule that breaks silently is worse here than a loose one. Same shape as
+# `allow-cert-manager-resolver` in flux-system.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -66,8 +75,19 @@ spec:
 ---
 # The pods that watch the Kubernetes API: Alloy (pod discovery and log tailing), the config
 # sidecars in Grafana and Loki, kube-state-metrics, and Prometheus's service discovery. These are
-# also the ones that keep a ServiceAccount token. The three addresses are explained in
-# apps/production/olya/olya-networkpolicy.yaml.
+# also the ones that keep a ServiceAccount token.
+#
+# Three addresses, because the node has two LAN addresses and the intuitive choice is not the
+# one that gets matched. The API server answers on BOTH 10.1.111.20 (the node's InternalIP) and
+# 10.1.111.10, but the `kubernetes` Service has exactly one registered endpoint, and it is .10:
+#
+#   kubectl get endpointslice -n default kubernetes -o jsonpath='{.endpoints[*].addresses[*]}'
+#
+# So a pod connecting to 172.17.0.1:443 is DNAT'd to .10, and kube-router's rules are in terms
+# of the post-DNAT destination -- an egress rule for only .20 lets the connection through but it
+# still times out. The Service address is listed as well so this does not rest on being right
+# about the nat/filter ordering, and .20 is kept because it would be matched if the endpoint
+# ever re-registers to the InternalIP.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -125,9 +145,6 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: traefik
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
       ports:
         - port: 9090
           protocol: TCP
@@ -219,7 +236,7 @@ spec:
         - port: 8081
           protocol: TCP
 ---
-# Sends to Telegram over the internet and to Olya's /hooks/alertmanager.
+# Sends to Telegram over the internet.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -240,20 +257,10 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: grafana
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
       ports:
         - port: 9093
           protocol: TCP
   egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
-      ports:
-        - port: 18789
-          protocol: TCP
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -295,9 +302,6 @@ spec:
             matchLabels:
               app.kubernetes.io/name: prometheus
               app.kubernetes.io/component: server
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
         # Grafana only, not Prometheus, Loki or Alertmanager: their APIs have no auth, and
         # Prometheus's lifecycle endpoints and Loki's delete API are destructive.
         - namespaceSelector:
@@ -377,9 +381,6 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: alloy
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
       ports:
         - port: 3100
           protocol: TCP

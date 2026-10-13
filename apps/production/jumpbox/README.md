@@ -1,10 +1,10 @@
 # jumpbox
 
-An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, and debeth over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
+An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach into the cluster: read-only `kubectl` on nas1, Grafana, and debeth over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
 
-Loki and Prometheus are not reachable directly, though olya-0 reaches both. Neither has auth: Prometheus runs with `web.enable-lifecycle` and the remote-write receiver, so a key holder could stop it or write fake series, and Loki's delete API could erase this box's own login records. Queries go through Grafana's datasources instead, which needs a login.
+Loki and Prometheus are not reachable directly. Neither has auth: Prometheus runs with `web.enable-lifecycle` and the remote-write receiver, so a key holder could stop it or write fake series, and Loki's delete API could erase this box's own login records. Queries go through Grafana's datasources instead, which needs a login.
 
-It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys) and nothing else. A session can run `kubectl` (as the `jumpbox` ServiceAccount, the same read-only access as olya-0, see [jumpbox-rbac.yaml](jumpbox-rbac.yaml)), `curl` and `jq`, and can forward only to the destinations in `PermitOpen` in [sshd_config](sshd_config).
+It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys) and nothing else. A session can run `kubectl` (as the `jumpbox` ServiceAccount, see [jumpbox-rbac.yaml](jumpbox-rbac.yaml)), `curl` and `jq`, and can forward only to the destinations in `PermitOpen` in [sshd_config](sshd_config).
 
 ## How a connection gets here
 
@@ -30,7 +30,7 @@ Host debeth
   ProxyJump nas1-jump
 ```
 
-`debeth`'s `User` and `IdentityFile` are the ones olya-0 uses today; that key has to be on the agents host as well. `HostName` must stay `10.1.111.25`, because `PermitOpen` matches the address the client asks for and refuses anything else.
+`debeth`'s `User` and `IdentityFile` must be a key that is already on debeth's side; that key has to be on the agents host as well. `HostName` must stay `10.1.111.25`, because `PermitOpen` matches the address the client asks for and refuses anything else.
 
 The host key is generated on the pod's first start and kept on the `jumpbox-hostkeys` volume. Its fingerprint is logged on every start, so check the first `known_hosts` entry against Loki rather than trusting it on first use:
 
