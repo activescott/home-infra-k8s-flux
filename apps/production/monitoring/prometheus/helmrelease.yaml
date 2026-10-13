@@ -2167,20 +2167,6 @@ spec:
           # selector, not the host name, which changes when the instance is replaced.
           - name: dreamwright-host
             rules:
-              - alert: DreamwrightHostSilent
-                expr: 'absent_over_time(up{job="dreamwright-host/node"}[15m])'
-                for: 0m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: No metrics from the Dreamwright agents host for 15 minutes
-                  description: >-
-                    The nas has received nothing from the agents host's Alloy for 15 minutes.
-                    Either the host is down, its alloy.service is down, or the remote-write path
-                    (Traefik ingress, the dreamwright-agents basic auth, the 52.11.188.6
-                    allowlist) is refusing it. On the host: sudo journalctl -u alloy.service.
-                  query: '{job="dreamwright-host/journal", unit="alloy.service"}'
-                  repo: ping-poet/dreamwright
               - alert: DreamwrightHostLogsDropped
                 expr: 'sum by (host, reason) (increase(loki_write_dropped_entries_total{job="dreamwright-host/alloy"}[15m])) > 0'
                 for: 0m
