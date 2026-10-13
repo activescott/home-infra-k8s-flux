@@ -40,6 +40,12 @@ spec:
       type: A
       ttl: 1
       content: 54.71.229.250
+    # Grafana, served by the same app (ping-poet/dreamwright-infra#61)
+    - key: grafana-a
+      name: grafana.dreamwright.app
+      type: A
+      ttl: 1
+      content: 54.71.229.250
     - key: apex-spf-txt
       name: dreamwright.app
       type: TXT
