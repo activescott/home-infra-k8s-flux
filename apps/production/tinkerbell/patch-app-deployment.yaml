@@ -2,8 +2,7 @@
   path: /spec/template/spec/imagePullSecrets
   value:
     - name: github-container-registry-secret
-# Overrides the stale AI_MODEL_PLLM (claude-sonnet-4-5) in .env.secret.app.encrypted,
-# since env wins over envFrom. Drop the encrypted entry when next editing that file.
+# tinkerbell requires AI_MODEL_PLLM and has no default; this is its only source.
 - op: add
   path: /spec/template/spec/containers/0/env/-
   value:
