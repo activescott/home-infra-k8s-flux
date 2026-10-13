@@ -63,6 +63,9 @@ spec:
   aliases:
     # Keeps the Secret's default destination (scott@willeke.com), so no override here.
     - localPart: scott
+    # Public support address for the Slack app and the dreamwright.app /support page;
+    # forwards to the operator for now.
+    - localPart: support
     # Overrides the Secret's default to Olya's own address.
     - localPart: olya
       destination: olya@pingpoet.com
