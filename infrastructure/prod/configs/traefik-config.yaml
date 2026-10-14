@@ -21,10 +21,8 @@ spec:
         #
         #   1. PostHog geo-location and IP-based analytics.
         #   2. Every Traefik `ipAllowList` middleware in this repo, currently
-        #      apps/production/olya/olya-ingress.yaml, which restricts the
-        #      OpenClaw Control UI to the LAN, and
-        #      apps/production/wordpress-micah-mmm-v2/ingress.yaml, which does
-        #      the same for the WordPress admin. It matches on the TCP source
+        #      apps/production/wordpress-micah-mmm-v2/ingress.yaml, which restricts
+        #      the WordPress admin to the LAN. It matches on the TCP source
         #      address. Set this to Cluster and k3s's svclb MASQUERADEs, so every
         #      request arrives as the node (10.1.111.20) rather than the client.
         #

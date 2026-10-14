@@ -10,8 +10,10 @@
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. The probes are
 # kubelet httpGet and exec, which need no rule; backup-mariadb.sh runs through `kubectl exec`.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
-# which explains the failure mode.
+# cert-manager stands up a short-lived HTTP-01 solver pod in this namespace for every issuance
+# and renewal; it carries its own label, not any app's selector, so without this rule the
+# challenge hangs with nothing pointing at this file as the cause. Any namespace, because the
+# solver serves one public ACME token and nothing else.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
