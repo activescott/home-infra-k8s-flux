@@ -1,8 +1,8 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Adds a sender, or rotates one, on a public ingest path: Prometheus remote write at
 // https://prometheus.activescott.com/api/v1/write, or Loki push at
-// https://loki.activescott.com/loki/api/v1/push. Senders are debeth's Alloy
-// (activescott/activeassistant#648) and the Dreamwright agents host (ping-poet/dreamwright#122).
+// https://loki.activescott.com/loki/api/v1/push. The one sender is debeth's Alloy
+// (activescott/activeassistant#648), on remote write.
 //
 // Generates a random password, replaces the user's bcrypt htpasswd line in the path's users
 // file (keeping every other user's line), re-encrypts the file to the age recipient, and prints

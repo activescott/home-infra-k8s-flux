@@ -1,4 +1,5 @@
-# The Dreamwright agents host pushes its logs here (ping-poet/dreamwright#122). The only other
+# The public Loki push path. It has no sender since the Dreamwright agents host stopped pushing
+# (ping-poet/dreamwright#976), and loki-push-middleware.yaml refuses every address. The only other
 # route on this host is loki-read-ingress.yaml, Grafana's GET-only query path.
 #
 # Middleware order is the annotation's order, as in

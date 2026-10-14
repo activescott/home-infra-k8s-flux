@@ -272,22 +272,21 @@ Caveat before assuming this replaces the log-derived WAN drop counter: node_expo
 
 ### Remote write
 
-Two senders push metrics here: debeth's eth-docker Alloy, so the nas can alert on the validator without any route into debeth (activescott/activeassistant#648), and the Dreamwright agents host (ping-poet/dreamwright#122). debeth's Alloy config lives in `hosts/debeth/` in the private repo.
+debeth's eth-docker Alloy pushes metrics here, so the nas can alert on the validator without any route into debeth (activescott/activeassistant#648). debeth's Alloy config lives in `hosts/debeth/` in the private repo.
 
 ```
-debeth Alloy / agents host --HTTPS POST--> Traefik prometheus.activescott.com/api/v1/write --> prometheus-server (--web.enable-remote-write-receiver)
+debeth Alloy --HTTPS POST--> Traefik prometheus.activescott.com/api/v1/write --> prometheus-server (--web.enable-remote-write-receiver)
 ```
 
-- `prometheus/prometheus-remote-write-ingress.yaml` routes only that exact path, through `prometheus-remote-write-lan` (allows `10.1.111.25/32` for debeth and `52.11.188.6/32` for the agents host), `prometheus-remote-write-inflight` (4 concurrent requests), `prometheus-remote-write-auth` (basic auth, users `debeth` and `dreamwright-agents`) and `prometheus-remote-write-body-limit` (4 MiB). Everything else on the host stays on `prometheus-ingress.yaml` and Scott's read credential, which cannot write: that IngressRoute admits only GET and HEAD (POST on `/api/v1/labels` and `/api/v1/series`, for the UI's autocomplete) and refuses `/-/` (except `/-/ready`), `/api/v1/admin` and `/api/v1/write` with a 404.
-- debeth resolves the name to `10.1.111.20` through the LAN DNS override, so its source address survives to the allowlist. Publicly the name resolves to the WAN address, which is why the path has an allowlist and not only a password. The agents host comes in from the internet; the edge firewall's port forward keeps its public address, as Traefik's access log shows for every public client.
+- `prometheus/prometheus-remote-write-ingress.yaml` routes only that exact path, through `prometheus-remote-write-lan` (allows `10.1.111.25/32`, debeth), `prometheus-remote-write-inflight` (4 concurrent requests), `prometheus-remote-write-auth` (basic auth, user `debeth`) and `prometheus-remote-write-body-limit` (4 MiB). Everything else on the host stays on `prometheus-ingress.yaml` and Scott's read credential, which cannot write: that IngressRoute admits only GET and HEAD (POST on `/api/v1/labels` and `/api/v1/series`, for the UI's autocomplete) and refuses `/-/` (except `/-/ready`), `/api/v1/admin` and `/api/v1/write` with a 404.
+- debeth resolves the name to `10.1.111.20` through the LAN DNS override, so its source address survives to the allowlist. Publicly the name resolves to the WAN address, which is why the path has an allowlist and not only a password. A sender on the internet would arrive with its public address; the edge firewall's port forward keeps it, as Traefik's access log shows for every public client.
 - `scripts/add-ingest-user.mts prometheus-remote-write <user>` creates and rotates a sender's credential. Scott runs it piped straight into the sender over ssh, for debeth `./scripts/add-ingest-user.mts prometheus-remote-write debeth | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'` (with the secrets directory created first; see `hosts/debeth/README.md` in the private repo for the full order). It rewrites the user's bcrypt line in `prometheus/prometheus-remote-write-users.public-key-encrypted.encrypted` and keeps the other users' lines, so it needs the age key from 1Password. The password is never shown, only piped. Nothing else keeps a copy; if it is lost, rerun the whole line, which rotates it. A line whose hash is too short to be bcrypt is a placeholder that Traefik rejects for every password.
 - The first run against `prometheus-remote-write` carries debeth's line over from `.env.secret.prometheus-remote-write-auth.public-key-encrypted.encrypted`, where it lived as a single dotenv value, and deletes that file.
 - Every series debeth sends carries `host="debeth"`.
-- Every series the agents host sends carries its instance name as `host` and a `job` starting `dreamwright-host/`. The `dreamwright-host` alert group selects on the job, since the name changes when the instance is replaced: `DreamwrightHostLogsDropped` fires when Loki refuses its log lines.
 
 The receiver also accepts writes on the in-cluster Service from any pod that can reach it; Traefik's allowlist does not apply there.
 
-After Flux applies, from a LAN host other than debeth, `curl -X POST https://prometheus.activescott.com/api/v1/write` gets a 403, and so does the same request from any internet address but the agents host. From debeth or the agents host, the same request gets a 401 without the credential and with Scott's read credential, and reaches Prometheus with the sender's own: an empty body gets a 400 from Prometheus itself, and the sender's real writes get a 2xx (`prometheus_http_requests_total{handler="/api/v1/write",code=~"2.."}`).
+After Flux applies, from a LAN host other than debeth, `curl -X POST https://prometheus.activescott.com/api/v1/write` gets a 403, and so does the same request from any internet address. From debeth, the same request gets a 401 without the credential and with Scott's read credential, and reaches Prometheus with the sender's own: an empty body gets a 400 from Prometheus itself, and the sender's real writes get a 2xx (`prometheus_http_requests_total{handler="/api/v1/write",code=~"2.."}`).
 
 The check with Scott's read credential is mandatory after every change to the remote-write Ingress, its middlewares, or the methods `prometheus-ingress.yaml` admits. What keeps the read credential from writing is that IngressRoute's method allowlist (GET and HEAD everywhere, POST only on `/api/v1/labels` and `/api/v1/series`), not router priority: its routes outrank the write Ingress by rule length. The GET/HEAD route also excludes `/api/v1/write` by path, but adding POST to that route leaves the write path behind that one exclusion. If the Ingress names a middleware that does not exist, Traefik drops the whole `/api/v1/write` router (seen on 3.3.6; the cluster runs 3.7.13) and the path answers 404. Nothing else reports this: the senders' writes fail either way. Run it from debeth and expect 401, not 404 (curl prompts for the password):
 
@@ -297,17 +296,17 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST -u '<read user>' https://promet
 
 ### Loki push
 
-The Dreamwright agents host pushes its logs to Loki over the internet (ping-poet/dreamwright#122). Only the push path is public; queries stay in-cluster.
+Loki has a public push path with no sender. The Dreamwright agents host was the only one (ping-poet/dreamwright#122) and stopped pushing in ping-poet/dreamwright#976. Only the push path is public; queries stay in-cluster.
 
 ```
-agents host --HTTPS POST--> Traefik loki.activescott.com/loki/api/v1/push --> loki:3100
+sender --HTTPS POST--> Traefik loki.activescott.com/loki/api/v1/push --> loki:3100
 ```
 
-- `loki/loki-push-ingress.yaml` routes only that exact path, through `loki-push-allowlist` (allows `52.11.188.6/32`), `loki-push-inflight` (4 concurrent requests), `loki-push-auth` (basic auth, user `dreamwright-agents`) and `loki-push-body-limit` (4 MiB), in that order, as on the remote-write path. Loki runs with `auth_enabled: false`, so basic auth is the only credential.
+- `loki/loki-push-ingress.yaml` routes only that exact path, through `loki-push-allowlist` (allows only `192.0.2.1/32`, a documentation address, until there is a sender: Traefik drops the router for an empty list), `loki-push-inflight` (4 concurrent requests), `loki-push-auth` (basic auth) and `loki-push-body-limit` (4 MiB), in that order, as on the remote-write path. Loki runs with `auth_enabled: false`, so basic auth is the only credential.
 - `scripts/add-ingest-user.mts loki-push <user>` creates and rotates a credential, the same way as for remote write. It writes `loki/loki-push-users.public-key-encrypted.encrypted`. The file first committed is a placeholder, so the path denies every push until it has run.
 - `networkpolicy.yaml` admits Traefik to Loki on 3100 for this route.
 
-After Flux applies, from the agents host, `curl -X POST https://loki.activescott.com/loki/api/v1/push` gets a 401 without the credential and a 2xx with it (send a real push, for example `-H 'Content-Type: application/json' -d '{"streams":[{"stream":{"host":"check"},"values":[["'"$(date +%s%N)"'","push check"]]}]}'`, which returns 204). From any other address the same request gets a 403.
+After Flux applies, `curl -X POST https://loki.activescott.com/loki/api/v1/push` gets a 403 from every address. Once a sender's address is in the allowlist, the same request from it gets a 401 without the credential and a 2xx with it (send a real push, for example `-H 'Content-Type: application/json' -d '{"streams":[{"stream":{"host":"check"},"values":[["'"$(date +%s%N)"'","push check"]]}]}'`, which returns 204).
 
 ## Alert Runbooks
 
