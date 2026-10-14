@@ -294,20 +294,6 @@ The check with Scott's read credential is mandatory after every change to the re
 curl -s -o /dev/null -w '%{http_code}\n' -X POST -u '<read user>' https://prometheus.activescott.com/api/v1/write
 ```
 
-### Loki push
-
-Loki has a public push path with no sender. The Dreamwright agents host was the only one (ping-poet/dreamwright#122) and stopped pushing in ping-poet/dreamwright#976. Only the push path is public; queries stay in-cluster.
-
-```
-sender --HTTPS POST--> Traefik loki.activescott.com/loki/api/v1/push --> loki:3100
-```
-
-- `loki/loki-push-ingress.yaml` routes only that exact path, through `loki-push-allowlist` (allows only `192.0.2.1/32`, a documentation address, until there is a sender: Traefik drops the router for an empty list), `loki-push-inflight` (4 concurrent requests), `loki-push-auth` (basic auth) and `loki-push-body-limit` (4 MiB), in that order, as on the remote-write path. Loki runs with `auth_enabled: false`, so basic auth is the only credential.
-- `scripts/add-ingest-user.mts loki-push <user>` creates and rotates a credential, the same way as for remote write. It writes `loki/loki-push-users.public-key-encrypted.encrypted`. The file first committed is a placeholder, so the path denies every push until it has run.
-- `networkpolicy.yaml` admits Traefik to Loki on 3100 for this route.
-
-After Flux applies, `curl -X POST https://loki.activescott.com/loki/api/v1/push` gets a 403 from every address. Once a sender's address is in the allowlist, the same request from it gets a 401 without the credential and a 2xx with it (send a real push, for example `-H 'Content-Type: application/json' -d '{"streams":[{"stream":{"host":"check"},"values":[["'"$(date +%s%N)"'","push check"]]}]}'`, which returns 204).
-
 ## Alert Runbooks
 
 Runbooks live in `runbooks/`, one file per alert, added as alerts are diagnosed

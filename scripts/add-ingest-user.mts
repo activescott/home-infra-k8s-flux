@@ -1,8 +1,7 @@
 #!/usr/bin/env -S node --experimental-strip-types
 // Adds a sender, or rotates one, on a public ingest path: Prometheus remote write at
-// https://prometheus.activescott.com/api/v1/write, or Loki push at
-// https://loki.activescott.com/loki/api/v1/push. The one sender is debeth's Alloy
-// (activescott/activeassistant#648), on remote write.
+// https://prometheus.activescott.com/api/v1/write. The one sender is debeth's Alloy
+// (activescott/activeassistant#648).
 //
 // Generates a random password, replaces the user's bcrypt htpasswd line in the path's users
 // file (keeping every other user's line), re-encrypts the file to the age recipient, and prints
@@ -10,7 +9,7 @@
 // agent: the printed password is the only copy, and the encrypted file holds only hashes.
 //
 // Usage:
-//   ./scripts/add-ingest-user.mts <prometheus-remote-write|loki-push> <user> | ssh <host> 'sudo install -m 0400 /dev/stdin <password file>'
+//   ./scripts/add-ingest-user.mts <prometheus-remote-write> <user> | ssh <host> 'sudo install -m 0400 /dev/stdin <password file>'
 //
 // For example, debeth:
 //   ./scripts/add-ingest-user.mts prometheus-remote-write debeth | ssh debeth 'sudo install -m 0400 /dev/stdin /mnt/fury4t/eth-docker/alloy/secrets/nas-prometheus-password'
@@ -30,7 +29,6 @@ import { fileURLToPath } from "node:url"
 const TARGETS: Record<string, string> = {
   "prometheus-remote-write":
     "apps/production/monitoring/prometheus/prometheus-remote-write-users.public-key-encrypted.encrypted",
-  "loki-push": "apps/production/monitoring/loki/loki-push-users.public-key-encrypted.encrypted",
 }
 // Held debeth's line as a single dotenv value before the remote-write path had a second
 // sender. The first run against prometheus-remote-write carries that line over and deletes it.

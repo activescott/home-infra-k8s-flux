@@ -1,8 +1,7 @@
 # Default deny for the namespace, then one policy per component (activescott/activeassistant#577).
 #
-# Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, the Loki push
-# ingress, and Grafana's own queries to
-# Prometheus and Loki, which go out through Traefik and come back), Olya (Grafana, Loki,
+# Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, and Grafana's own
+# queries to Prometheus and Loki, which go out through Traefik and come back), Olya (Grafana, Loki,
 # Prometheus and Alertmanager at their in-cluster addresses; the other half of the monitoring
 # rule in apps/production/olya/olya-networkpolicy.yaml), the jump box (Grafana only; the other
 # half of apps/production/jumpbox/jumpbox-networkpolicy.yaml), and the edge firewall's syslog.
@@ -353,7 +352,7 @@ spec:
           protocol: TCP
 ---
 # Single binary. Its memberlist ring is itself, through the loki-memberlist headless Service.
-# Traefik carries the public push path, loki/loki-push-ingress.yaml.
+# Traefik carries Grafana's queries, loki/loki-read-ingress.yaml.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

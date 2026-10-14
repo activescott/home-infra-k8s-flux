@@ -147,7 +147,7 @@ spec:
       name: loki.activescott.com
       type: CNAME
       ttl: 1
-      comment: Loki, through Traefik
+      comment: Grafana's Loki queries, through Traefik
       content: k8s.activescott.com
     - key: mail-cname
       name: mail.activescott.com
