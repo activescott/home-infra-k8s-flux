@@ -59,12 +59,6 @@ spec:
           mountPath: /etc/prometheus/secrets
           secretName: stalwart-metrics-auth
           readOnly: true
-        # Its own subdirectory: a second mount at /etc/prometheus/secrets would
-        # shadow the stalwart one rather than merge with it.
-        - name: openclaw-metrics-auth
-          mountPath: /etc/prometheus/secrets/openclaw
-          secretName: openclaw-metrics-auth
-          readOnly: true
 
       # Ingress managed separately via raw K8s Ingress + cert-manager Certificate
       ingress:
@@ -97,11 +91,6 @@ spec:
         - name: alertmanager-telegram-secret
           mountPath: /etc/alertmanager/secrets
           secretName: alertmanager-secrets
-          readOnly: true
-        # Its own subdirectory, for the same shadowing reason as the Prometheus mounts above.
-        - name: alertmanager-olya-hook
-          mountPath: /etc/alertmanager/olya-hook
-          secretName: alertmanager-olya-hook
           readOnly: true
 
       resources:
@@ -138,31 +127,6 @@ spec:
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 4h
-          # OlyaPodNotReady fires because Olya is down, so it's the one alert that must
-          # skip her hook rather than go through it -- she can't triage her own outage.
-          # Matching it here, ahead of the olya-hook route, sends it straight to Scott.
-          # OlyaPodNotReadyExtended is matched the same way for the same reason, which also
-          # means it still reaches Scott over the same Telegram receiver as OlyaPodNotReady
-          # rather than a distinct path (activescott/activeassistant#812) -- the only other
-          # receiver configured here is olya-hook, and that one is the outage itself.
-          #
-          # Every other alert also goes to Olya, who files and triages it. `continue` lets the
-          # alert carry on to the route below it. The second route is not redundant: once any
-          # child route matches, Alertmanager stops falling back to the root receiver, so
-          # without it Scott would receive nothing.
-          #
-          # group_by '...' gives each alert its own notification, so one alert joining a group
-          # does not resend the others and start a triage run for each. repeat_interval is
-          # longer than Scott's because a repeat is only a still-firing check for her.
-          routes:
-            - receiver: on_call_operator_default
-              matchers:
-                - alertname=~"OlyaPodNotReady|OlyaPodNotReadyExtended"
-            - receiver: olya-hook
-              group_by: ["..."]
-              repeat_interval: 24h
-              continue: true
-            - receiver: on_call_operator_default
         inhibit_rules:
           - source_match:
               severity: critical
@@ -178,20 +142,6 @@ spec:
               - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
                 send_resolved: true
                 chat_id: 510755639
-          # The OpenClaw gateway's hook endpoint. The mapping for /hooks/alertmanager lives in
-          # openclaw.json in activescott/activeassistant and starts an isolated triage run per
-          # alert. Alertmanager's pod IP falls in gateway.trustedProxies, so it needs the same
-          # X-Forwarded-For as the openclaw scrape job below or the gateway answers 403.
-          - name: olya-hook
-            webhook_configs:
-              - url: http://olya.olya.svc.cluster.local:18789/hooks/alertmanager
-                send_resolved: true
-                http_config:
-                  authorization:
-                    credentials_file: /etc/alertmanager/olya-hook/openclaw_hooks_token
-                  http_headers:
-                    X-Forwarded-For:
-                      values: ["203.0.113.1"]
 
     # --- Alert Rules ---
     # All alerting rules go into the standard alerting_rules.yml key so they're
@@ -892,12 +842,11 @@ spec:
                   description: 'Errors for {{ $labels.provider }} bucket={{ $labels.error_type }} status={{ $labels.status_code }} above threshold. Investigate provider status page and recent deploys.'
           - name: openrouter
             rules:
-              # OpenRouter itself, not a per-app LLM provider client: Olya's OpenClaw and
-              # Job Accelerator each hold their own OpenRouter key/workspace, in different
-              # namespaces, and both refuse with 403 the same way when its budget is spent.
-              # Fed by loki_process_custom_openrouter_budget_refused_total, see the
+              # OpenRouter itself, not a per-app LLM provider client: Job Accelerator holds
+              # its own OpenRouter key/workspace and refuses with 403 when its budget is
+              # spent. Fed by loki_process_custom_openrouter_budget_refused_total, see the
               # stage.match comment in alloy/helmrelease.yaml for why 403 means budget and
-              # which log line each app writes on a refusal.
+              # which log line the app writes on a refusal.
               - alert: OpenRouterBudgetExceeded
                 expr: 'sum by (namespace, pod, app) (increase(loki_process_custom_openrouter_budget_refused_total[15m])) > 0'
                 for: 1m
@@ -909,90 +858,13 @@ spec:
                     {{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in
                     the last 15 minutes: that namespace's workspace or key budget is spent and
                     every call on it fails until the cap is raised or the month resets. Known
-                    cause so far: this alert exists because Olya's OpenClaw workspace ($50/month
-                    cap, namespace olya) hit its budget silently with nothing surfacing it until
-                    noticed by hand; Job Accelerator holds a separate $100/month key in
-                    job-accelerator-prod and can exhaust independently. See
-                    activescott/home-infra-k8s-flux#220. There is no in-cluster fix -- raise the
-                    cap in the OpenRouter dashboard for the workspace/key named by the firing
-                    labels, or wait for the monthly reset.
+                    cause so far: Job Accelerator holds a $100/month key in job-accelerator-prod
+                    and can exhaust it. See activescott/home-infra-k8s-flux#220. There is no
+                    in-cluster fix -- raise the cap in the OpenRouter dashboard for the
+                    workspace/key named by the firing labels, or wait for the monthly reset.
                   query: '{namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered 403|provider=openrouter .* status=403"'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OpenRouterBudgetExceeded.md
-                  repo: activescott/job-accelerator (namespace job-accelerator-prod) or activescott/activeassistant (namespace olya)
-          - name: browser-chaperone
-            rules:
-              # The approval app runs two replicas now (browser-chaperone#89), so a rollout
-              # or a crash should never leave the egress proxy unable to reach it. Fed by
-              # chaperone_unchecked_total; see the stage.match comment in alloy/helmrelease.yaml
-              # for the log line and why it means the approval app did not answer.
-              #
-              # ping-poet/dreamwright#108 (comment): a bare increase() misses the first
-              # burst after any proxy pod or Alloy restart, because the counter's series
-              # does not exist until its first match and starts at that value, so
-              # increase() over it is 0. The `unless ... offset 5m` half catches a series
-              # that has just appeared.
-              - alert: ChaperoneApprovalUnchecked
-                expr: 'increase(loki_process_custom_chaperone_unchecked_total[5m]) > 0 or (loki_process_custom_chaperone_unchecked_total unless loki_process_custom_chaperone_unchecked_total offset 5m)'
-                for: 0m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: "The network chaperone could not reach the approval app."
-                  description: '{{ $labels.pod }} logged chaperone=unchecked in the last 5 minutes: a connection could not be checked because the approval app did not answer within 5s. In enforce mode this refuses the connection outright, so Dreamwright assistants are offline: their replies and tool calls get refused while the approval app is down. Check the app Deployment in browser-chaperone-prod for a stalled rollout or a crash loop.'
-              # ping-poet/dreamwright#398: the check can answer but raising the
-              # approval request itself can still fail (AllowlistUnavailableError
-              # on /internal/allowlist/requests), which this counter catches and
-              # chaperone_unchecked_total above does not. See the stage.match
-              # comment in alloy/helmrelease.yaml for the log line.
-              #
-              # Same shape as ChaperoneApprovalUnchecked above, for the same reason
-              # (ping-poet/dreamwright#108 comment): the `unless ... offset 5m` half
-              # catches this counter's first-ever series, which a bare increase()
-              # reads as 0.
-              - alert: ChaperoneApprovalRaiseFailed
-                expr: 'increase(loki_process_custom_chaperone_approval_raise_failed_total[5m]) > 0 or (loki_process_custom_chaperone_approval_raise_failed_total unless loki_process_custom_chaperone_approval_raise_failed_total offset 5m)'
-                for: 0m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: "The network chaperone could not raise an approval request."
-                  description: '{{ $labels.pod }} logged "the request could not be raised" in the last 5 minutes: the approval check answered but raising the request on /internal/allowlist/requests failed, so no request reached Slack. In enforce mode this denies the connection with no request id to approve, so Dreamwright assistants are offline: their replies and tool calls get refused while the approval app is down. Check the approval app in browser-chaperone-prod for errors around /internal/allowlist/requests.'
-              # Threshold from the 7 days of Loki history measured for
-              # ping-poet/dreamwright#108: the chaperone= field has existed since
-              # 2026-09-29, and its worst single hour there was 284 would-denies (a
-              # telemetry-host burst), with most hours under 50. 150 in 15 minutes is
-              # over twice that worst hour, so routine refusals (expired grants,
-              # agents discovering a new registry) do not trip it, but a host stuck
-              # retrying a refusal in a loop does.
-              - alert: ChaperoneRefusalSpike
-                expr: 'increase(loki_process_custom_chaperone_refused_total[15m]) > 150'
-                for: 1m
-                labels:
-                  severity: warning
-                annotations:
-                  summary: "The network chaperone is refusing an unusual number of connections."
-                  description: '{{ $labels.pod }} logged more than 150 would-deny or denied connections in 15 minutes. Check {namespace="browser-chaperone-prod", app="olya-egress-proxy"} |= "chaperone=" in Loki for the host: a one-off burst from a new registry is normal, a single host retrying in a loop is not.'
-              # mcp-gateway stays unready when a backing credential is empty or a
-              # placeholder (browser-chaperone#127), and today that's only visible
-              # through kubectl. Second half of browser-chaperone#126
-              # (activescott/home-infra-k8s-flux#368). Filtered on namespace as well as
-              # deployment: apps/base/tinkerbell has its own Deployment named
-              # mcp-gateway, in a different namespace, and the metric carries no other
-              # label to tell them apart.
-              - alert: BrowserChaperoneMcpGatewayUnavailable
-                expr: 'kube_deployment_status_replicas_unavailable{namespace="browser-chaperone-prod",deployment="mcp-gateway"} > 0'
-                for: 15m
-                labels:
-                  severity: warning
-                annotations:
-                  summary: 'mcp-gateway in browser-chaperone-prod has an unavailable replica.'
-                  description: >-
-                    The mcp-gateway Deployment in browser-chaperone-prod has had at least one
-                    replica unavailable for 15 minutes. Check readiness -- kubectl -n
-                    browser-chaperone-prod get pods -l app=mcp-gateway -- and the pod's logs in
-                    Loki for which backing credential is empty or a placeholder.
-                  query: 'kubectl -n browser-chaperone-prod get pods -l app=mcp-gateway'
-                  repo: activescott/browser-chaperone
+                  repo: activescott/job-accelerator
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
@@ -1937,124 +1809,9 @@ spec:
                     `kubectl -n job-accelerator-prod logs deploy/worker` for the
                     notifications.send error.
                   repo: activescott/job-accelerator
-          - name: olya
-            rules:
-              # olya-0 is the assistant that triages every other alert in this file (see the
-              # olya-hook route above) and would normally be the one filing and working this
-              # one too. When she's the thing that's down, that can't happen, so this alert is
-              # matched ahead of the olya-hook route and sent straight to Scott instead.
-              #
-              # One OR'd expression rather than three separate alerts: all three conditions are
-              # the same underlying event -- olya-0 stuck -- and separate alerts would page
-              # Scott three times for one outage. kube_pod_status_ready alone doesn't cover an
-              # unscheduled pod (Pending, no Ready condition reported yet), so phase="Pending"
-              # is matched explicitly rather than relied on to fall out of the ready check.
-              #
-              # No OOMKilled clause: kube_pod_init_container_status_last_terminated_reason
-              # reports lastState, which keeps reading OOMKilled after a retry succeeds until
-              # the pod is next recreated, so it would still be firing 10 minutes into a pod
-              # that's healthy again. A real stuck state is already covered by the not-Ready
-              # and CrashLoopBackOff clauses above.
-              - alert: OlyaPodNotReady
-                expr: >-
-                  kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
-                  or kube_pod_init_container_status_waiting_reason{namespace="olya",pod="olya-0",reason="CrashLoopBackOff"} > 0
-                  or kube_pod_status_phase{namespace="olya",pod="olya-0",phase="Pending"} > 0
-                for: 10m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: olya-0 has not been Ready for 10 minutes
-                  description: >-
-                    olya-0 has been not-Ready for over 10 minutes: the pod itself isn't Ready,
-                    an init container is stuck in CrashLoopBackOff, or the pod is Pending.
-                    Single replica, so this is a total outage of the assistant, and she can't
-                    triage this one herself.
-                  query: 'kubectl -n olya describe pod olya-0'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md
-                  repo: activescott/home-infra-k8s-flux
-              # Same condition as OlyaPodNotReady, escalated. A prior outage had
-              # OlyaPodNotReady fire for hours at one severity with no way to tell "she just
-              # restarted" from "she has been gone a long time" — this distinguishes the two
-              # by firing a second time, severity unchanged, once the first alert has been
-              # firing for an hour. Routed the same way as OlyaPodNotReady (see the route
-              # matcher above) rather than through olya-hook.
-              - alert: OlyaPodNotReadyExtended
-                expr: >-
-                  kube_pod_status_ready{namespace="olya",pod="olya-0",condition="false"} > 0
-                  or kube_pod_init_container_status_waiting_reason{namespace="olya",pod="olya-0",reason="CrashLoopBackOff"} > 0
-                  or kube_pod_status_phase{namespace="olya",pod="olya-0",phase="Pending"} > 0
-                for: 60m
-                labels:
-                  severity: critical
-                annotations:
-                  summary: olya-0 has not been Ready for over an hour
-                  description: >-
-                    OlyaPodNotReady has now been firing for over an hour. Check whether the
-                    StatefulSet is wedged on a stale revision rather than assuming a revert
-                    hasn't deployed — see "Wedged single-replica StatefulSet" in the runbook.
-                  query: 'kubectl -n olya describe pod olya-0'
-                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OlyaPodNotReady.md#wedged-single-replica-statefulset
-                  repo: activescott/home-infra-k8s-flux
-              # A session wedged on a tool call that never returns, while the pod stays
-              # Ready (activescott/activeassistant#99). Fed by
-              # olya_stalled_session_progress_age_seconds; see the stage.match comment in
-              # alloy/helmrelease.yaml for the log line and why it reads lastProgressAge.
-              #
-              # 900 is above every value seen in the week to 2026-10-04 (max 886s, from
-              # subagents waiting on CI), and `for: 1h` on top means the session has made
-              # no progress for 75 minutes before this fires. The series is per session
-              # and disappears 5m after the session stops logging, so a recovery or a pod
-              # restart resolves it. max by rather than sum(): it is a gauge of seconds,
-              # and adding two series of it together gives a number that means nothing.
-              - alert: OlyaSessionStalled
-                expr: 'max by (session_id, session_key) (loki_process_custom_olya_stalled_session_progress_age_seconds) > 900'
-                for: 1h
-                labels:
-                  severity: warning
-                annotations:
-                  summary: 'Olya session {{ $labels.session_key }} has made no progress for over an hour.'
-                  description: >-
-                    OpenClaw has logged "stalled session" for {{ $labels.session_id }}
-                    ({{ $labels.session_key }}) with lastProgressAge above 900s for an hour,
-                    and the line says recovery=none: OpenClaw will not unstick it. If the key
-                    is agent:olya:main or a Slack thread, Olya is not answering there. The fix
-                    is restarting the pod, kubectl --context nas -n olya delete pod olya-0,
-                    which drops whatever that session was doing.
-                  query: '{namespace="olya", app="olya"} |= "stalled session: sessionId={{ $labels.session_id }}"'
-                  repo: activescott/activeassistant
-              # olya-0 failed to start a bundled MCP server (activescott/home-infra-k8s-flux#338).
-              # Fed by loki_process_custom_olya_mcp_server_start_failed_total; see the
-              # stage.match comment in alloy/helmrelease.yaml for the log line. Any failure in
-              # 15m is enough to fire -- a healthy gateway doesn't log this at all -- and
-              # `for: 10m` requires it to persist rather than resolving on a single blip.
-              - alert: OlyaMcpServerStartFailed
-                expr: 'sum(increase(loki_process_custom_olya_mcp_server_start_failed_total[15m])) > 0'
-                for: 10m
-                labels:
-                  severity: warning
-                annotations:
-                  summary: 'olya-0 failed to start an MCP server.'
-                  description: >-
-                    OpenClaw's bundle-mcp subsystem logged "failed to start server" at least
-                    once in the last 15 minutes and it has not cleared in 10 minutes. Tool
-                    calls routed to that server are failing.
-                  query: '{namespace="olya", app="olya"} |= "failed to start server"'
-                  repo: activescott/activeassistant
-
           # Alertmanager's own delivery health. Scraped via the podAnnotations block under
           # alertmanager: above, not extraScrapeConfigs, since it's already a discoverable
           # pod — see "Adding a scrape target" in the README.
-          #
-          # No route carve-out needed: an alertname that doesn't match the OlyaPodNotReady
-          # matcher above falls through to both olya-hook (webhook) and
-          # on_call_operator_default (Telegram), so a failure specific to one integration
-          # still reaches someone over the other.
-          #
-          # Expect this to fire during an olya outage itself: olya-hook's webhook calls fail
-          # while the pod is down, which is exactly when OlyaPodNotReady is also firing. Both
-          # reach Scott over the same Telegram receiver, which is expected overlap, not a
-          # second incident.
           - name: alertmanager-self-monitoring
             rules:
               - alert: AlertmanagerNotificationFailed
@@ -2071,9 +1828,7 @@ spec:
                     not have reached anyone.
                   repo: activescott/home-infra-k8s-flux
           # Catches a pod wedged at mount time in any namespace — no container ever starts,
-          # so there are no restarts and no logs, which is exactly the class OlyaPodNotReady's
-          # own Pending clause covers only for olya-0. namespace!="olya" so a wedged olya-0
-          # pages once via OlyaPodNotReady rather than twice.
+          # so there are no restarts and no logs.
           #
           # for: 60m: 14 days of history at 1m resolution put the longest legitimate Pending
           # span in the cluster at gpupoet-prod's revalidation CronJob pods (amazon-revalidation,
@@ -2082,7 +1837,7 @@ spec:
           - name: cluster-pod-health
             rules:
               - alert: PodStuckPending
-                expr: 'kube_pod_status_phase{phase="Pending", namespace!="olya"} > 0'
+                expr: 'kube_pod_status_phase{phase="Pending"} > 0'
                 for: 60m
                 labels:
                   severity: warning
@@ -2535,9 +2290,6 @@ spec:
           - targets: ["https://job-accelerator.pingpoet.com/auth/passkey/authenticate-options"]
             labels:
               module: auth_origin_job_accelerator
-          - targets: ["https://chaperone.pingpoet.com/auth/passkey/authenticate-options"]
-            labels:
-              module: auth_origin_chaperone
           - targets: ["https://dreamwright.app/auth/passkey/authenticate-options"]
             labels:
               module: auth_origin_dreamwright
@@ -2682,24 +2434,6 @@ spec:
       # crossplane-cloudflare-api alerts below rather than failing visibly.
       # Confirmed with:
       #   upjet_resource_ext_api_duration_count -> job="kubernetes-pods"
-      # OpenClaw (Olya) gateway metrics. The endpoint requires operator.read auth
-      # via a bearer token — the same OPENCLAW_GATEWAY_TOKEN the gateway itself
-      # uses. File-based rather than inline because extraScrapeConfigs renders
-      # into a ConfigMap, not a Secret.
-      - job_name: "openclaw"
-        scrape_interval: 30s
-        scrape_timeout: 10s
-        metrics_path: "/api/diagnostics/prometheus"
-        authorization:
-          credentials_file: /etc/prometheus/secrets/openclaw/openclaw_gateway_token
-        # Prometheus's pod IP falls in gateway.trustedProxies (172.16.0.0/16),
-        # so the gateway demands X-Forwarded-For or rejects with 403. Any IP
-        # outside that CIDR satisfies it; 203.0.113.1 is RFC 5737 TEST-NET-3.
-        http_headers:
-          X-Forwarded-For:
-            values: ["203.0.113.1"]
-        static_configs:
-          - targets: ["olya.olya.svc.cluster.local:18789"]
       - job_name: "prometheus self scrape"
         static_configs:
           - targets: ["localhost:9090"]

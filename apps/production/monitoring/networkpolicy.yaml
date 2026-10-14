@@ -1,10 +1,9 @@
 # Default deny for the namespace, then one policy per component (activescott/activeassistant#577).
 #
 # Who reaches in from outside: Traefik (Grafana and Prometheus ingresses, and Grafana's own
-# queries to Prometheus and Loki, which go out through Traefik and come back), Olya (Grafana, Loki,
-# Prometheus and Alertmanager at their in-cluster addresses; the other half of the monitoring
-# rule in apps/production/olya/olya-networkpolicy.yaml), the jump box (Grafana only; the other
-# half of apps/production/jumpbox/jumpbox-networkpolicy.yaml), and the edge firewall's syslog.
+# queries to Prometheus and Loki, which go out through Traefik and come back), the jump box
+# (Grafana only; the other half of apps/production/jumpbox/jumpbox-networkpolicy.yaml), and the
+# edge firewall's syslog.
 # Nothing else pushes to Loki or queries Prometheus directly: on 2026-09-30 Loki's only `job` values were
 # Alloy's two, and every other client goes through an ingress. A new direct client, say a CI job querying Loki, has to be
 # added here.
@@ -17,8 +16,11 @@
 # nas1 addressing, for reference: pods 172.16.0.0/16, services 172.17.0.0/16, node 10.1.111.20
 # (API server endpoint 10.1.111.10), LAN 10.1.111.0/24.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
-# which explains the failure mode. Grafana and Prometheus both renew over HTTP-01.
+# cert-manager stands up a short-lived HTTP-01 solver pod in this namespace for every issuance
+# and renewal; it carries its own label, not any app's selector, so without this rule the
+# challenge hangs with nothing pointing at this file as the cause. Any namespace, because the
+# solver serves one public ACME token and nothing else. Grafana and Prometheus both renew over
+# HTTP-01.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -64,8 +66,11 @@ spec:
 ---
 # The pods that watch the Kubernetes API: Alloy (pod discovery and log tailing), the config
 # sidecars in Grafana and Loki, kube-state-metrics, and Prometheus's service discovery. These are
-# also the ones that keep a ServiceAccount token. The three addresses are explained in
-# apps/production/olya/olya-networkpolicy.yaml.
+# also the ones that keep a ServiceAccount token. Three addresses: the API server answers on
+# both the node's InternalIP (10.1.111.20) and 10.1.111.10, but the `kubernetes` Service has
+# exactly one registered endpoint (.10), so a pod connecting to the Service address (172.17.0.1)
+# is DNAT'd to .10 -- allowing only .20 makes every in-cluster API call hang to a timeout, and
+# .20 is kept in case the endpoint ever re-registers to the InternalIP.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -123,9 +128,6 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: traefik
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
       ports:
         - port: 9090
           protocol: TCP
@@ -217,7 +219,7 @@ spec:
         - port: 8081
           protocol: TCP
 ---
-# Sends to Telegram over the internet and to Olya's /hooks/alertmanager.
+# Sends to Telegram over the internet.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -238,20 +240,10 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: grafana
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
       ports:
         - port: 9093
           protocol: TCP
   egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
-      ports:
-        - port: 18789
-          protocol: TCP
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -293,9 +285,6 @@ spec:
             matchLabels:
               app.kubernetes.io/name: prometheus
               app.kubernetes.io/component: server
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
         # Grafana only, not Prometheus, Loki or Alertmanager: their APIs have no auth, and
         # Prometheus's lifecycle endpoints and Loki's delete API are destructive.
         - namespaceSelector:
@@ -375,9 +364,6 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: alloy
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: olya
       ports:
         - port: 3100
           protocol: TCP

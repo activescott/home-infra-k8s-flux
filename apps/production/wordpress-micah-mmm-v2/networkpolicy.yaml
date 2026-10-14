@@ -10,16 +10,17 @@
 #     turns those off anyway.
 #   - Outbound mail. There is no sendmail in the image, so that never worked.
 # If embeds are wanted back, add a rule allowing TCP 443 to 0.0.0.0/0 minus the private ranges
-# (the shape of the internet rule in apps/production/olya/olya-networkpolicy.yaml) AND drop
+# (the shape of the internet rule in apps/production/zot/networkpolicy.yaml) AND drop
 # WP_HTTP_BLOCK_EXTERNAL from patch-wordpress-config-extra.yaml. Either one alone still blocks.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. The
 # WordPress probes are exec probes that curl from inside the pod, so they need no rule.
 ---
 # cert-manager stands up its HTTP-01 solver pod in this namespace for every issuance and renewal
-# of the certificate in ingress.yaml, and the default deny below selects it too. Same shape as
-# `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml, which explains
-# the failure mode.
+# of the certificate in ingress.yaml, and the default deny below selects it too. It carries its
+# own label, not any app's selector, so without this rule the challenge hangs with nothing
+# pointing at this file as the cause. Any namespace, because the solver serves one public ACME
+# token and nothing else.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

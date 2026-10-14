@@ -50,8 +50,9 @@ data:
           policy: two_factor
 
     # One cookie covering activescott.com and everything under it, which is what lets a login at
-    # auth.activescott.com carry over to olya.activescott.com. No leading period: Authelia 4.38+
-    # rejects one, and the Domain attribute already matches subdomains without it.
+    # auth.activescott.com carry over to any other *.activescott.com host behind
+    # authelia-forwardauth. No leading period: Authelia 4.38+ rejects one, and the Domain
+    # attribute already matches subdomains without it.
     # https://www.authelia.com/configuration/session/introduction/
     session:
       cookies:
