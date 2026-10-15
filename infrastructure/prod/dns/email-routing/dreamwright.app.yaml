@@ -66,6 +66,8 @@ spec:
     # Public support address for the Slack app and the dreamwright.app /support page;
     # forwards to the operator for now.
     - localPart: support
+    # Shared sign-up address for Dreamwright vendor accounts; reaches the operator only.
+    - localPart: accounts
     # Overrides the Secret's default to Olya's own address.
     - localPart: olya
       destination: olya@pingpoet.com
