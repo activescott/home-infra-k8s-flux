@@ -12,15 +12,13 @@ The agents host connects to the home WAN address on the port OPNsense forwards t
 
 ## Olya's ssh config
 
-On the agents host, with the WAN port as forwarded in OPNsense (2222 below):
+On the agents host, with the WAN port as forwarded in OPNsense (2222 below). The key lives in the host's ssh-agent, and the VM's system ssh config already sets `IdentityAgent` and a `ProxyCommand`, so no `IdentityFile` is needed here. The authorized key is the host agent's `dreamwright-default` key.
 
 ```
 Host nas1-jump
   HostName wan.activescott.com
   Port 2222
   User abc
-  IdentityFile ~/.ssh/nas1_jump_ed25519
-  IdentitiesOnly yes
   HostKeyAlias nas1-jump
   ExitOnForwardFailure yes
   ServerAliveInterval 30
