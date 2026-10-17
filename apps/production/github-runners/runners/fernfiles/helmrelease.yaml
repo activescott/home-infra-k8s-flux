@@ -115,7 +115,7 @@ spec:
           # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
           # and `--group` flags the chart relied on.
           - name: dind
-            image: docker:dind
+            image: docker:dind@sha256:3e5756e2b6dad6a5f1f5deacf0a19f9eaa2581b76ae092b2d4a118162e1d4d4e
             args:
               - dockerd
               - --host=unix:///var/run/docker.sock
