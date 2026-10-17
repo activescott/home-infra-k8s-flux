@@ -28,7 +28,7 @@ secretGenerator:
   - name: db-creds
     envs:
       - .env.secret.db.encrypted
-  # app (includes SEARXNG_SECRET, OXYLABS_* for searxng)
+  # app (includes SEARXNG_SECRET, PROXY_* for searxng)
   - name: app-creds
     envs:
       - .env.secret.app.encrypted
