@@ -41,7 +41,7 @@ spec:
             # container and the second pass, finding index.php, skips the copy and writes
             # wp-config.php. This pod has restartPolicy Never, so it makes the second pass itself.
             - name: install-core
-              image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+              image: wordpress:7.1.2-php8.3-apache@sha256:e04cf657f24889e96b5544828cdd5a92a0b51819f3e1899183f9be6ea0485edf
               command: ["sh", "-c"]
               args: ["docker-ensure-installed.sh true || docker-ensure-installed.sh true"]
               workingDir: /var/www/html
@@ -76,7 +76,7 @@ spec:
             # by www-data.
             - name: wp-cron
               # Keep in step with the Deployment; Renovate bumps both.
-              image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+              image: wordpress:7.1.2-php8.3-apache@sha256:e04cf657f24889e96b5544828cdd5a92a0b51819f3e1899183f9be6ea0485edf
               command: ["php", "/var/www/html/wp-cron.php"]
               workingDir: /var/www/html
               securityContext:
