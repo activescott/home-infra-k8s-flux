@@ -10,6 +10,13 @@ configMapGenerator:
       - index.html
       - robots.txt
       - apple-templated.mobileconfig
+      # /docs. Flat filenames because ConfigMap keys cannot contain a solidus; nginx maps them
+      # onto the URL structure. A new FAQ page is docs-faq-<slug>.html listed here, and is then
+      # served at /docs/faq/<slug> with no config change -- but it is not linked from anywhere
+      # until docs-index.html points at it.
+      - docs-index.html
+      - docs-style.css
+      - docs-faq-caldav.html
   - name: mail-setup-nginx
     files:
       - nginx-default.conf
