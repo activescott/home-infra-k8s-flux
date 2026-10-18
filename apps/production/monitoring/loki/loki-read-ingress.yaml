@@ -2,7 +2,7 @@
 # ../grafana/datasource-auth-middleware.yaml's user. GET on the read endpoints Grafana's queries,
 # label browser and volume histogram use, and nothing else: Loki runs with auth_enabled: false,
 # so this route is the only thing between a Grafana user and Loki. Any other request gets a 404
-# from Traefik. The push path is loki-push-ingress.yaml's.
+# from Traefik. Loki has no public push path.
 #
 # An IngressRoute rather than an Ingress because the routes match on the method, which an Ingress
 # cannot.

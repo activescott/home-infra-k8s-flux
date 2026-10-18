@@ -18,7 +18,7 @@ spec:
         namespace: arc-systems
       interval: 24h
   values:
-    githubConfigUrl: https://github.com/activescott/browser-chaperone
+    githubConfigUrl: https://github.com/ping-poet/chaperone
     githubConfigSecret: browser-chaperone-github-token
     runnerScaleSetName: browser-chaperone-runners
     minRunners: 0

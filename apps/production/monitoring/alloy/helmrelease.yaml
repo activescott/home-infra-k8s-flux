@@ -755,22 +755,14 @@ spec:
             // OpenRouter budget/key-limit refusals (activescott/home-infra-k8s-flux#220).
             // OpenRouter answers 403 specifically for a workspace or key budget cap
             // ("Workspace monthly budget of $50.00 exceeded" or a key-limit equivalent),
-            // distinct from 401 (bad key) and 429 (rate limit). Each selector matches the
-            // line the calling code writes when OpenRouter refuses it, and nothing else:
-            // a looser "openrouter" + "403" match also counted Olya's chat and narration
-            // about the refusal, which is not a call.
+            // distinct from 401 (bad key) and 429 (rate limit). The selector matches the
+            // line the calling code writes when OpenRouter refuses it, and nothing else.
             //
             // Job Accelerator: the openrouter client throws "OpenRouter answered <status>
             // for <purpose>" on any non-2xx (packages/web-app/app/lib/openrouter/
             // client.server.ts), and the worker's task queue logs the thrown message as a
             // pino error line with "module":"tasks.queue" (tasks/queue.server.ts, failTask).
             // One line per attempt, so a refused task counts up to MAX_ATTEMPTS times.
-            //
-            // OpenClaw (olya): the gateway's provider-transport-fetch subsystem logs
-            // "[model-fetch] response provider=<p> ... status=<code>" for every model call.
-            // Anchored at the start of the line on the unescaped JSON keys, so the same
-            // text quoted inside another log line's message (escaped quotes) or pasted into
-            // tool output does not match.
             stage.match {
               selector = "{namespace=\"job-accelerator-prod\", app=\"worker\"} |= \"\\\"module\\\":\\\"tasks.queue\\\"\" |~ \"\\\"msg\\\":\\\"OpenRouter answered 403 for \""
 
@@ -784,163 +776,6 @@ spec:
                   // Default 5m would delete the series between refusals (rare by
                   // design, since a budget cap doesn't reset for weeks), leaving
                   // increase() nothing to measure.
-                  max_idle_duration = "168h"
-                }
-              }
-            }
-
-            // Same counter name as above on purpose: one series family, told apart by
-            // the namespace and app labels.
-            stage.match {
-              selector = "{namespace=\"olya\", app=\"olya\"} |~ \"^\\\\{\\\"time\\\":\\\"[^\\\"]+\\\",\\\"level\\\":\\\"[a-z]+\\\",\\\"subsystem\\\":\\\"provider-transport-fetch\\\",\\\"message\\\":\\\"\\\\[model-fetch\\\\] response provider=openrouter [^\\\"]* status=403 \""
-
-              stage.metrics {
-                metric.counter {
-                  name        = "openrouter_budget_refused_total"
-                  description = "OpenRouter calls refused with 403 (workspace or key budget exceeded)"
-                  match_all   = true
-                  action      = "inc"
-                  max_idle_duration = "168h"
-                }
-              }
-            }
-
-            // OpenClaw (olya): a session wedged on a tool call that never returns
-            // (activescott/activeassistant#99). The gateway's diagnostic subsystem logs
-            // one line per stalled session every 30s, all sessions in the same sweep:
-            //   stalled session: sessionId=<uuid> sessionKey=agent:olya:main state=idle
-            //   age=212s ... lastProgressAge=212s ... recovery=none
-            //
-            // The gauge reads lastProgressAge, not age. age keeps counting across a
-            // session's tool calls, so subagents that sit in a string of 540s CI waits
-            // pass an hour routinely (27378s at worst in the week to 2026-10-04) while
-            // making progress. lastProgressAge resets on every step, never went above
-            // 886s over the same period, and only keeps growing when nothing is moving.
-            //
-            // Labelled per session because the sweep logs every stalled session in the
-            // same instant, so a single series would only ever show the last one. The
-            // label is the cardinality: 148 sessions stalled in that week, and each
-            // series is deleted 5m after its session's last line, so only sessions
-            // stalled right now exist. stage.label_drop takes the labels back off before
-            // the line goes to Loki, which does not need a stream per session.
-            //
-            // The anchor on the line's leading JSON keys is the same as the openrouter
-            // selector above: Olya quotes this phrase in chat, and those lines must not
-            // count.
-            stage.match {
-              selector = "{namespace=\"olya\", app=\"olya\"} |~ \"^\\\\{\\\"time\\\":\\\"[^\\\"]+\\\",\\\"level\\\":\\\"[a-z]+\\\",\\\"subsystem\\\":\\\"diagnostic\\\",\\\"message\\\":\\\"stalled session: \""
-
-              stage.regex {
-                expression = "stalled session: sessionId=(?P<stalled_session_id>\\S+) sessionKey=(?P<stalled_session_key>\\S+) .* lastProgressAge=(?P<stalled_progress_age>[0-9]+)s"
-              }
-
-              stage.labels {
-                values = {
-                  session_id  = "stalled_session_id",
-                  session_key = "stalled_session_key",
-                }
-              }
-
-              stage.metrics {
-                metric.gauge {
-                  name        = "olya_stalled_session_progress_age_seconds"
-                  description = "seconds since a stalled OpenClaw session last made progress"
-                  source      = "stalled_progress_age"
-                  action      = "set"
-
-                  // The default, set explicitly because the alert depends on it: a
-                  // session that recovers, or dies with the pod, stops logging, and its
-                  // series has to go away instead of holding its last value.
-                  max_idle_duration = "5m"
-                }
-              }
-
-              stage.label_drop {
-                values = ["session_id", "session_key"]
-              }
-            }
-
-            // OpenClaw (olya): an MCP server failed to start
-            // (activescott/home-infra-k8s-flux#338). The gateway's bundle-mcp subsystem
-            // logs one line per failed server, naming it:
-            //   failed to start server "tinkerbell" (http://...): MCP error -32603: ...
-            // Anchored the same way as provider-transport-fetch/diagnostic above: the
-            // unescaped JSON keys at the start of the line, so the same phrase quoted
-            // inside another message or pasted into tool output does not count. Matches
-            // any server name, not just "tinkerbell" -- a start failure for any bundled
-            // MCP server is the same failure mode.
-            stage.match {
-              selector = "{namespace=\"olya\", app=\"olya\"} |~ \"^\\\\{\\\"time\\\":\\\"[^\\\"]+\\\",\\\"level\\\":\\\"[a-z]+\\\",\\\"subsystem\\\":\\\"bundle-mcp\\\",\\\"message\\\":\\\"failed to start server \""
-
-              stage.metrics {
-                metric.counter {
-                  name        = "olya_mcp_server_start_failed_total"
-                  description = "OpenClaw MCP server start failures logged by olya-0"
-                  match_all   = true
-                  action      = "inc"
-
-                  // Default is 5m; baseline is low-volume, so the default would
-                  // delete the series between occurrences and leave increase()
-                  // with nothing to measure most of the time.
-                  max_idle_duration = "24h"
-                }
-              }
-            }
-
-            // The network chaperone's access log (browser-chaperone#89,
-            // ping-poet/dreamwright#108): olya-egress-squid.conf's "egress"
-            // logformat writes chaperone=%ea on every connection, where %ea is
-            // the helper's outcome. `unchecked` means the approval app did not
-            // answer in time, which in enforce mode refuses the connection
-            // instead of asking; it should never happen in a healthy rollout.
-            stage.match {
-              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |= \"chaperone=unchecked\""
-
-              stage.metrics {
-                metric.counter {
-                  name        = "chaperone_unchecked_total"
-                  description = "connections the network chaperone could not check because the approval app did not answer"
-                  match_all   = true
-                  action      = "inc"
-                  max_idle_duration = "168h"
-                }
-              }
-            }
-
-            // would_deny is today's outcome for a refused connection
-            // (NETWORK_CHAPERONE_MODE=report_only); the same check in enforce
-            // mode logs denied instead. Matching both now means this counter
-            // does not need to change when that flips.
-            stage.match {
-              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |~ \"chaperone=(would_deny|denied)\""
-
-              stage.metrics {
-                metric.counter {
-                  name        = "chaperone_refused_total"
-                  description = "connections the network chaperone refused or would have refused"
-                  match_all   = true
-                  action      = "inc"
-                  max_idle_duration = "168h"
-                }
-              }
-            }
-
-            // ping-poet/dreamwright#398: when the check answers but raising
-            // the approval request itself fails (AllowlistUnavailableError
-            // on /internal/allowlist/requests), the helper logs msg="the
-            // request could not be raised" and the connection falls through
-            // to denied -- chaperone_unchecked_total above never sees it,
-            // and in enforce mode the agent gets a 403 with no request id
-            // to wait on.
-            stage.match {
-              selector = "{namespace=\"browser-chaperone-prod\", app=\"olya-egress-proxy\"} |= \"the request could not be raised\""
-
-              stage.metrics {
-                metric.counter {
-                  name        = "chaperone_approval_raise_failed_total"
-                  description = "connections where the network chaperone could not raise an approval request after the check answered"
-                  match_all   = true
-                  action      = "inc"
                   max_idle_duration = "168h"
                 }
               }

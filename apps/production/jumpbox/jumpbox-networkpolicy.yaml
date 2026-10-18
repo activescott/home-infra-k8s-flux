@@ -21,12 +21,11 @@ spec:
     - Egress
 
   ingress:
-    # sshd, from this Service's svclb pods only, which keeps every other pod in the cluster
-    # off the ClusterIP. The client allowlist is loadBalancerSourceRanges in
-    # jumpbox-service.yaml and the OPNsense rule, not this: svclb masquerades, so the client's
-    # address never arrives here. Traffic kube-proxy forwards straight from the LoadBalancer
-    # address is masqueraded to the node, which kube-router admits to every pod regardless of
-    # policy, as it does the kubelet's probes.
+    # sshd. kube-proxy DNATs traffic to the LoadBalancer address straight to the pod, and
+    # kube-router enforces policy before the masquerade, so it sees the client's real address.
+    # That address must be listed here too. The svclb peer covers traffic arriving on other
+    # node addresses, and keeps every other pod in the cluster off the ClusterIP. The client
+    # allowlist is still loadBalancerSourceRanges in jumpbox-service.yaml and the OPNsense rule.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -35,6 +34,9 @@ spec:
             matchLabels:
               svccontroller.k3s.cattle.io/svcname: jumpbox
               svccontroller.k3s.cattle.io/svcnamespace: jumpbox
+        # Dreamwright agents host EIP, ping-poet/dreamwright#123, same as loadBalancerSourceRanges.
+        - ipBlock:
+            cidr: 52.11.188.6/32
       ports:
         - port: 2222
           protocol: TCP

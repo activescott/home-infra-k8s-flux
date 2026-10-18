@@ -20,7 +20,7 @@ secretGenerator:
   # The file authentication backend's user database, projected into /config/users.yml.
   #
   # disableNameSuffixHash here is a stable-name choice, NOT the correctness requirement it is
-  # for olya-basic-auth and zot-htpasswd -- kustomize's name-reference transformer does rewrite
+  # for zot-htpasswd -- kustomize's name-reference transformer does rewrite
   # a projected volume's secret source, verified against the built output. The cost of the
   # stable name is that re-encrypting the file produces no spec change, so Flux has nothing to
   # roll and the pod keeps serving the old database until it is restarted by hand. Drop these

@@ -13,8 +13,8 @@ applications.
 
 Three independent layers, because each one alone has a hole:
 
-1. **NetworkPolicy** — only `fernfiles-prod`, `ramblefeed-prod`, `tinkerbell-prod`,
-   `job-accelerator-prod` and `browser-chaperone-prod` can open the port.
+1. **NetworkPolicy** — only `fernfiles-prod`, `ramblefeed-prod`, `tinkerbell-prod` and
+   `job-accelerator-prod` can open the port.
 2. **SASL** — `mynetworks` is narrowed to loopback and `smtpd_relay_restrictions` is
    `permit_sasl_authenticated,reject`. Left at the image's default, `mynetworks` would cover
    `172.16.0.0/12`, which contains this cluster's entire pod CIDR — every pod could relay.
@@ -54,7 +54,7 @@ everything else (`prometheus/helmrelease.yaml`, group `email-relay`): `EmailRela
 during the SMTP conversation and delivers it afterwards, so a recipient's mail server rejecting
 it produces `status=sent` here and a bounce that goes to `bounces@cf-bounce.<domain>` — which
 Cloudflare handles and this relay never sees. What `status=bounced` and `status=deferred`
-actually catch is Cloudflare refusing *us*: a bad or revoked API token, an oversized message, a
+actually catch is Cloudflare refusing _us_: a bad or revoked API token, an oversized message, a
 sender domain that is not onboarded, or the sending quota being hit.
 
 Recipient-side failures live in Cloudflare's suppression list instead
@@ -84,7 +84,7 @@ credential reaches your shell or its history.
 
 It always checks the controls, not just the send: a message that goes through only proves the
 relay works, which is not the failure anyone worries about. Two of the three cases must be
-*refused*, so an acceptance there is a regression and exits non-zero:
+_refused_, so an acceptance there is a regression and exits non-zero:
 
 ```
 [ok] noreply@tinkerbellbot.com accepted: accepted
