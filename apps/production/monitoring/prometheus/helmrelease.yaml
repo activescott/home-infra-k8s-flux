@@ -964,15 +964,18 @@ spec:
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'Tinkerbell error volume up, known cause: relevance-guard retry with no providers left.'
+                  summary: 'Tinkerbell error volume up, known causes: tinkerbell#187 (relevance-guard retry) and #273 (web_fetch extraction).'
                   description: >-
-                    Known cause so far: a relevance-guard retry that excludes the one provider it
-                    just rejected has no provider left to query, so it logs at error level even
-                    though the caller goes on to serve the first attempt. Confirm by checking that
-                    the error line's `errors` field is empty and is followed within milliseconds by
-                    a "Validation retry search failed, serving first attempt" warn line. See
-                    activescott/tinkerbell#187. Anything that doesn't match this pattern is a new
-                    failure.
+                    Known causes so far. (1) A relevance-guard retry that excludes the one
+                    provider it just rejected has no provider left to query, so it logs at error
+                    level even though the caller goes on to serve the first attempt. Confirm by
+                    checking that the error line's `errors` field is empty and is followed within
+                    milliseconds by a "Validation retry search failed, serving first attempt" warn
+                    line. See activescott/tinkerbell#187. (2) "Both primary and fallback models
+                    failed" from web_fetch extraction, caused by a caller schema missing
+                    additionalProperties, page content over the context window ("reduce the length
+                    of the messages"), or a Groq TPM 429 shared by both models. See
+                    activescott/tinkerbell#273. Anything that matches neither is a new failure.
                   query: '{namespace="tinkerbell-prod", level=~"error|fatal"} | json'
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppErrorVolumeElevated.md
                   repo: activescott/tinkerbell
