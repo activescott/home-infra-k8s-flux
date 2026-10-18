@@ -14,10 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned to match the cluster's Flux controllers:
+      #   kustomize-controller v1.9.5 embeds kustomize API v0.21.1 (= CLI v5.8.1)
+      #   helm-controller v1.6.4 embeds Helm v4.2.4
+      # Source: clusters/nas1/flux-system/gotk-components.yaml
       - name: Install kustomize
         run: |
-          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s 5.8.1
-          sudo mv kustomize /usr/local/bin/
+          curl -sL -o /tmp/kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz"
+          # sha256 from https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/checksums.txt
+          echo "029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d  /tmp/kustomize.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kustomize.tar.gz -C /tmp
+          sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
 
       - uses: azure/setup-helm@v5
         with:
