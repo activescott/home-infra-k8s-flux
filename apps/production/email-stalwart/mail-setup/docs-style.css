@@ -1,0 +1,86 @@
+/* Shared by every page under /docs, served at /docs/style.css.
+ *
+ * Separate from the inline styles in index.html on purpose: that page is a single self-contained
+ * thing handed to a person setting up a phone, and inlining keeps it one request. /docs grows a
+ * page per question, so the styles are shared instead of copied into each new FAQ. */
+:root {
+  color-scheme: light dark;
+}
+body {
+  font:
+    17px/1.6 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+h1 {
+  font-size: 1.6rem;
+  line-height: 1.25;
+  margin: 0 0 0.25rem;
+}
+h2 {
+  font-size: 1.1rem;
+  margin: 2.25rem 0 0.5rem;
+}
+p.lede {
+  margin-top: 0;
+  opacity: 0.75;
+}
+ol,
+ul {
+  padding-left: 1.25rem;
+}
+li {
+  margin: 0.6rem 0;
+}
+code {
+  font-size: 0.95em;
+  word-break: break-all;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.4rem 0.6rem 0.4rem 0;
+  vertical-align: top;
+}
+th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+tbody tr + tr th,
+tbody tr + tr td {
+  border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+.note {
+  font-size: 0.92rem;
+  opacity: 0.8;
+}
+nav.crumbs {
+  font-size: 0.92rem;
+  opacity: 0.8;
+  margin: 0 0 1.5rem;
+}
+ul.index {
+  list-style: none;
+  padding-left: 0;
+}
+ul.index li {
+  margin: 1.1rem 0;
+}
+ul.index a {
+  font-weight: 600;
+}
+ul.index p {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+  opacity: 0.8;
+}
