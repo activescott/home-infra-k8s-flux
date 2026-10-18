@@ -6,21 +6,21 @@ Loki and Prometheus are not reachable directly, though olya-0 reaches both. Neit
 
 It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys) and nothing else. A session can run `kubectl` (as the `jumpbox` ServiceAccount, the same read-only access as olya-0, see [jumpbox-rbac.yaml](jumpbox-rbac.yaml)), `curl` and `jq`, and can forward only to the destinations in `PermitOpen` in [sshd_config](sshd_config).
 
+Unlike olya's ClusterRole, `jumpbox-read` writes its rules out instead of aggregating `view`: because this sshd is reachable from the WAN, what it can do with `kubectl` should only ever change via a commit here, not by a Helm chart later labelling a new ClusterRole `aggregate-to-view` (activescott/home-infra-k8s-flux#380).
+
 ## How a connection gets here
 
 The agents host connects to the home WAN address on the port OPNsense forwards to `10.1.111.20:2222`, which is this Service's ServiceLB address. Two allowlists apply, both admitting only the agents host's EIP: the OPNsense rule, and `loadBalancerSourceRanges` in [jumpbox-service.yaml](jumpbox-service.yaml). A connection from the LAN is refused too, by the second one. The Service has no NodePort, because a NodePort would skip that check.
 
 ## Olya's ssh config
 
-On the agents host, with the WAN port as forwarded in OPNsense (2222 below):
+On the agents host, with the WAN port as forwarded in OPNsense (2222 below). The key lives in the host's ssh-agent, and the VM's system ssh config already sets `IdentityAgent` and a `ProxyCommand`, so no `IdentityFile` is needed here. The authorized key is the host agent's `dreamwright-default` key.
 
 ```
 Host nas1-jump
   HostName wan.activescott.com
   Port 2222
   User abc
-  IdentityFile ~/.ssh/nas1_jump_ed25519
-  IdentitiesOnly yes
   HostKeyAlias nas1-jump
   ExitOnForwardFailure yes
   ServerAliveInterval 30

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Connect another app to your calendar — mail.activescott.com</title>
+    <link rel="stylesheet" href="/docs/style.css" />
+  </head>
+  <body>
+    <nav class="crumbs"><a href="/docs">Docs</a> &rsaquo; FAQ</nav>
+
+    <h1>How do I connect another app to my calendar?</h1>
+    <p class="lede">
+      Scheduling tools, task managers and anything else that speaks CalDAV.
+      Three values: a URL, a username, and an app password.
+    </p>
+
+    <h2>1. Make an app password for that app</h2>
+    <p>
+      Do not give an app your sign-in password. Make it its own, so you can take
+      it back without changing anything else.
+    </p>
+    <ol>
+      <li>
+        Sign in at
+        <a href="https://admin.mail.activescott.com/"
+          >admin.mail.activescott.com</a
+        >.
+      </li>
+      <li>
+        Go to
+        <a href="https://admin.mail.activescott.com/account/Account/x:AppPassword"
+          ><strong>Account</strong> &rsaquo; <strong>App Passwords</strong></a
+        >. Any you made earlier are listed there.
+      </li>
+      <li>
+        Create one and name it after the app, so a year from now the list still
+        makes sense.
+      </li>
+      <li>Copy it. It is shown once and never again.</li>
+    </ol>
+    <p class="note">
+      Deleting an app password cuts off that one app immediately and leaves
+      every other device signed in.
+    </p>
+
+    <h2>2. Give the app these three values</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>URL</th>
+          <td>
+            <code>https://mail.activescott.com/dav/cal/you%40example.com</code>
+            <br />
+            Your own address, with the <code>@</code> written as
+            <code>%40</code>.
+          </td>
+        </tr>
+        <tr>
+          <th>Username</th>
+          <td>your full email address, <code>@</code> and all</td>
+        </tr>
+        <tr>
+          <th>Password</th>
+          <td>the app password from step 1</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">
+      The address appears twice, once in the URL and once as the username. That
+      is correct, not a mistake.
+    </p>
+
+    <h2>Why <code>%40</code> and not <code>@</code></h2>
+    <p>
+      In that URL your address is a folder name, and <code>@</code> is not an
+      ordinary character in a web address — some apps cut the URL in half at it
+      and then report that the server cannot be found. Writing it as
+      <code>%40</code> means the same thing and every app handles it.
+    </p>
+
+    <h2>Contacts, and apps that find things themselves</h2>
+    <p>
+      Address books work the same way with <code>card</code> in place of
+      <code>cal</code>:
+      <code>https://mail.activescott.com/dav/card/you%40example.com</code>.
+    </p>
+    <p>
+      Some apps ask only for a server, not a full calendar URL. Give those
+      <code>https://mail.activescott.com/</code> and they will find the rest on
+      their own.
+    </p>
+
+    <h2>If it will not connect</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Rejects the password</th>
+          <td>
+            The username has to be the full email address, and the password has
+            to be an app password — your sign-in password will not work here.
+          </td>
+        </tr>
+        <tr>
+          <th>Connects, no calendars</th>
+          <td>
+            The URL is probably missing the address on the end. It should be
+            <code>/dav/cal/you%40example.com</code>, not just
+            <code>/dav/cal</code>.
+          </td>
+        </tr>
+        <tr>
+          <th>Nothing loads at all</th>
+          <td>
+            Check the host is <code>mail.activescott.com</code>. The
+            <code>admin.</code> address is only for signing in and making app
+            passwords; calendars are not served from it.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Known to work</h2>
+    <p>
+      <a href="https://cal.com/">Cal.com</a> — <strong>Apps</strong> &rsaquo;
+      <strong>CalDav</strong>, which asks for exactly the three values above. It
+      checks them as you save, so if it accepts the connection it really is
+      working; there is no silent half-failure to worry about.
+    </p>
+    <p class="note">
+      Anything you connect can read and change your calendar. Only connect
+      things you would trust with it, and delete the app password when you stop
+      using one.
+    </p>
+  </body>
+</html>

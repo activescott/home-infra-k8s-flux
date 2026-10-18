@@ -1,4 +1,5 @@
-# Client setup page for the mailboxes on this server, at https://mail.activescott.com/setup.
+# Client setup page for the mailboxes on this server, at https://mail.activescott.com/setup, plus
+# the docs/FAQ site at /docs that grew out of it.
 #
 # Exists because Apple Mail cannot be configured by hand on iOS until the account saves, and it
 # will not save against this server: iOS probes submission on 587, gets refused (Stalwart runs
@@ -138,6 +139,15 @@ spec:
           # element-wise, so this matches /setup and /setup/... but never /setupfoo. nginx
           # validates the address shape and redirects anything that fails.
           - path: /setup
+            pathType: Prefix
+            backend:
+              service:
+                name: mail-setup
+                port:
+                  number: 80
+          # The docs index at /docs and the FAQ pages under /docs/faq/<slug>, both served by the
+          # same nginx. Prefix, so a new FAQ page needs no change here.
+          - path: /docs
             pathType: Prefix
             backend:
               service:

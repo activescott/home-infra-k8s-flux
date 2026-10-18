@@ -779,6 +779,11 @@ spec:
               # is not "the site is down", it's "every sign-in has been
               # refused since the last deploy" -- a few extra minutes of
               # confirmation costs nothing a user would notice.
+              #
+              # ping-poet/dreamwright#320 added a second failure mode on the
+              # `_cross_origin` modules: there, probe_success 0 means the gate
+              # stopped refusing a foreign Origin, the opposite of "sign-ins
+              # are being refused".
               - alert: AuthOriginGateProbeFailing
                 expr: 'probe_success{job="blackbox_auth_origin"} == 0'
                 for: 10m
@@ -786,18 +791,24 @@ spec:
                   severity: critical
                 annotations:
                   summary: >-
-                    {{ $labels.instance }} is refusing the @activescott/auth origin-gate probe.
+                    {{ $labels.instance }} ({{ $labels.module }}) is failing the @activescott/auth origin-gate probe.
                   description: >-
-                    The blackbox_auth_origin probe against {{ $labels.instance }}
-                    has failed for 10 minutes. Check
-                    `probe_http_status_code{instance="{{ $labels.instance }}"}`:
-                    400 means the origin gate refused a same-origin https POST
-                    (activescott/fernfiles#365 -- check the target's server
-                    sets express `trust proxy`, or the react-router-serve
-                    equivalent, behind Traefik's TLS termination); 0 means the
-                    probe couldn't complete the request at all (DNS, TCP or
-                    TLS). Reproduce with `curl -X POST {{ $labels.instance }}
-                    -H "Origin: <the host's own https origin>"`.
+                    The blackbox_auth_origin probe for module
+                    {{ $labels.module }} against {{ $labels.instance }} has
+                    failed for 10 minutes. Check
+                    `probe_http_status_code{instance="{{ $labels.instance }}",
+                    module="{{ $labels.module }}"}`: for a module without the
+                    `_cross_origin` suffix, 400 means the origin gate refused
+                    a same-origin https POST (activescott/fernfiles#365 --
+                    check the target's server sets express `trust proxy`, or
+                    the react-router-serve equivalent, behind Traefik's TLS
+                    termination); for a `_cross_origin` module, 200 means the
+                    gate let an actual cross-origin POST through -- the gate
+                    itself has regressed, not a proxy-header bug; 0 on either
+                    means the probe couldn't complete the request at all
+                    (DNS, TCP or TLS). Reproduce with `curl -X POST
+                    {{ $labels.instance }} -H "Origin: <the host's own https
+                    origin, or a foreign one for a _cross_origin module>"`.
                   repo: activescott/home-infra-k8s-flux
           - name: tinkerbell-llm-providers
             rules:
@@ -868,9 +879,9 @@ spec:
           - name: tinkerbell-proxy
             rules:
               # Critical: payment-classified proxy errors. The fetch tool
-              # refines OxyLabs 407s using the X-Error-Description header
+              # refines proxy 407s using the X-Error-Description header
               # — when the response mentions traffic/bandwidth/limit/balance
-              # we land here. Indicates the OxyLabs subscription is out of
+              # we land here. Indicates the proxy plan is out of
               # paid bandwidth.
               - alert: ProxyOutOfBandwidth
                 expr: 'increase(tinkerbell_proxy_errors_total{error_type="payment"}[5m]) > 0'
@@ -879,7 +890,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} reports out-of-bandwidth/billing failure — fetch path is broken.'
-                  description: 'tinkerbell_proxy_errors_total{error_type=payment, proxy={{ $labels.proxy }}} fired. OxyLabs returned a 4xx with X-Error-Description matching traffic/bandwidth/quota/balance. Top up the OxyLabs plan or check billing immediately.'
+                  description: 'tinkerbell_proxy_errors_total{error_type=payment, proxy={{ $labels.proxy }}} fired. The proxy returned a 4xx with X-Error-Description matching traffic/bandwidth/quota/balance. Top up the DataImpulse plan or check billing immediately.'
               - alert: ProxyAuthFailing
                 expr: 'increase(tinkerbell_proxy_errors_total{error_type="auth"}[5m]) > 3'
                 for: 5m
@@ -887,7 +898,7 @@ spec:
                   severity: critical
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} is rejecting authentication.'
-                  description: 'Multiple 407 responses from {{ $labels.proxy }} in the last 5 minutes. Verify OXYLABS_USERNAME/OXYLABS_PASSWORD secrets and whitelisted IPs in the OxyLabs dashboard.'
+                  description: 'Multiple 407 responses from {{ $labels.proxy }} in the last 5 minutes. Verify the PROXY_USERNAME/PROXY_PASSWORD secrets and the sub-user in the DataImpulse dashboard.'
               - alert: ProxyConnectionFailures
                 expr: 'rate(tinkerbell_proxy_errors_total{error_type="connection"}[10m]) > 0.1'
                 for: 10m
@@ -895,7 +906,7 @@ spec:
                   severity: warning
                 annotations:
                   summary: 'Proxy {{ $labels.proxy }} connection failures elevated.'
-                  description: 'Sustained ETIMEDOUT/ECONNREFUSED/ERR_TUNNEL errors against {{ $labels.proxy }} — could be transient network or a hard-down OxyLabs account.'
+                  description: 'Sustained ETIMEDOUT/ECONNREFUSED/ERR_TUNNEL errors against {{ $labels.proxy }} — could be transient network or a hard-down DataImpulse account.'
           - name: tinkerbell-log-health
             rules:
               # General backstop, not tied to any one failure mode: counts
@@ -2273,6 +2284,9 @@ spec:
       # One static_configs entry per host so each can carry its own `module`
       # label -- the Origin header and the expected status differ per host,
       # so they cannot share a module the way blackbox_https's targets do.
+      # dreamwright.app gets two: the same-origin check above, plus a
+      # `_cross_origin` control (ping-poet/dreamwright#320) hitting the same
+      # URL with a foreign Origin, which passes only when the gate refuses it.
       - job_name: "blackbox_auth_origin"
         metrics_path: /probe
         scrape_interval: 5m
@@ -2293,6 +2307,9 @@ spec:
           - targets: ["https://dreamwright.app/auth/passkey/authenticate-options"]
             labels:
               module: auth_origin_dreamwright
+          - targets: ["https://dreamwright.app/auth/passkey/authenticate-options"]
+            labels:
+              module: auth_origin_dreamwright_cross_origin
         relabel_configs:
           - source_labels: [__address__]
             target_label: __param_target

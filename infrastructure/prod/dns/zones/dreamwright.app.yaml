@@ -1,9 +1,9 @@
 # dreamwright.app now routes mail through Cloudflare Email Routing -- see
 # ../email-routing/dreamwright.app.yaml for the rules, the destinations and the
 # EmailRoutingSettings resource that turns the feature on. SPF widens only as far as that
-# needs (Cloudflare's routing relay, not a blanket allow) and DMARC matches the p=none
-# monitoring policy the other routed domains start at, with rua= to this zone's own
-# dmarc@ rule.
+# needs (Cloudflare's routing relay, not a blanket allow) and DMARC started at the p=none
+# monitoring policy the other routed domains start at, then moved to p=quarantine once
+# rua= reports came back clean, with rua= to this zone's own dmarc@ rule.
 #
 # The three apex MX records and the cf2024-1 DKIM TXT record Email Routing requires are
 # not declared here yet: enabling the feature makes Cloudflare create them, same as every
@@ -53,7 +53,7 @@ spec:
     - key: dmarc-txt
       name: _dmarc.dreamwright.app
       type: TXT
-      content: v=DMARC1; p=none; rua=mailto:dmarc@dreamwright.app
+      content: v=DMARC1; p=quarantine; rua=mailto:dmarc@dreamwright.app
     # SES domain identity DKIM for dreamwright.app, from the aws-prod account
     # (ping-poet/dreamwright#273).
     - key: ses-dkim-1-cname
