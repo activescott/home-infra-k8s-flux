@@ -24,7 +24,7 @@ Each command opens `$EDITOR` on a temp file and writes only the `.encrypted` res
 ```
 
 Use `edit` instead of `new` once the files exist. Both take the recipient from
-`scripts/_sops_config.include.sh`, so neither goes stale at the next key rotation.
+`.sops.yaml`, so neither goes stale at the next key rotation.
 
 ### 2. DNS
 

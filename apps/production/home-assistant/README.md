@@ -10,7 +10,36 @@ This includes saving all data from both the Home Assitant container (via kuberne
 
 ## Home Assistant https Certificate
 
-The [contaienrs/cron](../cron/README.md) app runs holds a cron script to auto-renew certs using letsencrypt. Home Assistant is configured to use those certs by (1) mapping the letsencrypt volume to the container and configuring Home Assistant's `http` integration (bundled) in configuration.yaml as described at https://www.home-assistant.io/integrations/http
+TLS terminates at the ingress, not in Home Assistant. cert-manager issues `hass-activescott-com-tls` from `letsencrypt-production` ([`certificate.yaml`](../../base/home-assistant/certificate.yaml)) and the ingress serves it ([`home-assistant-ingress.yaml`](../../base/home-assistant/home-assistant-ingress.yaml)); HA itself listens on plain HTTP on port 8123. The `/etc/letsencrypt` volume mount in the StatefulSet and the [containers/cron](../cron/README.md) renewal script predate that and are not what serves hass.activescott.com today.
+
+## HTTP / trusted proxies
+
+Because the ingress proxies to HA, HA has to be told to trust it, otherwise every client looks like it is coming from a pod IP. That is `use_x_forwarded_for: true` + `trusted_proxies: [172.16.0.0/16]` (the pod network CIDR, so Traefik pods can churn IPs freely).
+
+**These are not in `configuration.yaml` anymore.** HA migrated the `http:` block to UI-managed storage (`/config/.storage/http`) and now ignores YAML — a `http:` key only triggers the "HTTP YAML configuration is ignored after migration" repair, and hard-fails in 2027.2.0. Change them at **Settings > System > Network**, then update the comment in `config-home-assistant/configuration.yaml` that records the current values.
+
+### If the pod CIDR changes (e.g. rebuilding on a new cluster)
+
+This situation locks itself: with `use_x_forwarded_for: true` and a `trusted_proxies` that no longer matches, HA answers **400** to everything arriving through the ingress, so the UI holding the setting is unreachable.
+
+Get in over a port-forward instead. That bypasses the ingress, so there is no `X-Forwarded-For` header, nothing to reject, and no need to touch root-owned files on the NAS:
+
+```sh
+# what is the new CIDR?
+kubectl --context nas cluster-info dump | grep -oE '(cluster-cidr|service-cidr)[^,]*'
+
+# reach the UI directly
+kubectl --context nas -n home-assistant port-forward pod/home-assistant-0 8123:8123
+# then open http://localhost:8123 -> Settings > System > Network -> trusted proxies
+```
+
+If HA will not start at all, so there is no UI to port-forward to, edit the storage file on the host and restart the pod. It is root-owned:
+
+```sh
+ssh scott@nas.activescott.com 'sudo vi /mnt/thedatapool/app-data/home-assistant/.storage/http'
+# edit data.stable.trusted_proxies
+kubectl --context nas -n home-assistant rollout restart statefulset/home-assistant
+```
 
 ## Z-Wave & ZWave JS Server
 

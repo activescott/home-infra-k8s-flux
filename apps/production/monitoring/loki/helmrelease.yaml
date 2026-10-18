@@ -8,7 +8,7 @@ spec:
   chart:
     spec:
       chart: loki
-      version: "18.13.0"
+      version: "18.15.1"
       sourceRef:
         kind: HelmRepository
         name: grafana-community
@@ -39,6 +39,8 @@ spec:
           - selector: '{source="file", namespace="plex"}'
             priority: 1
             period: 30d
+        # Refuses log deletion requests. Retention still runs in the compactor.
+        deletion_mode: disabled
       compactor:
         retention_enabled: true
         delete_request_store: filesystem

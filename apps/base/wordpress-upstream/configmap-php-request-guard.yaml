@@ -27,9 +27,10 @@ data:
   # (conf-enabled/remoteip.conf) takes it from there because it trusts the
   # private ranges Traefik's pods live in.
   #
-  # The ranges are olya-lan-only's, as in the tenant's ingress. Keep them in
-  # step. 127.0.0.1 is the kubelet's probes, which run curl inside the pod (see
-  # the Deployment); no request through Traefik can arrive as loopback.
+  # The ranges are lan-only's, as in the tenant's ingress (see
+  # apps/production/wordpress-micah-mmm-v2/ingress.yaml). Keep them in step. 127.0.0.1 is the
+  # kubelet's probes, which run curl inside the pod (see the Deployment); no request through
+  # Traefik can arrive as loopback.
   #
   # The code runs in a closure so it leaves no variables in WordPress's global
   # scope.

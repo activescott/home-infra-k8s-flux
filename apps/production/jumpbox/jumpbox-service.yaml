@@ -1,0 +1,32 @@
+# LoadBalancer for the same reason as stalwart and alloy-syslog: ssh is not HTTP, and k3s's
+# ServiceLB binds the node address (10.1.111.20) directly. OPNsense forwards a WAN port here;
+# that rule is outside this repo.
+#
+# loadBalancerSourceRanges is the in-cluster half of the allowlist; the OPNsense rule is the
+# other half, so adding an address here alone does not let it in. Both ways onto 2222 check
+# it against the client's own address: kube-proxy's KUBE-FW chain for the LoadBalancer
+# address, and klipper-lb's FORWARD rules in the svclb pod for any other node address.
+#
+# A NodePort would be a third way in that checks nothing (kube-proxy says so in its own
+# source), reachable from the whole LAN. externalTrafficPolicy: Local needs one, because
+# svclb then forwards to hostIP:NodePort. Cluster sends svclb to the ClusterIP instead, so
+# allocateLoadBalancerNodePorts: false can drop it. The cost is that sshd logs every client
+# as a cluster-internal address; the agents host is the only one admitted anyway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: jumpbox
+  namespace: jumpbox
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  allocateLoadBalancerNodePorts: false
+  loadBalancerSourceRanges:
+    - 52.11.188.6/32 # Dreamwright agents host EIP (ping-poet/dreamwright#123)
+  selector:
+    app: jumpbox
+  ports:
+    - name: ssh
+      port: 2222
+      targetPort: 2222
+      protocol: TCP

@@ -2,16 +2,18 @@
 # (activescott/activeassistant#577).
 #
 # Clients use the public hostnames, which land on Traefik: CI pushes and pulls, kind clusters in
-# the runners, and the node's own image pulls. The only direct in-cluster client is the sandbox
-# vcluster, whose half of that path is in apps/production/agent-sandbox-k8s/networkpolicy.yaml.
+# the runners, and the node's own image pulls.
 # Egress is the upstream registries and their blob CDNs, so any public address; the LAN, the node
 # and the rest of the cluster are refused.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged. A mirror that
 # cannot reach its upstream serves what it has cached and times out on anything new.
 ---
-# Same shape as `allow-cert-manager-resolver` in apps/production/olya/olya-networkpolicy.yaml,
-# which explains the failure mode. Every instance's ingress renews over HTTP-01.
+# cert-manager stands up a short-lived HTTP-01 solver pod in this namespace for every issuance
+# and renewal; it carries its own label, not any app's selector, so without this rule the
+# challenge hangs with nothing pointing at this file as the cause. Any namespace, because the
+# solver serves one public ACME token and nothing else. Every instance's ingress renews over
+# HTTP-01.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -62,9 +64,6 @@ spec:
             matchLabels:
               app.kubernetes.io/name: prometheus
               app.kubernetes.io/component: server
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: agent-sandbox-k8s
       ports:
         - port: 5000
           protocol: TCP

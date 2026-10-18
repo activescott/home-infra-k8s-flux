@@ -66,8 +66,7 @@ To give an app a new public URL like `myapp.activescott.com`:
    (10.1.111.1).
 
    **Exception — required, not optional, for any host behind an `ipAllowList`
-   middleware** (currently `olya.activescott.com`, and `mmm.willeke.com` once its
-   ingress is enabled). Hairpinned requests can reach
+   middleware** (currently `mmm.willeke.com`). Hairpinned requests can reach
    Traefik with the router's address as the source instead of the client's, and
    those allowlists deliberately exclude `10.1.111.1` so that a source-IP
    regression fails closed rather than admitting everyone. Skip the override and
@@ -249,8 +248,8 @@ and encrypted straight to the public age recipient, which every encrypted file r
 no plaintext anywhere. Only the cluster can read them.
 
 They are named `.env.secret.<name>.public-key-encrypted.encrypted`. Rotation instructions live
-in the README next to the app, starting with the Alertmanager hook token in
-[apps/production/olya/README.md](apps/production/olya/README.md#alertmanager-hook-token).
+in the README next to the app, starting with the master key in
+[apps/production/job-accelerator/README.md](apps/production/job-accelerator/README.md#master-key).
 
 #### Decrypting
 
@@ -259,7 +258,7 @@ The flux+kustomize knows how to decrypt SOPS secrets via secret generator. So we
 `./scripts/create-sops-age-decryption-secret.sh` builds it from the age key(s) in 1Password.
 Pass no arguments to include every `*.agekey` attachment on the item except retired ones
 (`-retired-` in the name), which is what you want mid-rotation; name one explicitly to narrow
-it afterwards. It refuses to apply unless one of the keys matches `age_key_public`.
+it afterwards. It refuses to apply unless one of the keys matches the `age:` recipient in `.sops.yaml`.
 
 Per https://fluxcd.io/flux/guides/mozilla-sops/#encrypting-secrets-using-age
 
@@ -282,12 +281,12 @@ command succeed while the 1Password copy is wrong.
 Keep a second copy of the key somewhere that is not the laptop and not 1Password. Losing it
 loses every secret in this repo, and 1Password is one account with one recovery path. Write
 it to an encrypted volume or print it, include the `# public key:` comment line, label it with
-the date, and verify it before trusting it. The public key it derives must be `age_key_public`
+the date, and verify it before trusting it. The public key it derives must be the `age:` recipient in `.sops.yaml`
 (or, mid-rotation, the `--new-recipient` you are about to rotate to):
 
 ```bash
 [ "$(age-keygen -y /Volumes/<media>/home-infra-private-<YYYYMMDD>.agekey)" = \
-  "$(sed -n 's/^age_key_public="\(.*\)"/\1/p' scripts/_sops_config.include.sh)" ] \
+  "$(sed -n 's/^.*age: *\(age1[0-9a-z]*\).*$/\1/p' .sops.yaml)" ] \
   && echo "offline copy matches"
 ```
 
@@ -363,7 +362,6 @@ per https://fluxcd.io/flux/guides/webhook-receivers/
 
 You can use the flux bootstrap at anytime to re-provision the cluster with everything in flux. I've done this on a clean k3s a few times now and it works flawlessly:
 
-
 ```sh
   flux bootstrap github \
   --token-auth \
@@ -372,10 +370,11 @@ You can use the flux bootstrap at anytime to re-provision the cluster with every
   --branch=main \
   --path=clusters/nas1 \
   --personal \
-  --components-extra=image-reflector-controller,image-automation-controller                                                                                                                                                                                                                                                                                                                  
+  --components-extra=image-reflector-controller,image-automation-controller
 ```
 
 Since I use SOPS to encrypt secrets and keep them in git, need to provision that root key
+
 ```sh
 ./scripts/create-sops-age-decryption-secret.sh
 ```
@@ -388,7 +387,6 @@ flux reconcile kustomization infra-configs
 
 ...that should should show some output "waiting for Kustomization reconciliation..."
 
-
 Then you can monitor with:
 
 ```sh
@@ -397,8 +395,7 @@ flux logs -f
 # or flux get kustomization --watch
 ```
 
-Should see output lines like `Namespace/activescott-redirect created` for each flux resource as it is created. 
-
+Should see output lines like `Namespace/activescott-redirect created` for each flux resource as it is created.
 
 ### YAML+Kustomize
 

@@ -2,3 +2,9 @@
   path: /spec/template/spec/imagePullSecrets
   value:
     - name: github-container-registry-secret
+# tinkerbell requires AI_MODEL_PLLM and has no default; this is its only source.
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: AI_MODEL_PLLM
+    value: anthropic:claude-sonnet-5

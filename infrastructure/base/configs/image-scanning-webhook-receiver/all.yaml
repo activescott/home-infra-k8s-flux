@@ -83,9 +83,6 @@ spec:
       name: repo-scott-willeke-com
       namespace: flux-system
     - kind: ImageRepository
-      name: repo-dreamwright
-      namespace: flux-system
-    - kind: ImageRepository
       name: repo-gpupoet-app
       namespace: flux-system
     - kind: ImageRepository
@@ -129,23 +126,5 @@ spec:
       name: repo-fernfiles-inference-service
       namespace: flux-system
     - kind: ImageRepository
-      name: repo-olya
-      namespace: flux-system
-    - kind: ImageRepository
       name: repo-job-accelerator-app
-      namespace: flux-system
-    - kind: ImageRepository
-      name: repo-browser-chaperone-app
-      namespace: flux-system
-    - kind: ImageRepository
-      name: repo-browser-chaperone-browser
-      namespace: flux-system
-    - kind: ImageRepository
-      name: repo-browser-chaperone-slack-relay
-      namespace: flux-system
-    - kind: ImageRepository
-      name: repo-browser-chaperone-mcp-gateway
-      namespace: flux-system
-    - kind: ImageRepository
-      name: repo-browser-chaperone-network-proxy
       namespace: flux-system

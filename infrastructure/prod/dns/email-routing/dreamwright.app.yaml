@@ -63,6 +63,9 @@ spec:
   aliases:
     # Keeps the Secret's default destination (scott@willeke.com), so no override here.
     - localPart: scott
+    # Public support address for the Slack app and the dreamwright.app /support page;
+    # forwards to the operator for now.
+    - localPart: support
     # Overrides the Secret's default to Olya's own address.
     - localPart: olya
       destination: olya@pingpoet.com
@@ -82,6 +85,10 @@ spec:
       destination: scottandolya@pingpoet.com
     # Budget and anomaly alerts. Same shape as `aws-root` above.
     - localPart: alerts
+      destination: scottandolya@pingpoet.com
+    # The production app's own accounts at vendors it calls, such as its Tinkerbell user.
+    # Same shape as `aws-root` above.
+    - localPart: dreamwright-prod
       destination: scottandolya@pingpoet.com
     # Destination for the rua= address in _dmarc.dreamwright.app -- see
     # zones/dreamwright.app.yaml. Without this rule, aggregate reports bounce and the

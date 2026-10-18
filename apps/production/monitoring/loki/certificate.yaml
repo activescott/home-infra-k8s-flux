@@ -6,7 +6,7 @@ kind: Certificate
 metadata:
   name: loki-activescott-com
 spec:
-  # must match loki-push-ingress.yaml's secretName
+  # must match loki-read-ingress.yaml's secretName
   secretName: loki-activescott-com-tls
   issuerRef:
     name: letsencrypt-production

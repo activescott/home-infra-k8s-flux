@@ -81,14 +81,24 @@ spec:
         # runs over plain http, where the schemes already match.
         #
         # Every module below POSTs the same body to the same route,
-        # /auth/passkey/authenticate-options, with an Origin header equal to
-        # the host's own https origin. That action only issues a challenge
-        # cookie, so the probe writes nothing. The gate runs before provider
-        # dispatch, so the result still distinguishes a refusal from a pass on
-        # a host with no passkey provider configured: a refusal is always 400;
-        # a pass is 200 where passkey is configured, 404 where it is not (the
+        # /auth/passkey/authenticate-options. That action only issues a
+        # challenge cookie, so the probe writes nothing. Most modules send an
+        # Origin header equal to the host's own https origin, to catch the
+        # scheme-mismatch bug above; the gate runs before provider dispatch,
+        # so the result still distinguishes a refusal from a pass on a host
+        # with no passkey provider configured: a refusal is always 400; a
+        # pass is 200 where passkey is configured, 404 where it is not (the
         # route itself doesn't exist, but only after the gate already let the
         # request through).
+        #
+        # The `_cross_origin` modules instead send a genuinely foreign Origin
+        # (ping-poet/dreamwright#320) to cover the case the scheme-mismatch
+        # bug above is not about: an actual cross-site POST. Measured against
+        # dreamwright.app, that refusal is 403, not the scheme-mismatch bug's
+        # 400 -- a different failure with a different status -- so these
+        # modules set valid_status_codes: [403] and fail (probe_success 0) if
+        # the gate ever answers with anything else, in particular 200, which
+        # would mean a cross-origin request got through.
         auth_origin_fernfiles:
           prober: http
           timeout: 10s
@@ -141,26 +151,8 @@ spec:
             valid_status_codes: [200]
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
-        # No passkey provider configured, so a passing gate 404s here.
-        auth_origin_chaperone:
-          prober: http
-          timeout: 10s
-          http:
-            method: POST
-            headers:
-              Origin: https://chaperone.pingpoet.com
-              Content-Type: application/json
-            body: "{}"
-            valid_status_codes: [404]
-            preferred_ip_protocol: ip4
-            fail_if_not_ssl: true
-        # No passkey provider configured (email only), so a passing gate 404s
-        # here. Confirmed live 2026-09-30: dreamwright.app currently answers
-        # 400, the same bug, even though its server.js sets `trust proxy` and
-        # carries a passing regression test for exactly this case -- so
-        # whatever is wrong here is not the same missing-setting bug the other
-        # hosts had. Needs its own investigation; this probe will alert on it
-        # from the moment it ships.
+        # Passkey provider configured (ping-poet/dreamwright#484), so a passing
+        # gate returns 200 with authentication options.
         auth_origin_dreamwright:
           prober: http
           timeout: 10s
@@ -170,7 +162,24 @@ spec:
               Origin: https://dreamwright.app
               Content-Type: application/json
             body: "{}"
-            valid_status_codes: [404]
+            valid_status_codes: [200]
+            preferred_ip_protocol: ip4
+            fail_if_not_ssl: true
+        # Cross-origin control for auth_origin_dreamwright
+        # (ping-poet/dreamwright#320): same route, but an Origin the gate
+        # must refuse. Passes (probe_success 1) only on 403, the refusal
+        # observed against this host; a 200 here would mean the origin gate
+        # stopped covering cross-origin requests.
+        auth_origin_dreamwright_cross_origin:
+          prober: http
+          timeout: 10s
+          http:
+            method: POST
+            headers:
+              Origin: https://evil.example
+              Content-Type: application/json
+            body: "{}"
+            valid_status_codes: [403]
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
 

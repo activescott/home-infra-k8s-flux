@@ -1,0 +1,10 @@
+# The age value is the public key (recipient) every *.encrypted file in this repo is
+# encrypted to, and the only place it is declared: scripts read it from here, and
+# `./scripts/onepassword-secrets.mts rotate-age-key` rewrites it. The private half is only
+# in 1Password, on the "home-infra kubernetes secrets sops-age-key" item, and in the
+# cluster's flux-system/sops-age Secret.
+#
+# No path_regex: the scripts encrypt from temp files and stdin, and sops refuses a path
+# that matches no rule even when --age is passed.
+creation_rules:
+  - age: age1nur86m07v4f94xpc8ugg0cmum9fpyp3hcha2cya6x09uphu4zg5szrtzgt

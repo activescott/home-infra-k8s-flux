@@ -1,0 +1,5 @@
+# Public keys allowed to log in as abc, one per line.
+#
+# dreamwright-default is the default key in the Dreamwright agents host's ssh-agent
+# (ping-poet/dreamwright#123).
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXRJkV6GzFithKv3CLT+i8pqsvEwohGaldjxNZdTgLr dreamwright-default
