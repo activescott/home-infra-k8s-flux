@@ -96,4 +96,4 @@ images:
     newTag: v202610091919 # {"$imagepolicy": "flux-system:policy-indexnow-notifier:tag"}
   - name: amazon-searcher-image-placeholder
     newName: ghcr.io/activescott/amazon-searcher # {"$imagepolicy": "flux-system:policy-amazon-searcher:name"}
-    newTag: v202603300713 # {"$imagepolicy": "flux-system:policy-amazon-searcher:tag"}
+    newTag: v202610180411 # {"$imagepolicy": "flux-system:policy-amazon-searcher:tag"}
