@@ -6,6 +6,8 @@ Loki and Prometheus are not reachable directly, though olya-0 reaches both. Neit
 
 It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys) and nothing else. A session can run `kubectl` (as the `jumpbox` ServiceAccount, the same read-only access as olya-0, see [jumpbox-rbac.yaml](jumpbox-rbac.yaml)), `curl` and `jq`, and can forward only to the destinations in `PermitOpen` in [sshd_config](sshd_config).
 
+Unlike olya's ClusterRole, `jumpbox-read` writes its rules out instead of aggregating `view`: because this sshd is reachable from the WAN, what it can do with `kubectl` should only ever change via a commit here, not by a Helm chart later labelling a new ClusterRole `aggregate-to-view` (activescott/home-infra-k8s-flux#380).
+
 ## How a connection gets here
 
 The agents host connects to the home WAN address on the port OPNsense forwards to `10.1.111.20:2222`, which is this Service's ServiceLB address. Two allowlists apply, both admitting only the agents host's EIP: the OPNsense rule, and `loadBalancerSourceRanges` in [jumpbox-service.yaml](jumpbox-service.yaml). A connection from the LAN is refused too, by the second one. The Service has no NodePort, because a NodePort would skip that check.

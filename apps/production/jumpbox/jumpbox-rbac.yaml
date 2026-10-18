@@ -1,44 +1,42 @@
 # The same read-only access olya-0 has, for kubectl in an ssh session (ping-poet/dreamwright#123).
 #
-# A copy of ../olya/olya-rbac.yaml under jumpbox- names rather than a binding to olya's
-# ClusterRoles, so this keeps working once olya-0 is retired. The reasoning for every choice
-# here, including why ConfigMaps are cut and why the view role is aggregated rather than
-# hand-written, is in that file's comments. Change both together.
+# Unlike ../olya/olya-rbac.yaml, this is NOT built by aggregating `view`. Aggregation means any
+# ClusterRole labelled rbac.authorization.k8s.io/aggregate-to-view: "true" — including one a
+# Helm chart adds later — widens what this ServiceAccount can do with zero diff in this repo.
+# That is an acceptable trade for olya (reachable only from inside the cluster), but not for the
+# jump box: it fronts an sshd reachable from the WAN (see README.md), so what it can do with
+# `kubectl` should only ever change via a commit here. jumpbox-read below writes out the rules
+# instead: get/list/watch on what `view` grants today, frozen at that point in time, with
+# Secrets and ConfigMaps excluded and nothing that execs/attaches/port-forwards into a pod.
+# See activescott/home-infra-k8s-flux#380.
 #
-# Checking what this actually resolves to, after Flux applies it:
-#   kubectl --context nas get clusterrole jumpbox-view -o yaml
+# `view`'s grants come from four sources today (see ../olya/olya-rbac.yaml's comments for how
+# aggregation discovers them): the compiled-in `system:aggregate-to-view` (core, apps, batch,
+# autoscaling, policy, networking.k8s.io, discovery.k8s.io, extensions; configmaps removed, same
+# as olya-view-core), `cert-manager-view`, `flux-view-flux-system`, and
+# `system:aggregated-metrics-reader`. jumpbox-read's rules are those four, copied verbatim minus
+# configmaps. To re-derive after an upgrade adds a resource to one of them:
+#   kubectl --context nas get clusterrole system:aggregate-to-view cert-manager-view \
+#     flux-view-flux-system system:aggregated-metrics-reader -o json \
+#     | jq -r '.rules[] | "\(.apiGroups|join(","))  ->  \(.resources|join(", "))"'
+#
+# Checking what this actually grants, after Flux applies it:
+#   kubectl --context nas get clusterrole jumpbox-read -o yaml
 #   kubectl --context nas auth can-i --as=system:serviceaccount:jumpbox:jumpbox get configmaps -A
+#   kubectl --context nas auth can-i --as=system:serviceaccount:jumpbox:jumpbox get secrets -A
+#   kubectl --context nas auth can-i --as=system:serviceaccount:jumpbox:jumpbox create pods/exec -A
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: jumpbox
   namespace: jumpbox
 ---
-# `rules` is deliberately absent: the controller-manager owns that field on an aggregated role
-# and fills it in. Put rules in jumpbox-view-core instead.
+# get/list/watch only, on what `view` grants today minus configmaps. No Secrets, no ConfigMaps,
+# no pods/exec, pods/attach or pods/portforward, no write verb anywhere in this list.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: jumpbox-view
-aggregationRule:
-  clusterRoleSelectors:
-    - matchLabels:
-        rbac.authorization.k8s.io/aggregate-to-view: "true"
-      matchExpressions:
-        - key: kubernetes.io/bootstrapping
-          operator: NotIn
-          values: ["rbac-defaults"]
-    - matchLabels:
-        rbac.activescott.com/aggregate-to-jumpbox-view: "true"
----
-# `system:aggregate-to-view` verbatim, with `configmaps` removed from the first rule. Same list
-# as olya-view-core.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: jumpbox-view-core
-  labels:
-    rbac.activescott.com/aggregate-to-jumpbox-view: "true"
+  name: jumpbox-read
 rules:
   - apiGroups: [""]
     # configmaps omitted. Secrets were never in `view` to begin with.
@@ -113,18 +111,39 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "ingresses/status", "networkpolicies"]
     verbs: ["get", "list", "watch"]
+  # cert-manager-view verbatim.
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates", "certificaterequests", "issuers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["acme.cert-manager.io"]
+    resources: ["challenges", "orders"]
+    verbs: ["get", "list", "watch"]
+  # flux-view-flux-system verbatim (clusters/nas1/flux-system/gotk-components.yaml).
+  - apiGroups:
+      - notification.toolkit.fluxcd.io
+      - source.toolkit.fluxcd.io
+      - source.extensions.fluxcd.io
+      - helm.toolkit.fluxcd.io
+      - image.toolkit.fluxcd.io
+      - kustomize.toolkit.fluxcd.io
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  # system:aggregated-metrics-reader verbatim (k3s' bundled metrics-server).
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: jumpbox-view
+  name: jumpbox-read
 subjects:
   - kind: ServiceAccount
     name: jumpbox
     namespace: jumpbox
 roleRef:
   kind: ClusterRole
-  name: jumpbox-view
+  name: jumpbox-read
   apiGroup: rbac.authorization.k8s.io
 ---
 # Same as olya-email-routing: read-only on the Cloudflare Email Routing resources in the
