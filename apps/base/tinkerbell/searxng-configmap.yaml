@@ -27,7 +27,7 @@ data:
     outgoing:
       proxies:
         all://:
-          - http://${OXYLABS_USERNAME}-cc-US:${OXYLABS_PASSWORD}@pr.oxylabs.io:7777
+          - ${PROXY_URL}
       extra_proxy_timeout: 10
       request_timeout: 15.0
       pool_maxsize: 20

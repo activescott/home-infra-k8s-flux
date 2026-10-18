@@ -20,10 +20,17 @@ spec:
             - /bin/sh
             - -c
             - |
+              # DataImpulse rotates the exit IP per request on port 823.
+              # OXYLABS_* is the legacy fallback until PROXY_* is in the
+              # secret (activescott/activeassistant#790).
+              if [ -n "$PROXY_USERNAME" ]; then
+                PROXY_URL="http://${PROXY_USERNAME}__cr.us:${PROXY_PASSWORD}@gw.dataimpulse.com:823"
+              else
+                PROXY_URL="http://${OXYLABS_USERNAME}-cc-US:${OXYLABS_PASSWORD}@pr.oxylabs.io:7777"
+              fi
               # envsubst workaround using sed since busybox doesn't have envsubst
               sed -e "s|\${SEARXNG_SECRET}|$SEARXNG_SECRET|g" \
-                  -e "s|\${OXYLABS_USERNAME}|$OXYLABS_USERNAME|g" \
-                  -e "s|\${OXYLABS_PASSWORD}|$OXYLABS_PASSWORD|g" \
+                  -e "s|\${PROXY_URL}|$PROXY_URL|g" \
                   /config-template/settings.yml > /config/settings.yml
               echo "Config rendered successfully"
               cat /config/settings.yml | grep -v password
@@ -33,16 +40,30 @@ spec:
                 secretKeyRef:
                   name: app-creds
                   key: SEARXNG_SECRET
+            - name: PROXY_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: PROXY_USERNAME
+                  optional: true
+            - name: PROXY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: PROXY_PASSWORD
+                  optional: true
             - name: OXYLABS_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: app-creds
                   key: OXYLABS_USERNAME
+                  optional: true
             - name: OXYLABS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: app-creds
                   key: OXYLABS_PASSWORD
+                  optional: true
           volumeMounts:
             - name: config-template
               mountPath: /config-template
