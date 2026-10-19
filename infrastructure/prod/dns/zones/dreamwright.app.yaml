@@ -74,3 +74,12 @@ spec:
       name: olya.agents.dreamwright.app
       type: A
       content: 52.11.188.6
+    # Read-only jumpbox into the Dreamwright prod EKS cluster: the NLB from
+    # ping-poet/dreamwright-infra#102 (output jumpbox_nlb_dns_name). DNS only, because it
+    # carries raw SSH on tcp/2222, which Cloudflare's proxy cannot carry. Comes out when the
+    # zone moves to Route 53 and the alias from #102 takes over.
+    - key: jump-cname
+      name: jump.dreamwright.app
+      type: CNAME
+      proxied: false
+      content: k8s-jumpbox-jumpbox-7c425f3300-3a3c476062aea52a.elb.us-west-2.amazonaws.com
