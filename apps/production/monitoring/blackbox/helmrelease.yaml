@@ -126,7 +126,8 @@ spec:
             valid_status_codes: [200]
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
-        # No passkey provider configured, so a passing gate 404s here.
+        # Passkey provider configured (activescott/tinkerbell#272), so a passing
+        # gate returns 200 with authentication options.
         auth_origin_tinkerbell:
           prober: http
           timeout: 10s
@@ -136,7 +137,7 @@ spec:
               Origin: https://tinkerbellbot.com
               Content-Type: application/json
             body: "{}"
-            valid_status_codes: [404]
+            valid_status_codes: [200]
             preferred_ip_protocol: ip4
             fail_if_not_ssl: true
         auth_origin_job_accelerator:

@@ -88,6 +88,7 @@ spec:
         enabled: false
 
       extraSecretMounts:
+        # telegram_bot_token and slack_alerts_webhook_url, from .env.secret.alertmanager.encrypted.
         - name: alertmanager-telegram-secret
           mountPath: /etc/alertmanager/secrets
           secretName: alertmanager-secrets
@@ -136,12 +137,20 @@ spec:
               - alertname
               - job
               - instance
+        # Every alert goes to Scott on Telegram and to the Slack channel Olya reads, the
+        # same incoming-webhook path aws-prod's Grafana uses in ping-poet/dreamwright-infra.
+        # The two integrations retry independently, so one failing does not hold up the other.
         receivers:
           - name: on_call_operator_default
             telegram_configs:
               - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
                 send_resolved: true
                 chat_id: 510755639
+            slack_configs:
+              - api_url_file: /etc/alertmanager/secrets/slack_alerts_webhook_url
+                send_resolved: true
+                title: '{{ .CommonLabels.alertname }} ({{ .Status }})'
+                text: '{{ .CommonAnnotations.summary }}'
 
     # --- Alert Rules ---
     # All alerting rules go into the standard alerting_rules.yml key so they're
