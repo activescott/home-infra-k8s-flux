@@ -1,6 +1,6 @@
 # What a session on the jump box can reach: the targets olya-0 reaches today for diagnosis,
-# copied from ../olya/olya-networkpolicy.yaml and ../browser-chaperone/networkpolicy.yaml
-# (debeth), less Loki and Prometheus. Nothing else, and no route to the internet.
+# copied from ../olya/olya-networkpolicy.yaml, less Loki and Prometheus. Nothing else, and no
+# route to the internet.
 #
 # A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
 #

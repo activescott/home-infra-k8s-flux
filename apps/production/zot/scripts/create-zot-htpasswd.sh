@@ -160,7 +160,7 @@ EOF
 # Repos are not discoverable from this repo, so that list is maintained by hand - add a repo
 # the day it starts logging into zot in CI (grep its .github/workflows for "zot"/
 # "oci-registry" to check). Known as of 2026-09-24: fernfiles and ramblefeed use the
-# writable zot (ZOT_CI_PASSWORD) and the mirror; browser-chaperone, job-accelerator,
+# writable zot (ZOT_CI_PASSWORD) and the mirror; job-accelerator,
 # tinkerbell and gpu-poet are being moved to the mirror only (ZOT_MIRROR_PASSWORD), and
 # none of them read it yet. gpu-poet-data does NOT use zot.
 #
