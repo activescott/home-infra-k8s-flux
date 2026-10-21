@@ -6,10 +6,7 @@ resources:
 namespace: arc-runners
 
 secretGenerator:
-  # PLACEHOLDER: the committed .env.secret.github-token.encrypted holds
-  # github_token=PLACEHOLDER-NOT-A-TOKEN, so that kustomize build passes. The
-  # runners cannot register until it is replaced with a real token; delete
-  # this comment in the same commit.
+  # enables runners to register with github actions
   - name: dreamwright-github-token
     envs:
       - .env.secret.github-token.encrypted
