@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./helmrelease.yaml
+
+namespace: arc-runners
+
+secretGenerator:
+  # PLACEHOLDER: the committed .env.secret.github-token.encrypted holds
+  # github_token=PLACEHOLDER-NOT-A-TOKEN, so that kustomize build passes. The
+  # runners cannot register until it is replaced with a real token; delete
+  # this comment in the same commit.
+  - name: dreamwright-github-token
+    envs:
+      - .env.secret.github-token.encrypted
+    options:
+      # Helm chart references the secret by name string — no resource for
+      # kustomize to follow, so the hash suffix would break the reference.
+      disableNameSuffixHash: true

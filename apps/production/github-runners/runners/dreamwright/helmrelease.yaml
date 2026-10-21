@@ -1,0 +1,192 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: dreamwright-runners
+  namespace: arc-runners
+spec:
+  interval: 1h
+  dependsOn:
+    - name: arc-controller
+      namespace: arc-systems
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: ">=0.14.0 <0.15.0"
+      sourceRef:
+        kind: HelmRepository
+        name: actions-runner-controller
+        namespace: arc-systems
+      interval: 24h
+  values:
+    githubConfigUrl: https://github.com/ping-poet/dreamwright
+    githubConfigSecret: dreamwright-github-token
+    runnerScaleSetName: dreamwright-runners
+    minRunners: 0
+    # Sized against the single nas node (20 CPU / 125 GiB), which averaged 19%
+    # CPU over the 7 days to 2026-10-21 (p95 55%). Each pod gets what a
+    # GitHub-hosted runner for a private repo has, 2 CPU / 7 GiB, as the limit
+    # of the container doing the work: the runner for lint, typecheck and
+    # tests, dind for image builds. A job is busy in one of the two at a time.
+    # Requests are 1 CPU / 3.5 GiB per pod (runner plus dind), so at
+    # maxRunners: 8:
+    #   - requests: 8 CPU (40%) / 28 GiB (22%), which fits beside the node's
+    #     average load
+    #   - one busy container per pod: 16 CPU / 56 GiB, the most dreamwright
+    #     normally takes
+    #   - every container at its limit: 32 CPU / 112 GiB. CPU above requests
+    #     is shared in proportion to requests, so other workloads keep theirs;
+    #     memory is not, and a pod over its request is the first the kernel
+    #     OOM-kills
+    maxRunners: 8
+    # Annotations on the listener pod so the existing kubernetes-pods
+    # Prometheus scrape config picks up gha_* metrics from :8080/metrics
+    # (also requires the controller chart's `metrics:` block to be enabled
+    # — see controller/helmrelease.yaml — and listenerMetrics below to
+    # define which metrics this listener emits).
+    # When providing listenerTemplate, spec.containers is required by the
+    # chart's AutoscalingListener CRD validation. A container named
+    # "listener" is appended onto the chart-generated default; an empty
+    # block keeps the defaults while letting us add metadata.annotations.
+    listenerTemplate:
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+      spec:
+        containers:
+          - name: listener
+    listenerMetrics:
+      counters:
+        gha_started_jobs_total:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+        gha_completed_jobs_total:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+      gauges:
+        gha_assigned_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_running_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_registered_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_busy_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_min_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_max_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_desired_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_idle_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+      histograms:
+        gha_job_startup_duration_seconds:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+        gha_job_execution_duration_seconds:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+    # containerMode is deliberately unset. With `containerMode.type: dind`
+    # the chart renders its own dind sidecar and drops any `dind` entry
+    # given here (gha-runner-scale-set 0.13.1 through 0.14.2), so the dind
+    # container's args and resources cannot be set. The pod below is the
+    # chart's dind-mode spec written out, which is the chart's documented way
+    # to customize dind (values.yaml: "If any customization is required for
+    # dind ... containerMode should remain empty"). On a chart upgrade,
+    # re-diff it against `helm template` with `containerMode.type: dind`.
+    template:
+      spec:
+        initContainers:
+          - name: init-dind-externals
+            image: ghcr.io/actions/actions-runner:2.337.0
+            command: ["cp"]
+            args: ["-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+            volumeMounts:
+              - name: dind-externals
+                mountPath: /home/runner/tmpDir
+          # Args here REPLACE the chart default; defaults come from the
+          # gha-runner-scale-set chart's _helpers.tpl. Keep the `--host`
+          # and `--group` flags the chart relied on.
+          - name: dind
+            image: docker:dind
+            args:
+              - dockerd
+              - --host=unix:///var/run/docker.sock
+              - --group=$(DOCKER_GROUP_GID)
+              # Pod network MTU is 1450 (flannel); match it so nested containers do not rely on PMTUD.
+              - --mtu=1450
+              # Every pod starts with an empty image store, and docker.io's
+              # anonymous pull limit counts per public IP, which this node
+              # shares with every other scale set. dockerd falls back to
+              # docker.io for an image the mirror does not have.
+              - --registry-mirror=https://mirror.gcr.io
+            env:
+              - name: DOCKER_GROUP_GID
+                value: "123"
+            securityContext:
+              privileged: true
+            restartPolicy: Always
+            startupProbe:
+              exec:
+                command:
+                  - docker
+                  - info
+              initialDelaySeconds: 0
+              failureThreshold: 24
+              periodSeconds: 5
+            resources:
+              requests:
+                cpu: "250m"
+                memory: "1Gi"
+              limits:
+                cpu: "2"
+                memory: "7Gi"
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+              - name: dind-externals
+                mountPath: /home/runner/externals
+              - name: tmp
+                mountPath: /tmp
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.337.0
+            command: ["/home/runner/run.sh"]
+            env:
+              - name: DOCKER_HOST
+                value: unix:///var/run/docker.sock
+              - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+                value: "120"
+            # dreamwright's CI checks its egress firewall as root in network
+            # namespaces of their own (unshare, veth pairs, nftables), which
+            # needs CAP_SYS_ADMIN and CAP_NET_ADMIN. This grants nothing the
+            # job lacks already: it can start a privileged container on the
+            # dind daemon through the socket below.
+            securityContext:
+              privileged: true
+            resources:
+              requests:
+                cpu: "750m"
+                memory: "2.5Gi"
+              limits:
+                cpu: "2"
+                memory: "7Gi"
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: dind-sock
+                mountPath: /var/run
+              # The same /tmp as dind, so a `docker run -v` of a mktemp
+              # directory mounts what the job wrote rather than an empty one
+              # on the dind side. dreamwright's tests do this throughout.
+              - name: tmp
+                mountPath: /tmp
+        volumes:
+          - name: dind-sock
+            emptyDir: {}
+          - name: dind-externals
+            emptyDir: {}
+          - name: work
+            emptyDir: {}
+          - name: tmp
+            emptyDir: {}

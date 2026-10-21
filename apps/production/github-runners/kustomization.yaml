@@ -14,5 +14,6 @@ resources:
   - ./runners/auth
   - ./runners/activeassistant
   - ./runners/gpu-agent
+  - ./runners/dreamwright
 
 buildMetadata: [originAnnotations, transformerAnnotations]
