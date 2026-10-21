@@ -74,6 +74,14 @@ spec:
       name: olya.agents.dreamwright.app
       type: A
       content: 52.11.188.6
+    # Elastic IP of the buster test host, from tofu/live/agents in ping-poet/dreamwright-infra
+    # (output buster_public_ip). DNS only, because it carries SSH, which Cloudflare's proxy
+    # cannot carry.
+    - key: buster-agents-a
+      name: buster.agents.dreamwright.app
+      type: A
+      proxied: false
+      content: 54.244.103.211
     # Read-only jumpbox into the Dreamwright prod EKS cluster: the NLB from
     # ping-poet/dreamwright-infra#102 (output jumpbox_nlb_dns_name). DNS only, because it
     # carries raw SSH on tcp/2222, which Cloudflare's proxy cannot carry. Comes out when the
