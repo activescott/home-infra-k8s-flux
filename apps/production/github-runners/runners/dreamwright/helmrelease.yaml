@@ -18,9 +18,13 @@ spec:
         namespace: arc-systems
       interval: 24h
   values:
-    githubConfigUrl: https://github.com/ping-poet/dreamwright
+    # Org-level, so any repo in the runner group below can use it. The group
+    # must exist before this reconciles, and must only ever allow private
+    # repos: a fork PR to a public repo would run its code on this node.
+    githubConfigUrl: https://github.com/ping-poet
     githubConfigSecret: dreamwright-github-token
     runnerScaleSetName: dreamwright-runners
+    runnerGroup: dreamwright-private
     minRunners: 0
     # Sized against the single nas node (20 CPU / 125 GiB), which averaged 19%
     # CPU over the 7 days to 2026-10-21 (p95 55%). Each pod gets what a
