@@ -57,9 +57,6 @@ spec:
   zoneId: 63c1ef925134cd2f4dbca7b12e7ad041
   zoneName: activescott.com
   aliases:
-    # Mail address for the buster test host (buster.agents.dreamwright.app). New rule, so no
-    # id in `adopt` below. No destination override: it keeps the Secret's default.
-    - localPart: buster
     # New rule, so no id in `adopt` below: this zone kept its aggregate reports on admin@
     # while the sending domains moved to a dedicated dmarc@ years later. Same name and
     # priority as the dmarc rule on those zones.
