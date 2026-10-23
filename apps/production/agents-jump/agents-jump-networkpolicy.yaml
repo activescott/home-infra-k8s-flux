@@ -40,13 +40,13 @@ spec:
     # The assistant VMs, the same list as PermitOpen in sshd_config.
     - to:
         - ipBlock:
-            cidr: 10.1.111.192/32 # dw-alex
+            cidr: 10.1.111.30/32 # dw-alex
         - ipBlock:
-            cidr: 10.1.111.243/32 # dw-robin
+            cidr: 10.1.111.31/32 # dw-robin
         - ipBlock:
-            cidr: 10.1.111.123/32 # dw-lindsay
+            cidr: 10.1.111.32/32 # dw-lindsay
         - ipBlock:
-            cidr: 10.1.111.69/32 # dw-eric
+            cidr: 10.1.111.33/32 # dw-eric
       ports:
         - port: 22
           protocol: TCP

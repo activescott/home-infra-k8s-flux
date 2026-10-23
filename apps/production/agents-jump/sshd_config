@@ -51,7 +51,7 @@ PermitUserEnvironment no
 # names them. Anything else is refused as "administratively prohibited"; the NetworkPolicy
 # would drop it anyway.
 AllowTcpForwarding local
-PermitOpen 10.1.111.192:22 10.1.111.243:22 10.1.111.123:22 10.1.111.69:22
+PermitOpen 10.1.111.30:22 10.1.111.31:22 10.1.111.32:22 10.1.111.33:22
 PermitListen none
 GatewayPorts no
 AllowAgentForwarding no

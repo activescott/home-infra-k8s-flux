@@ -4,12 +4,12 @@ An sshd that Scott, Olya and Alex use to reach the assistant VMs on debprime ove
 
 It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys), each line commented with whose it is. A session gets no shell, command or sftp (`ForceCommand /bin/false`, `PermitTTY no`); the only thing a key can do is open a TCP forward to one of the `PermitOpen` destinations in [sshd_config](sshd_config):
 
-| VM         | Address         |
-| ---------- | --------------- |
-| dw-alex    | 10.1.111.192:22 |
-| dw-robin   | 10.1.111.243:22 |
-| dw-lindsay | 10.1.111.123:22 |
-| dw-eric    | 10.1.111.69:22  |
+| VM         | Address        |
+| ---------- | -------------- |
+| dw-alex    | 10.1.111.30:22 |
+| dw-robin   | 10.1.111.31:22 |
+| dw-lindsay | 10.1.111.32:22 |
+| dw-eric    | 10.1.111.33:22 |
 
 ## Threat model
 
@@ -41,22 +41,22 @@ Host agents-jump
   IdentityFile ~/.ssh/id_ed25519
 
 Host dw-alex
-  HostName 10.1.111.192
+  HostName 10.1.111.30
   User debian
   ProxyJump agents-jump
 
 Host dw-robin
-  HostName 10.1.111.243
+  HostName 10.1.111.31
   User debian
   ProxyJump agents-jump
 
 Host dw-lindsay
-  HostName 10.1.111.123
+  HostName 10.1.111.32
   User debian
   ProxyJump agents-jump
 
 Host dw-eric
-  HostName 10.1.111.69
+  HostName 10.1.111.33
   User debian
   ProxyJump agents-jump
 ```
@@ -77,7 +77,6 @@ None of these are in this repo.
 
 1. **OPNsense port forward**: Firewall > NAT > Destination NAT, WAN TCP 2223 from any source to `10.1.111.20:2223`, with its pass rule. Set per-source limits on that pass rule, because sshd only ever sees one masqueraded address: under Advanced options, **Max new connections** `4` per `5` seconds (the field next to it), and **Max source states** `10`. If 2223 is already taken on the WAN, pick another WAN port and change `Port` in the ssh config above.
 2. **DNS**: `agents.dreamwright.app` CNAME `wan.activescott.com`, which ddclient keeps on the home WAN address. dreamwright.app is not managed here: until the domain transfer on 2026-11-23 the live zone is the Cloudflare one, and after it the Route 53 zone in ping-poet/dreamwright-infra (`tofu/live/aws-prod/dns-mail.tf`), so the record needs adding in both.
-3. **DHCP reservations** on OPNsense for the four VMs at the addresses above, so `PermitOpen` stays correct. The MACs are in the latest F1 comment on ping-poet/dreamwright#1381.
 
 ## Changing the keys
 
