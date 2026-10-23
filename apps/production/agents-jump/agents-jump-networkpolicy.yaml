@@ -1,0 +1,54 @@
+# agents-jump reaches the four assistant VMs' sshd on debprime and nothing else: no DNS (sshd
+# needs none, and PermitOpen takes addresses), no cluster services, no internet.
+#
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agents-jump
+  namespace: agents-jump
+spec:
+  podSelector:
+    matchLabels:
+      app: agents-jump
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # sshd, from anywhere. kube-router sees the client's real address on the LoadBalancer
+    # address (see ../jumpbox/jumpbox-networkpolicy.yaml), so that needs an ipBlock; the svclb
+    # peer covers traffic arriving on other node addresses. The pod CIDR is excepted so that
+    # other pods in the cluster cannot reach the ClusterIP.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              svccontroller.k3s.cattle.io/svcname: agents-jump
+              svccontroller.k3s.cattle.io/svcnamespace: agents-jump
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 172.16.0.0/16
+      ports:
+        - port: 2223
+          protocol: TCP
+
+  egress:
+    # The assistant VMs, the same list as PermitOpen in sshd_config.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.30/32 # dw-alex
+        - ipBlock:
+            cidr: 10.1.111.31/32 # dw-robin
+        - ipBlock:
+            cidr: 10.1.111.32/32 # dw-lindsay
+        - ipBlock:
+            cidr: 10.1.111.33/32 # dw-eric
+        - ipBlock:
+            cidr: 10.1.111.34/32 # dw-buster
+      ports:
+        - port: 22
+          protocol: TCP

@@ -1,0 +1,63 @@
+# sshd for agents-jump. Read by the Deployment as `sshd -f`; the image's own
+# /etc/ssh/sshd_config and its s6 init are not used, as in ../jumpbox. See README.md.
+
+# sshd runs as abc (uid 911), not root, so it can only ever log a client in as abc, and it
+# cannot bind below 1024.
+Port 2223
+AddressFamily inet
+HostKey /hostkeys/ssh_host_ed25519_key
+PidFile none
+# VERBOSE logs the fingerprint of the key each login used, which names the person.
+LogLevel VERBOSE
+VersionAddendum none
+
+AllowUsers abc
+PermitRootLogin no
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+PubkeyAcceptedAlgorithms ssh-ed25519
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+HostbasedAuthentication no
+UsePAM no
+
+# Limits for a listener open to the whole internet. MaxAuthTries 3 leaves room for an agent
+# holding a few keys. MaxStartups bounds unauthenticated connections: past 5, new ones are
+# dropped at random, increasingly, until all are refused at 20.
+MaxAuthTries 3
+LoginGraceTime 15
+MaxStartups 5:50:20
+MaxSessions 4
+# Off because ServiceLB masquerades every client to one address, so penalising a scanner
+# would lock out everyone along with it. It also covers the Deployment's probes, which
+# connect on loopback and close without authenticating. MaxStartups is the bound instead.
+PerSourcePenalties no
+
+# The ConfigMap from authorized_keys in this directory. StrictModes is off because a
+# ConfigMap volume's directory is mode 0777, which StrictModes rejects; the file itself is a
+# read-only mount that abc cannot change.
+AuthorizedKeysFile /etc/agents-jump/keys/authorized_keys
+StrictModes no
+
+# No shell, no command, no sftp: ForceCommand replaces whatever a session asks for, and
+# PermitTTY no refuses a terminal. ProxyJump (`ssh -J`, `-W`) opens a direct-tcpip channel,
+# not a session, so it never reaches ForceCommand.
+ForceCommand /bin/false
+PermitTTY no
+PermitUserRC no
+PermitUserEnvironment no
+
+# Local (direct-tcpip) forwarding only, to exactly the assistant VMs' sshd, as the client
+# names them. Anything else is refused as "administratively prohibited"; the NetworkPolicy
+# would drop it anyway.
+AllowTcpForwarding local
+PermitOpen 10.1.111.30:22 10.1.111.31:22 10.1.111.32:22 10.1.111.33:22 10.1.111.34:22
+PermitListen none
+GatewayPorts no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+X11Forwarding no
+PermitTunnel no
+
+ClientAliveInterval 30
+ClientAliveCountMax 4
