@@ -93,3 +93,11 @@ spec:
       ports:
         - port: 22
           protocol: TCP
+
+    # debprime (Proxmox), for ProxyJump.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.15/32
+      ports:
+        - port: 22
+          protocol: TCP
