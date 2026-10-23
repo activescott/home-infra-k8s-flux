@@ -64,3 +64,6 @@ resources:
   # Prometheus, and debeth (ping-poet/dreamwright#123). Logins are refused until a real key is
   # in jumpbox/authorized_keys. See apps/production/jumpbox/README.md.
   - ./jumpbox
+  # SSH jump box for Scott, Olya and Alex to reach the assistant VMs on debprime from anywhere:
+  # key-only, ProxyJump to those VMs only, no shell. See apps/production/agents-jump/README.md.
+  - ./agents-jump

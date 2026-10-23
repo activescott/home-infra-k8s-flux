@@ -1,0 +1,28 @@
+# LoadBalancer for the same reason as ../jumpbox: ssh is not HTTP, and k3s's ServiceLB binds
+# the node address (10.1.111.20) directly. OPNsense forwards the WAN port here; that rule is
+# outside this repo (README.md).
+#
+# Open to any source address, so there is no loadBalancerSourceRanges. There is no NodePort
+# either: it would be a second way in, on the node's NodePort range, and
+# nothing needs it. externalTrafficPolicy: Local would need one (svclb then forwards to
+# hostIP:NodePort), so this is Cluster, and sshd sees every client as a cluster-internal
+# address. That is why sshd_config turns PerSourcePenalties off.
+#
+# 2223 because 2222 is ../jumpbox and no other LoadBalancer, hostPort or hostNetwork pod in
+# this repo uses it. A collision would leave the svclb-agents-jump pod Pending.
+apiVersion: v1
+kind: Service
+metadata:
+  name: agents-jump
+  namespace: agents-jump
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Cluster
+  allocateLoadBalancerNodePorts: false
+  selector:
+    app: agents-jump
+  ports:
+    - name: ssh
+      port: 2223
+      targetPort: 2223
+      protocol: TCP

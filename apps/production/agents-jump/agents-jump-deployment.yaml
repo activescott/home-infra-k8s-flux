@@ -1,0 +1,125 @@
+# sshd for SSH into the assistant VMs on debprime by ProxyJump only (ping-poet/dreamwright#1414).
+# See README.md.
+#
+# Same image and the same bypass of its s6 init as ../jumpbox, for the same reasons: the init
+# would copy sshd_config and authorized_keys onto the volume once and only append afterwards,
+# so a key removed from git would stay authorized, and it logs to a file rather than stdout.
+# Unlike ../jumpbox there is no kubectl and no ServiceAccount token.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agents-jump
+  namespace: agents-jump
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agents-jump
+  strategy:
+    # The host key volume is ReadWriteOnce.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: agents-jump
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 911
+        runAsGroup: 1001
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # The host key is generated on first start and kept on the volume, so the key everyone
+        # pins survives restarts. It is written here so that the sshd container can mount it
+        # read-only.
+        - name: hostkey
+          image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              key=/hostkeys/ssh_host_ed25519_key
+              if [ ! -f "$key" ]; then
+                ssh-keygen -q -t ed25519 -N '' -C agents-jump -f "$key"
+              fi
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 32Mi
+            limits:
+              cpu: "200m"
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: hostkeys
+              mountPath: /hostkeys
+      containers:
+        - name: sshd
+          image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238@sha256:46f115de7c251558297e7e87566fc3fc08544b63e55502b5cf294454db5d29d1
+          # The host key's fingerprint is printed every start, which puts it in Loki for
+          # checking a known_hosts entry against.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              ssh-keygen -l -f /hostkeys/ssh_host_ed25519_key.pub
+              exec /usr/sbin/sshd.pam -D -e -f /etc/agents-jump/config/sshd_config
+          ports:
+            - name: ssh
+              containerPort: 2223
+          # nc on loopback rather than a tcpSocket probe from the kubelet: see
+          # PerSourcePenalties in sshd_config.
+          readinessProbe:
+            exec:
+              command: ["nc", "-z", "127.0.0.1", "2223"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["nc", "-z", "127.0.0.1", "2223"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "10m"
+              memory: 32Mi
+            limits:
+              cpu: "500m"
+              memory: 256Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/agents-jump/config
+              readOnly: true
+            - name: authorized-keys
+              mountPath: /etc/agents-jump/keys
+              readOnly: true
+            - name: hostkeys
+              mountPath: /hostkeys
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: agents-jump-config
+        - name: authorized-keys
+          configMap:
+            name: agents-jump-authorized-keys
+        - name: hostkeys
+          persistentVolumeClaim:
+            claimName: agents-jump-hostkeys
+        - name: tmp
+          emptyDir: {}
