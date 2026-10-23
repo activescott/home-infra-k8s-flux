@@ -3,14 +3,14 @@
 # VMs, intersected with PermitOpen (sshd_config). Alex gets only his own VM. See README.md.
 
 # Scott
-restrict,port-forwarding,permitopen="10.1.111.30:22",permitopen="10.1.111.31:22",permitopen="10.1.111.32:22",permitopen="10.1.111.33:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAXMo4T9BKVrQVZX3oeGxTbF2ItHc+4G6V87gyXFA5gw scott
+restrict,port-forwarding,permitopen="10.1.111.30:22",permitopen="10.1.111.31:22",permitopen="10.1.111.32:22",permitopen="10.1.111.33:22",permitopen="10.1.111.34:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAXMo4T9BKVrQVZX3oeGxTbF2ItHc+4G6V87gyXFA5gw scott
 
 # Olya (olyapop)
-restrict,port-forwarding,permitopen="10.1.111.30:22",permitopen="10.1.111.31:22",permitopen="10.1.111.32:22",permitopen="10.1.111.33:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhP+AlDa1LLrTv0rc1qqmMaoDMFrrtUhk2FEg6sYiE3 olyapop
+restrict,port-forwarding,permitopen="10.1.111.30:22",permitopen="10.1.111.31:22",permitopen="10.1.111.32:22",permitopen="10.1.111.33:22",permitopen="10.1.111.34:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhP+AlDa1LLrTv0rc1qqmMaoDMFrrtUhk2FEg6sYiE3 olyapop
 
 # Olya's agents host: dreamwright-default, the default key in the Dreamwright agents host's
 # ssh-agent (ping-poet/dreamwright#123), same line as ../jumpbox/authorized_keys.
-restrict,port-forwarding,permitopen="10.1.111.30:22",permitopen="10.1.111.31:22",permitopen="10.1.111.32:22",permitopen="10.1.111.33:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXRJkV6GzFithKv3CLT+i8pqsvEwohGaldjxNZdTgLr dreamwright-default
+restrict,port-forwarding,permitopen="10.1.111.30:22",permitopen="10.1.111.31:22",permitopen="10.1.111.32:22",permitopen="10.1.111.33:22",permitopen="10.1.111.34:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXRJkV6GzFithKv3CLT+i8pqsvEwohGaldjxNZdTgLr dreamwright-default
 
 # Alex (GitHub avioing, user id 114610): the three keys at github.com/avioing.keys.
 restrict,port-forwarding,permitopen="10.1.111.30:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGARGAOVs8Do1VQdVFyd1KOlyjy1+yNeINpBnd/0dzAC avioing

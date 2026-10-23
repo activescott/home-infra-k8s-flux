@@ -47,6 +47,8 @@ spec:
             cidr: 10.1.111.32/32 # dw-lindsay
         - ipBlock:
             cidr: 10.1.111.33/32 # dw-eric
+        - ipBlock:
+            cidr: 10.1.111.34/32 # dw-buster
       ports:
         - port: 22
           protocol: TCP

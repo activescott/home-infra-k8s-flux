@@ -10,6 +10,7 @@ It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys), 
 | dw-robin   | 10.1.111.31:22 |
 | dw-lindsay | 10.1.111.32:22 |
 | dw-eric    | 10.1.111.33:22 |
+| dw-buster  | 10.1.111.34:22 |
 
 ## Threat model
 
@@ -57,6 +58,11 @@ Host dw-lindsay
 
 Host dw-eric
   HostName 10.1.111.33
+  User debian
+  ProxyJump agents-jump
+
+Host dw-buster
+  HostName 10.1.111.34
   User debian
   ProxyJump agents-jump
 ```
