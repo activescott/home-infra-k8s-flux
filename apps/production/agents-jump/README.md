@@ -79,10 +79,10 @@ The host key is generated on the pod's first start and kept on the `agents-jump-
 
 ## Manual steps for Scott
 
-None of these are in this repo.
+None of these are in this repo, except where noted.
 
 1. **OPNsense port forward**: Firewall > NAT > Destination NAT, WAN TCP 2223 from any source to `10.1.111.20:2223`, with its pass rule. Set per-source limits on that pass rule, because sshd only ever sees one masqueraded address: under Advanced options, **Max new connections** `4` per `5` seconds (the field next to it), and **Max source states** `10`. If 2223 is already taken on the WAN, pick another WAN port and change `Port` in the ssh config above.
-2. **DNS**: `agents.dreamwright.app` CNAME `wan.activescott.com`, which ddclient keeps on the home WAN address. dreamwright.app is not managed here: until the domain transfer on 2026-11-23 the live zone is the Cloudflare one, and after it the Route 53 zone in ping-poet/dreamwright-infra (`tofu/live/aws-prod/dns-mail.tf`), so the record needs adding in both.
+2. **DNS**: `agents.dreamwright.app` is declared in `infrastructure/prod/dns/zones/dreamwright.app.yaml` (CNAME `wan.activescott.com`, which ddclient keeps on the home WAN address). After the domain transfer on 2026-11-23 the live zone becomes the Route 53 zone in ping-poet/dreamwright-infra (`tofu/live/aws-prod/dns-mail.tf`), so the record then needs adding there.
 
 ## Changing the keys
 
