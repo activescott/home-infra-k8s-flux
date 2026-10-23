@@ -16,6 +16,7 @@ It accepts one user, `abc`, with a key from [authorized_keys](authorized_keys), 
 - The sshd faces the whole internet, so the defence is key-only auth (ed25519 public keys, no passwords, no keyboard-interactive, no root) and limits on unauthenticated connections (`MaxAuthTries`, `LoginGraceTime`, `MaxStartups`).
 - A stolen key reaches the VMs' sshd and nothing else: `PermitOpen` and the NetworkPolicy both allow only those four addresses on port 22, there is no shell in the pod to pivot from, and the pod has no ServiceAccount token or DNS. Logging into a VM still needs that VM's own key.
 - An sshd vulnerability gives code execution as uid 911 in a read-only container with no capabilities, still behind the same NetworkPolicy.
+- Each key line in `authorized_keys` carries `restrict,port-forwarding,permitopen=...`, a second lock inside `PermitOpen`: Scott's and Olya's keys reach all four VMs, Alex's only dw-alex.
 - Not covered: a flood of unauthenticated connections can fill `MaxStartups` and lock everyone out until it stops. Per-source penalties cannot help, because ServiceLB masquerades every client to one address.
 
 ## How a connection gets here
@@ -36,6 +37,8 @@ Host agents-jump
   HostKeyAlias agents-jump
   ExitOnForwardFailure yes
   ServerAliveInterval 30
+  IdentitiesOnly yes
+  IdentityFile ~/.ssh/id_ed25519
 
 Host dw-alex
   HostName 10.1.111.192
@@ -58,6 +61,8 @@ Host dw-eric
   ProxyJump agents-jump
 ```
 
+`IdentitiesOnly` matters because `MaxAuthTries` is 3: an agent offering more than two other keys first gets "Too many authentication failures". Point `IdentityFile` at the key that is in `authorized_keys`.
+
 Then `ssh dw-alex`. `HostName` must be the address as written, because `PermitOpen` matches the address the client asks for. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [agents-jump-networkpolicy.yaml](agents-jump-networkpolicy.yaml). `ssh agents-jump` on its own connects and exits immediately; that is the `ForceCommand`.
 
 The host key is generated on the pod's first start and kept on the `agents-jump-hostkeys` volume. Its fingerprint is logged on every start, so check the first `known_hosts` entry against Loki rather than trusting it on first use:
@@ -70,7 +75,7 @@ The host key is generated on the pod's first start and kept on the `agents-jump-
 
 None of these are in this repo.
 
-1. **OPNsense port forward**: Firewall > NAT > Destination NAT, WAN TCP 2223 from any source to `10.1.111.20:2223`, with its pass rule. If 2223 is already taken on the WAN, pick another WAN port and change `Port` in the ssh config above.
+1. **OPNsense port forward**: Firewall > NAT > Destination NAT, WAN TCP 2223 from any source to `10.1.111.20:2223`, with its pass rule. Set per-source limits on that pass rule, because sshd only ever sees one masqueraded address: under Advanced options, **Max new connections** `4` per `5` seconds (the field next to it), and **Max source states** `10`. If 2223 is already taken on the WAN, pick another WAN port and change `Port` in the ssh config above.
 2. **DNS**: `agents.dreamwright.app` CNAME `wan.activescott.com`, which ddclient keeps on the home WAN address. dreamwright.app is not managed here: until the domain transfer on 2026-11-23 the live zone is the Cloudflare one, and after it the Route 53 zone in ping-poet/dreamwright-infra (`tofu/live/aws-prod/dns-mail.tf`), so the record needs adding in both.
 3. **DHCP reservations** on OPNsense for the four VMs at the addresses above, so `PermitOpen` stays correct. The MACs are in the latest F1 comment on ping-poet/dreamwright#1381.
 

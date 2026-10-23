@@ -1,17 +1,18 @@
-# Public keys allowed to log in as abc, one per line. Each one can only ProxyJump to the
-# assistant VMs in PermitOpen (sshd_config); none gets a shell. See README.md.
+# Public keys allowed to log in as abc, one per line. Each key line is prefixed with
+# restrict,port-forwarding,permitopen=...: no pty/agent/X11/rc, and only ProxyJump to the listed
+# VMs, intersected with PermitOpen (sshd_config). Alex gets only his own VM. See README.md.
 
 # Scott
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAXMo4T9BKVrQVZX3oeGxTbF2ItHc+4G6V87gyXFA5gw scott
+restrict,port-forwarding,permitopen="10.1.111.192:22",permitopen="10.1.111.243:22",permitopen="10.1.111.123:22",permitopen="10.1.111.69:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAXMo4T9BKVrQVZX3oeGxTbF2ItHc+4G6V87gyXFA5gw scott
 
 # Olya (olyapop)
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhP+AlDa1LLrTv0rc1qqmMaoDMFrrtUhk2FEg6sYiE3 olyapop
+restrict,port-forwarding,permitopen="10.1.111.192:22",permitopen="10.1.111.243:22",permitopen="10.1.111.123:22",permitopen="10.1.111.69:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJhP+AlDa1LLrTv0rc1qqmMaoDMFrrtUhk2FEg6sYiE3 olyapop
 
 # Olya's agents host: dreamwright-default, the default key in the Dreamwright agents host's
 # ssh-agent (ping-poet/dreamwright#123), same line as ../jumpbox/authorized_keys.
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXRJkV6GzFithKv3CLT+i8pqsvEwohGaldjxNZdTgLr dreamwright-default
+restrict,port-forwarding,permitopen="10.1.111.192:22",permitopen="10.1.111.243:22",permitopen="10.1.111.123:22",permitopen="10.1.111.69:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXRJkV6GzFithKv3CLT+i8pqsvEwohGaldjxNZdTgLr dreamwright-default
 
 # Alex (GitHub avioing, user id 114610): the three keys at github.com/avioing.keys.
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGARGAOVs8Do1VQdVFyd1KOlyjy1+yNeINpBnd/0dzAC avioing
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjlourNaxhPIs+Iu4BN5t/B3nlpyXjGWTQB5M3v5p5I avioing
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJkdLhYe6Uh8UIfvjCsfY7eHRIMKBx8nPsR1A9ihqKkI avioing
+restrict,port-forwarding,permitopen="10.1.111.192:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGARGAOVs8Do1VQdVFyd1KOlyjy1+yNeINpBnd/0dzAC avioing
+restrict,port-forwarding,permitopen="10.1.111.192:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEjlourNaxhPIs+Iu4BN5t/B3nlpyXjGWTQB5M3v5p5I avioing
+restrict,port-forwarding,permitopen="10.1.111.192:22" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJkdLhYe6Uh8UIfvjCsfY7eHRIMKBx8nPsR1A9ihqKkI avioing
