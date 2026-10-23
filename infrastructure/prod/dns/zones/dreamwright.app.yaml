@@ -46,6 +46,14 @@ spec:
       type: A
       ttl: 1
       content: 54.71.229.250
+    # The notetaker's webhook from Vexa, served by the same app's Traefik
+    # (ping-poet/dreamwright-infra#117, ping-poet/dreamwright#1390). Twin of the Route 53
+    # record there; DNS only, since the certificate's HTTP-01 challenge needs the direct address.
+    - key: notetaker-a
+      name: notetaker.dreamwright.app
+      type: A
+      ttl: 1
+      content: 54.71.229.250
     - key: apex-spf-txt
       name: dreamwright.app
       type: TXT
