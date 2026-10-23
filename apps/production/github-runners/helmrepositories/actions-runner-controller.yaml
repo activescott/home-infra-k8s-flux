@@ -4,6 +4,6 @@ metadata:
   name: actions-runner-controller
   namespace: arc-systems
 spec:
-  interval: 24h
+  interval: 1h
   type: oci
   url: oci://ghcr.io/actions/actions-runner-controller-charts

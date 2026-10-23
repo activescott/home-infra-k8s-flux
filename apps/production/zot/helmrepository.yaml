@@ -4,5 +4,5 @@ metadata:
   name: zot
   namespace: zot-oci-registry
 spec:
-  interval: 168h
+  interval: 1h
   url: https://zotregistry.dev/helm-charts
