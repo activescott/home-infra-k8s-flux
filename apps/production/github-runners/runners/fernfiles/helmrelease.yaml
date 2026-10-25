@@ -22,19 +22,22 @@ spec:
     githubConfigSecret: fernfiles-github-token
     runnerScaleSetName: fernfiles-runners
     minRunners: 0
-    # Sized against the single nas node (20 CPU / 125 GiB) with a target of
-    # keeping runner load under ~50% of node capacity during bursts.
-    # Per-runner requests are 500m CPU / 1Gi mem; burst limits are 4 CPU /
-    # 6Gi (see template.spec.containers.runner.resources below). At
-    # maxRunners: 6 per scale set:
-    #   - requests if one scale set is saturated: 3 CPU (15%) / 6 GiB (~5%)
-    #   - requests if both scale sets saturated:  6 CPU (30%) / 12 GiB (~10%)
-    #   - worst-case burst (one set, all pods at 4 CPU limit): 24 CPU,
-    #     which would saturate the node but only briefly and only if every
-    #     job pegs its CPU limit — CI jobs are spiky, not sustained.
-    # Steady-state node usage observed in Grafana is <10% CPU / <17% mem
-    # over 7d, so there is ample headroom for this concurrency.
-    maxRunners: 6
+    # Sized against the single nas node (20 CPU / 125 GiB). fernfiles' e2e
+    # job does nearly all of its work in the dind sidecar: three image
+    # builds, a kind cluster running the app, and Playwright. Each pod
+    # requests 1.5 CPU / 4 GiB (runner 500m / 1Gi, dind 1 / 3Gi), and dind
+    # may burst to 6 CPU / 12Gi, so at maxRunners: 4:
+    #   - requests: 6 CPU (30%) / 16 GiB (13%)
+    #   - every dind at its limit: 24 CPU, more than the node has, shared in
+    #     proportion to requests so other workloads keep theirs
+    # Lowered from 6 because a Dependabot burst (10-11 PRs within minutes)
+    # filled all 6 with validate, prod-image and e2e at once, and most e2e
+    # jobs that overlapped 7 or more others hit their 45-minute timeout
+    # (counts and how to regenerate them: activescott/fernfiles#373). A job
+    # waiting for a runner does not use up its timeout; a job sharing the
+    # node with five others does, and the work it did is lost when it is
+    # cancelled. If 4 is still too many, drop to 3 or raise the e2e timeout.
+    maxRunners: 4
     # Annotations on the listener pod so the existing kubernetes-pods
     # Prometheus scrape config picks up gha_* metrics from :8080/metrics
     # (also requires the controller chart's `metrics:` block to be enabled
@@ -136,6 +139,18 @@ spec:
               initialDelaySeconds: 0
               failureThreshold: 24
               periodSeconds: 5
+            # Without a request this container got the smallest CPU share the
+            # kernel gives, so on a busy node every build, kind node and
+            # Playwright run in it was starved by pods that do request CPU
+            # (activescott/fernfiles#373). The limit stops one job's cold
+            # image build from taking the whole node.
+            resources:
+              requests:
+                cpu: "1"
+                memory: "3Gi"
+              limits:
+                cpu: "6"
+                memory: "12Gi"
             volumeMounts:
               - name: work
                 mountPath: /home/runner/_work
