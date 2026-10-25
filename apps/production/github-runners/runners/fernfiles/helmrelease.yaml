@@ -30,7 +30,7 @@ spec:
     #   - requests: 6 CPU (30%) / 16 GiB (13%)
     #   - every dind at its limit: 24 CPU, more than the node has, shared in
     #     proportion to requests so other workloads keep theirs
-    # Lowered from 6 because a Dependabot burst (11-16 PRs within minutes)
+    # Lowered from 6 because a Dependabot burst (10-11 PRs within minutes)
     # filled all 6 with validate, prod-image and e2e at once, and most e2e
     # jobs that overlapped 7 or more others hit their 45-minute timeout
     # (counts and how to regenerate them: activescott/fernfiles#373). A job
