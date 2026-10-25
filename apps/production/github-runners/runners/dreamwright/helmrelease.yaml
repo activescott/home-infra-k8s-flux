@@ -32,18 +32,18 @@ spec:
     # of the container doing the work: the runner for lint, typecheck and
     # tests, dind for image builds. A job is busy in one of the two at a time.
     # Requests are 1 CPU / 3.5 GiB per pod (runner plus dind), so at
-    # maxRunners: 12:
-    #   - requests: 12 CPU (60%) / 42 GiB (34%), which fits beside the node's
+    # maxRunners: 8:
+    #   - requests: 8 CPU (40%) / 28 GiB (22%), which fits beside the node's
     #     average load
-    #   - one busy container per pod: 24 CPU / 84 GiB, the most dreamwright
+    #   - one busy container per pod: 16 CPU / 56 GiB, the most dreamwright
     #     normally takes
-    #   - every container at its limit: 48 CPU / 168 GiB. CPU above requests
+    #   - every container at its limit: 32 CPU / 112 GiB. CPU above requests
     #     is shared in proportion to requests, so other workloads keep theirs;
     #     memory is not, and a pod over its request is the first the kernel
     #     OOM-kills
-    # Raised from 8 to clear the merge queue, and being watched for memory
-    # pressure (issue #436).
-    maxRunners: 12
+    # 12 was tried in issue #436 and caused etcd and test timeouts in kind
+    # jobs, so it stays at 8.
+    maxRunners: 8
     # Annotations on the listener pod so the existing kubernetes-pods
     # Prometheus scrape config picks up gha_* metrics from :8080/metrics
     # (also requires the controller chart's `metrics:` block to be enabled
