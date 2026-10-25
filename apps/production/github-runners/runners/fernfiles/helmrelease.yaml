@@ -31,12 +31,12 @@ spec:
     #   - every dind at its limit: 24 CPU, more than the node has, shared in
     #     proportion to requests so other workloads keep theirs
     # Lowered from 6 because a Dependabot burst (11-16 PRs within minutes)
-    # filled all 6 with validate, prod-image and e2e at once. On 2026-10-16,
-    # -24 and -25, 42 of the 45 e2e jobs that overlapped 7 or more other e2e
-    # or prod-image jobs hit their 45-minute timeout
-    # (activescott/fernfiles#373). A job waiting for
-    # a runner does not use up its timeout; a job sharing the node with five
-    # others does, and the work it did is lost when it is cancelled.
+    # filled all 6 with validate, prod-image and e2e at once, and most e2e
+    # jobs that overlapped 7 or more others hit their 45-minute timeout
+    # (counts and how to regenerate them: activescott/fernfiles#373). A job
+    # waiting for a runner does not use up its timeout; a job sharing the
+    # node with five others does, and the work it did is lost when it is
+    # cancelled. If 4 is still too many, drop to 3 or raise the e2e timeout.
     maxRunners: 4
     # Annotations on the listener pod so the existing kubernetes-pods
     # Prometheus scrape config picks up gha_* metrics from :8080/metrics
