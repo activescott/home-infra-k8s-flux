@@ -55,7 +55,7 @@ spec:
         # its own user, so it needs the emptyDir (0777) and a wp-content
         # owned by 33:33, which the tenant README already requires.
         - name: install-core
-          image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+          image: wordpress:7.1.3-php8.3-apache@sha256:d42f63cb89ad0eab272c4b393164e63830d0df270009907919f7dcce52b1a20b
           command: ["docker-ensure-installed.sh"]
           args: ["mkdir", "-p", "wp-content/uploads"]
           workingDir: /var/www/html
@@ -86,7 +86,7 @@ spec:
         - name: wordpress
           # Tags: https://hub.docker.com/_/wordpress/tags
           # Keep in step with install-core above; Renovate bumps both.
-          image: wordpress:7.1.2-php8.3-apache@sha256:4abf7a450ee477dde967584f8174d7e03221d224c4971a0c38d84e7254426e64
+          image: wordpress:7.1.3-php8.3-apache@sha256:d42f63cb89ad0eab272c4b393164e63830d0df270009907919f7dcce52b1a20b
           env:
             # In-namespace DNS name of the mariadb Service.
             - name: WORDPRESS_DB_HOST
