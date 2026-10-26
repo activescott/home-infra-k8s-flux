@@ -66,6 +66,15 @@ secretGenerator:
   - name: client-owner
     envs:
       - .env.secret.client-owner.public-key-encrypted.encrypted
+  # Who may approve sign-ups on /admin/users and is emailed about each request
+  # (activescott/job-accelerator#336). Private people's addresses in a public
+  # repo, so encrypted for the same reason as client-owner above, and
+  # `public-key-encrypted` for the same reason: piped straight into sops
+  # against the age recipient and never written to disk in the clear. See
+  # README.md#admin_emails to change the list.
+  - name: admin-emails
+    envs:
+      - .env.secret.admin-emails.public-key-encrypted.encrypted
   # Signs the five-minute cookie that binds a WebAuthn ceremony to the browser
   # it started in. Was JWT_SECRET, so one value signed both sessions and
   # challenges (activescott/job-accelerator#106). `public-key-encrypted`

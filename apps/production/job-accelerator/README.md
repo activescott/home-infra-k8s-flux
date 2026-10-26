@@ -28,6 +28,12 @@
   `ALLOWED_EMAILS` is. To change it, see
   [`CLIENT_DATA_OWNER_EMAIL`](#client_data_owner_email).
 
+`.env.secret.admin-emails.public-key-encrypted.encrypted` (Secret `admin-emails`):
+
+- `ADMIN_EMAILS`: comma-separated addresses that may approve sign-ups on `/admin/users`
+  and are emailed about each request. Every admin must also be in `ALLOWED_EMAILS`.
+  Encrypted for the same reason. To change it, see [`ADMIN_EMAILS`](#admin_emails).
+
 `SMTP_PASS` must also match this app's entry in email-relay's `SMTPD_SASL_USERS`
 (`apps/production/email-relay/.env.secret.relay`).
 
@@ -35,14 +41,14 @@
 
 Values that are not secret are set as plain `value:` in the manifests rather than here:
 
-| Variable | Value | Where |
-| --- | --- | --- |
-| `APP_URL` | `https://job-accelerator.pingpoet.com` | `patch-app-deployment.yaml` |
-| `FROM_EMAIL` | `job-accelerator-noreply@pingpoet.com` | `patch-app-from-email.yaml` |
-| `KEYSTORE_DIR` | `/keys` | `apps/base/job-accelerator/app-deployment.yaml` |
-| `MASTER_KEY_ACTIVE` | `1` | same |
-| `RETENTION_PROMPT_DAYS` | `90` | same |
-| `RETENTION_DELETE_DAYS` | `14` | same |
+| Variable                | Value                                  | Where                                           |
+| ----------------------- | -------------------------------------- | ----------------------------------------------- |
+| `APP_URL`               | `https://job-accelerator.pingpoet.com` | `patch-app-deployment.yaml`                     |
+| `FROM_EMAIL`            | `job-accelerator-noreply@pingpoet.com` | `patch-app-from-email.yaml`                     |
+| `KEYSTORE_DIR`          | `/keys`                                | `apps/base/job-accelerator/app-deployment.yaml` |
+| `MASTER_KEY_ACTIVE`     | `1`                                    | same                                            |
+| `RETENTION_PROMPT_DAYS` | `90`                                   | same                                            |
+| `RETENTION_DELETE_DAYS` | `14`                                   | same                                            |
 
 The model names are not in this table: `OPENROUTER_MODEL_PARSE_PROFILE` and
 `OPENROUTER_MODEL_SUGGEST_EMPLOYERS` come from the generated `models` ConfigMap
@@ -53,8 +59,8 @@ The worker also gets `KEYSTORE_DIR`, `MASTER_KEY_ACTIVE` and `MASTER_KEY_1` (the
 values as the app, set directly in `worker-deployment.yaml`), plus the `keys` volume,
 mounted read-only since the worker only reads keys.
 
-`ALLOWED_EMAILS` and `CLIENT_DATA_OWNER_EMAIL` stay in encrypted secrets because this repo
-is public and both name private people. A value being guessable is not a reason to publish
+`ALLOWED_EMAILS`, `CLIENT_DATA_OWNER_EMAIL` and `ADMIN_EMAILS` stay in encrypted secrets
+because this repo is public and all three name private people. A value being guessable is not a reason to publish
 it. `FROM_EMAIL` is different: it is a role account that rides in the headers of every
 message the app sends, so it is already public. The base deployment still reads it from
 `app-creds` and `patch-app-from-email.yaml` overrides that with a plain value, which leaves
@@ -71,9 +77,10 @@ The two `RETENTION_*` values are Scott's answers to open question 1 in the app's
 after an unanswered prompt. They are set ahead of the `retention_sweep` task that reads them.
 
 `app-creds` and `db-creds` are ordinary SOPS secrets; read or change either with the commands
-below. `master-key` and `client-owner` are not: the `public-key-encrypted` in their names says
+below. `master-key`, `client-owner` and `admin-emails` are not: the `public-key-encrypted` in their names says
 nobody has ever seen their values, so there is nothing to decrypt for a person to read. See
-[Master key](#master-key) and [`CLIENT_DATA_OWNER_EMAIL`](#client_data_owner_email).
+[Master key](#master-key), [`CLIENT_DATA_OWNER_EMAIL`](#client_data_owner_email) and
+[`ADMIN_EMAILS`](#admin_emails).
 
 ```bash
 ./scripts/onepassword-secrets.mts show apps/production/job-accelerator/.env.secret.app
@@ -109,8 +116,8 @@ The two `.encrypted` files here were created by encrypting straight to the publi
 ## Rotation
 
 `MASTER_KEY_1` does not follow any of this. See [Master key](#master-key).
-`CLIENT_DATA_OWNER_EMAIL` is its own case; it has its own steps
-[below](#client_data_owner_email).
+`CLIENT_DATA_OWNER_EMAIL` and `ADMIN_EMAILS` are their own case; they have their own steps
+below.
 
 Every other rotation is `edit` on each file that holds the value, then a PR with the
 `.encrypted` files:
@@ -165,6 +172,23 @@ printf 'CLIENT_DATA_OWNER_EMAIL=%s\n' "$owner" | sops encrypt \
 goes to a temp file so a failed encrypt leaves the previous ciphertext intact. Commit the
 `.encrypted` file via a PR; the generated Secret's name hash changes, which rolls the
 Deployment.
+
+### `ADMIN_EMAILS`
+
+Same steps as `CLIENT_DATA_OWNER_EMAIL`, with the whole list each time:
+
+```bash
+cd apps/production/job-accelerator
+file=.env.secret.admin-emails.public-key-encrypted.encrypted
+recipient=$(sed -n 's/^sops_age__list_[0-9]*__map_recipient=//p' "$file")
+read -rsp 'ADMIN_EMAILS: ' admins && echo
+printf 'ADMIN_EMAILS=%s\n' "$admins" | sops encrypt \
+  --age "$recipient" --input-type dotenv --output-type dotenv \
+  --filename-override "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+```
+
+Add any new admin to `ALLOWED_EMAILS` in the same PR; the app only lets an approved account
+open `/admin/users`.
 
 ## Master key
 
@@ -289,14 +313,14 @@ here is automated, and no agent touches the NAS. Access details are in `home-inf
 5. **Give it its own snapshot task.** Under Data Protection → Periodic Snapshot Tasks, add
    one:
 
-   | Field | Value |
-   | --- | --- |
-   | Dataset | `thedatapool/job-accelerator-keys` |
-   | Recursive | off |
-   | Snapshot Lifetime | 6 days |
-   | Schedule | daily |
-   | Naming Schema | leave the default |
-   | Enabled | on |
+   | Field             | Value                              |
+   | ----------------- | ---------------------------------- |
+   | Dataset           | `thedatapool/job-accelerator-keys` |
+   | Recursive         | off                                |
+   | Snapshot Lifetime | 6 days                             |
+   | Schedule          | daily                              |
+   | Naming Schema     | leave the default                  |
+   | Enabled           | on                                 |
 
    Create it in the UI, not with `zfs snapshot`: only a middleware-owned task recurs and
    prunes.
