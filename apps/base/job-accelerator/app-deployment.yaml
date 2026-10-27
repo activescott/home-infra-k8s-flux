@@ -95,6 +95,17 @@ spec:
                 secretKeyRef:
                   name: client-owner
                   key: CLIENT_DATA_OWNER_EMAIL
+            # Who may approve or block accounts on /admin/users, and who is
+            # emailed when someone asks for one. Every admin must also be in
+            # ALLOWED_EMAILS. Unset admits nobody and tells nobody. Only this
+            # Deployment: the worker never serves /admin or sends the request
+            # email. Its own Secret because the addresses belong to private
+            # people and this repo is public.
+            - name: ADMIN_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: admin-emails
+                  key: ADMIN_EMAILS
             - name: FROM_EMAIL
               valueFrom:
                 secretKeyRef:
