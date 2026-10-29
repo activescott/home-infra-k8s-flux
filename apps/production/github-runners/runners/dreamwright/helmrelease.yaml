@@ -25,7 +25,15 @@ spec:
     githubConfigSecret: dreamwright-github-token
     runnerScaleSetName: dreamwright-runners
     runnerGroup: dreamwright-private
-    minRunners: 0
+    # Three idle runners stay registered so a job does not wait for a pod to
+    # be created. In the first week (2026-10-21..28) a cold runner took p50
+    # 16 s / p90 49 s / p99 195 s from pod creation to ready, mostly waiting
+    # for the scheduler while the node's CPU requests were full at peak, and
+    # job startup p90 was 83 s. A replay of that week put p90 at 30-36 s
+    # with 3 warm runners, 40-58 s with 2 (ping-poet/dreamwright#1363).
+    # Warm runners count toward maxRunners, so the most this scale set holds
+    # is unchanged; idle, the 3 reserve 3 CPU / 10.5 GiB of requests.
+    minRunners: 3
     # Sized against the single nas node (20 CPU / 125 GiB), which averaged 19%
     # CPU over the 7 days to 2026-10-21 (p95 55%). Each pod gets what a
     # GitHub-hosted runner for a private repo has, 2 CPU / 7 GiB, as the limit
