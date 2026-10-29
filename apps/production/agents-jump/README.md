@@ -28,7 +28,7 @@ Port 2223 was picked because 2222 is [../jumpbox](../jumpbox) and nothing else i
 
 ## ssh config
 
-Each person adds this to `~/.ssh/config`, with their own key in their agent or an `IdentityFile`. Their key must also be authorized on the VM itself.
+Each person adds this to `~/.ssh/config`, above any `Host *` block that sets `User`. It works for a key held in an agent (1Password) with no key file on disk. Their key must also be authorized on the VM itself.
 
 ```
 Host agents-jump
@@ -38,8 +38,6 @@ Host agents-jump
   HostKeyAlias agents-jump
   ExitOnForwardFailure yes
   ServerAliveInterval 30
-  IdentitiesOnly yes
-  IdentityFile ~/.ssh/id_ed25519
 
 Host dw-alex
   HostName 10.1.111.30
@@ -67,9 +65,22 @@ Host dw-buster
   ProxyJump agents-jump
 ```
 
-`IdentitiesOnly` matters because `MaxAuthTries` is 3: an agent offering more than two other keys first gets "Too many authentication failures". Point `IdentityFile` at the key that is in `authorized_keys`.
+`MaxAuthTries` is 3, so an agent offering more than two other keys first gets "Too many authentication failures". If that happens, or the key is a file on disk, add these two lines to the `agents-jump` block, with `IdentityFile` pointing at the key that is in `authorized_keys`. Do not add them for an agent-held key: `IdentitiesOnly` stops the agent's keys being offered at all.
+
+```
+  IdentitiesOnly yes
+  IdentityFile ~/.ssh/id_ed25519
+```
 
 Then `ssh dw-alex`. `HostName` must be the address as written, because `PermitOpen` matches the address the client asks for. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [agents-jump-networkpolicy.yaml](agents-jump-networkpolicy.yaml). `ssh agents-jump` on its own connects and exits immediately; that is the `ForceCommand`.
+
+If the jump denies you, check what ssh resolved:
+
+```
+ssh -G agents-jump | grep -E '^(user|port|hostname) '
+```
+
+It must show `user abc` and `port 2223`. ssh keeps the first value it finds, so a `User` from an earlier `Host *` default overrides `User abc` here and `User debian` on the VMs; put these blocks above it.
 
 The host key is generated on the pod's first start and kept on the `agents-jump-hostkeys` volume. Its fingerprint is logged on every start, so check the first `known_hosts` entry against Loki rather than trusting it on first use:
 
