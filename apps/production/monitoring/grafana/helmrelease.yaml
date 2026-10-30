@@ -187,12 +187,7 @@ spec:
     # Browse/search for dashboards at that URL and use the ID from the dashboard page.
     dashboards:
       default:
-        # https://grafana.com/grafana/dashboards/15757
-        k8s-global:
-          gnetId: 15757
-          datasource:
-            - name: DS_PROMETHEUS
-              value: Prometheus
+        # k8s-global (15757) is vendored in dashboards/k8s-views-global.json
         # https://grafana.com/grafana/dashboards/15758
         k8s-namespaces:
           gnetId: 15758
