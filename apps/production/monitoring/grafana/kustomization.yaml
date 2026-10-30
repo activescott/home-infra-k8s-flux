@@ -112,3 +112,11 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
+  - name: grafana-dashboard-k8s-views-global
+    namespace: monitoring
+    files:
+      - dashboards/k8s-views-global.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
