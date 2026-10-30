@@ -120,6 +120,18 @@
       ],
     },
     {
+      // The ARC controller image and both charts must move together: a
+      // controller on a newer minor than its scale-set charts (or the
+      // reverse) is unsupported, and the 0.x charts change CRDs between
+      // minors. The regex matches the controller chart, the scale-set chart
+      // and the ghcr.io/actions/gha-runner-scale-set-controller image. The
+      // runner image (ghcr.io/actions/actions-runner) is deliberately left
+      // out: it versions independently and does not need the charts.
+      description: "Group ARC controller image and charts",
+      matchPackageNames: ["/gha-runner-scale-set/"],
+      groupName: "actions-runner-controller",
+    },
+    {
       // Renovate groups all pin updates into one branch by default; one
       // failing dep then blocks every pin (seen twice: Mend jobs be5c8c82
       // and the 2026-09-03 17:01 run). Ungroup so each pin is its own PR
