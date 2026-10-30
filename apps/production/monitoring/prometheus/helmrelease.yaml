@@ -40,13 +40,14 @@ spec:
       # Working set peaked at 2005Mi against the old 2Gi limit over 7 days to
       # 2026-10-01, before debeth's series. With no requests set, Kubernetes used
       # the limits as requests, so these keep the request equal to the limit.
+      # OOMKilled at 4Gi on 2026-10-30 under 90-day dashboard queries (#468).
       resources:
         requests:
           cpu: "1"
-          memory: "4Gi"
+          memory: "8Gi"
         limits:
           cpu: "1"
-          memory: "4Gi"
+          memory: "8Gi"
 
       # Basic-auth password for the stalwart scrape job below. Mounted as a file
       # rather than written into the scrape config inline: serverFiles and

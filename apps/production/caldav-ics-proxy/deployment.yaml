@@ -1,0 +1,75 @@
+# Serves Scott's Stalwart calendar as one ICS feed at https://caldav.activescott.com/<token>.ics,
+# for Google Calendar's "From URL" subscription. Source: github.com/activescott/caldav-ics-proxy.
+# Every other path, including a wrong token, is a 404; the token is the only access control.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: caldav-ics-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: caldav-ics-proxy
+  template:
+    metadata:
+      labels:
+        app: caldav-ics-proxy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxy
+          image: caldav-ics-proxy-image
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Stalwart's HTTP listener inside the cluster, the same backend Traefik sends
+            # mail.activescott.com/dav to (email-stalwart/mail-setup/mail-setup.yaml). Plain HTTP
+            # stays on the cluster network and skips the hairpin through the public IP.
+            - name: CALDAV_BASE_URL
+              value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080/dav/cal/scott%40willeke.com/
+            # The proxy runs a Depth: 1 calendar-query REPORT, so it needs a calendar collection,
+            # not the calendar home above. `default` is Stalwart's default calendar; confirm at
+            # first run that the feed has events and change this if not.
+            - name: CALDAV_CALENDARS
+              value: default/
+            - name: CALENDAR_NAME
+              value: Scott Willeke
+          envFrom:
+            # CALDAV_USERNAME and CALDAV_PASSWORD.
+            - secretRef:
+                name: caldav-ics-proxy-creds
+            # FEED_TOKEN.
+            - secretRef:
+                name: feed-token
+          # /healthz answers without contacting Stalwart, so a probe never fetches the feed.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 48Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+      imagePullSecrets:
+        - name: github-container-registry-secret

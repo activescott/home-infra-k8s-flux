@@ -1,0 +1,27 @@
+# Same exposure as photos.scott.willeke.com: default Traefik ingress, certificate from the
+# cert-manager annotation. No Authelia middleware on purpose: Google fetches this URL with no
+# login, so the secret token in the path is the auth.
+#
+# DNS: caldav-cname in infrastructure/prod/dns/zones/activescott.com.yaml.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: caldav-ics-proxy
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+spec:
+  tls:
+    - hosts:
+        - caldav.activescott.com
+      secretName: caldav-activescott-com-tls
+  rules:
+    - host: caldav.activescott.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: caldav-ics-proxy
+                port:
+                  name: http
