@@ -2,8 +2,7 @@
 # cert-manager annotation. No Authelia middleware on purpose: Google fetches this URL with no
 # login, so the secret token in the path is the auth.
 #
-# DNS is not in git. willeke.com is hosted at Squarespace, so cal.scott.willeke.com is a CNAME
-# to k8s.activescott.com added there by hand, like photos.scott.willeke.com.
+# DNS: caldav-proxy-cname in infrastructure/prod/dns/zones/activescott.com.yaml.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -13,10 +12,10 @@ metadata:
 spec:
   tls:
     - hosts:
-        - cal.scott.willeke.com
-      secretName: cal-scott-willeke-com-tls
+        - caldav-proxy.activescott.com
+      secretName: caldav-proxy-activescott-com-tls
   rules:
-    - host: cal.scott.willeke.com
+    - host: caldav-proxy.activescott.com
       http:
         paths:
           - path: /

@@ -67,7 +67,6 @@ resources:
   # SSH jump box for Scott, Olya and Alex to reach the assistant VMs on debprime from anywhere:
   # key-only, ProxyJump to those VMs only, no shell. See apps/production/agents-jump/README.md.
   - ./agents-jump
-  # Scott's Stalwart calendar as a secret-URL ICS feed at cal.scott.willeke.com, for Google
-  # Calendar subscriptions (activescott/personal#30). The cal.scott.willeke.com CNAME is at
-  # Squarespace, not in git.
+  # Scott's Stalwart calendar as a secret-URL ICS feed at caldav-proxy.activescott.com, for Google
+  # Calendar subscriptions (activescott/personal#30).
   - ./caldav-ics-proxy
