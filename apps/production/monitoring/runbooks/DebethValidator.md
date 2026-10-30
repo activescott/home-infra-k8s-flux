@@ -129,8 +129,11 @@ configuration to Scott.
 
 ## DebethMevRelayUnreachable
 
-Registrations to a relay are getting no HTTP response at all, usually because the relay's
-hostname no longer resolves or it is down. Commit-Boost counts those as status code 555.
+More than half of a relay's registrations in the last hour got no HTTP response, held for 30
+minutes. That is usually because the relay's hostname no longer resolves or it is down.
+Commit-Boost counts those as status code 555. An occasional timeout is expected and harmless:
+Flashbots sometimes takes 2.5-5 s to answer a registration against Commit-Boost's 3 s budget,
+and Lodestar re-registers every epoch, so the alert ignores them.
 Do not expect a log line for each one: at info, cb-pbs logs `reached retry limit for validator
 registration` only when it runs out of retries, and nothing when the 3 s registration budget
 runs out first. Look at the metric instead, in Explore or the dashboard's **MEV relay status

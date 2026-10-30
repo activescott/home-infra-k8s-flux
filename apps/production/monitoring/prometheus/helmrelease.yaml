@@ -1079,7 +1079,7 @@ spec:
               - alert: StalwartServedCertNotRenewed
                 # The precise detector for that failure, and the one worth having:
                 # it compares what the server SERVES against what cert-manager HAS.
-                # A gap means the reload did not happen, and it fires within a day of
+                # A gap means the reload did not happen, and it fires about a day after
                 # the renewal -- about 30 days before anything actually breaks --
                 # rather than waiting for the served certificate to approach expiry.
                 #
@@ -1088,12 +1088,18 @@ spec:
                 # labels (one is from blackbox, one from cert-manager) so a normal
                 # vector match would silently find nothing and never fire.
                 #
-                # 5 days of slack absorbs the ordinary lag between cert-manager
-                # writing the Secret and the reload CronJob's next daily run.
+                # The 5 days of slack is in expiry time, not elapsed time: it absorbs
+                # small clock and probe differences, nothing more. A renewal moves
+                # cert-manager's expiry ~60 days past the served one at once, so this
+                # becomes true the moment the Secret is written. The lag between that
+                # and the reload CronJob's next daily run (00:17 local) is absorbed by
+                # `for:` instead: 26h covers a renewal just after a run, plus the pod
+                # restart. With `for: 2h` it fired on 2026-10-27 three hours after a
+                # renewal the CronJob had not yet had a chance to act on (#452).
                 expr: >-
                   min(probe_ssl_earliest_cert_expiry{job="blackbox_mail_tls"})
                   < max(certmanager_certificate_expiration_timestamp_seconds{namespace="email-stalwart",name="mail-activescott-com"}) - 432000
-                for: 2h
+                for: 26h
                 labels:
                   severity: warning
                 annotations:
@@ -2151,19 +2157,23 @@ spec:
               # that got no HTTP response, a DNS, TCP or timeout failure, as
               # http_status_code 555 (TIMEOUT_ERROR_CODE in commit-boost-client
               # v0.10.1). Registration runs once per epoch, about nine times an hour.
+              # The alert fires when more than half of a relay's registrations in the
+              # last hour got no response, held for 30 minutes. Occasional timeouts are
+              # expected (Flashbots sometimes takes 2.5-5 s against the 3 s budget) and
+              # harmless, since Lodestar re-registers every epoch.
               # cb-pbs serves these only with CB_METRICS_PORT set, from the
               # custom.yml override in home-infra-private hosts/debeth.
               - alert: DebethMevRelayUnreachable
-                expr: 'sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h])) > 0'
-                for: 1h
+                expr: 'sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h])) / sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator"}[1h])) > 0.5'
+                for: 30m
                 labels:
                   severity: warning
                 annotations:
                   summary: 'debeth cannot reach MEV relay {{ $labels.relay_id }}'
                   description: >-
-                    Validator registrations to {{ $labels.relay_id }} have been getting no HTTP
-                    response for an hour. Lodestar falls back to local blocks, so this costs MEV
-                    rewards, not proposals.
+                    More than half of the validator registrations to {{ $labels.relay_id }} in the
+                    last hour got no HTTP response, for 30 minutes running. Lodestar falls back to
+                    local blocks, so this costs MEV rewards, not proposals.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
                   repo: activescott/home-infra-private
               - alert: DebethMevRelayErrors
