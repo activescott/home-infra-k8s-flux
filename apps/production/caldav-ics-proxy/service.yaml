@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: caldav-ics-proxy
+spec:
+  selector:
+    app: caldav-ics-proxy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

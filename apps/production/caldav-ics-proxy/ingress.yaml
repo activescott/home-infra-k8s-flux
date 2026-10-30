@@ -1,0 +1,28 @@
+# Same exposure as photos.scott.willeke.com: default Traefik ingress, certificate from the
+# cert-manager annotation. No Authelia middleware on purpose: Google fetches this URL with no
+# login, so the secret token in the path is the auth.
+#
+# DNS is not in git. willeke.com is hosted at Squarespace, so cal.scott.willeke.com is a CNAME
+# to k8s.activescott.com added there by hand, like photos.scott.willeke.com.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: caldav-ics-proxy
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+spec:
+  tls:
+    - hosts:
+        - cal.scott.willeke.com
+      secretName: cal-scott-willeke-com-tls
+  rules:
+    - host: cal.scott.willeke.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: caldav-ics-proxy
+                port:
+                  name: http

@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: caldav-ics-proxy
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+  # The image is a private GHCR package.
+  - ../../../infrastructure/prod/configs/ghcr-pull-secret/
+secretGenerator:
+  # CALDAV_USERNAME and CALDAV_PASSWORD: a Stalwart app password for scott@willeke.com.
+  - name: caldav-ics-proxy-creds
+    envs:
+      - .env.secret.caldav-ics-proxy.encrypted
+  # FEED_TOKEN, the secret in the feed URL. `public-key-encrypted` because it was generated and
+  # piped straight into sops, never written down in the clear. Read it with
+  #   ./scripts/onepassword-secrets.mts show apps/production/caldav-ics-proxy/.env.secret.feed-token.public-key-encrypted
+  # To revoke every subscriber, replace this file with a new token and hand out the new URL.
+  - name: feed-token
+    envs:
+      - .env.secret.feed-token.public-key-encrypted.encrypted
+images:
+  - name: caldav-ics-proxy-image
+    newName: ghcr.io/activescott/caldav-ics-proxy
+    # The full commit SHA of a main commit; activescott/caldav-ics-proxy publishes one tag per push.
+    newTag: set-after-caldav-ics-proxy-2-merges

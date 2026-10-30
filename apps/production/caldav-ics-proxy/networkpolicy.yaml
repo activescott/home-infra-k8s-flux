@@ -1,0 +1,36 @@
+# The pod holds a credential for Scott's mailbox account, and the internet can reach it. It needs
+# DNS and Stalwart's HTTP listener and nothing else, so a compromise cannot carry that credential
+# anywhere but the server it already works against.
+#
+# 8080 is the port on the Stalwart pod, which is what a NetworkPolicy matches; the
+# stalwart-admin Service maps 8080 to it unchanged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: caldav-ics-proxy-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: caldav-ics-proxy
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: email-stalwart
+          podSelector:
+            matchLabels:
+              app: stalwart
+      ports:
+        - port: 8080
+          protocol: TCP
