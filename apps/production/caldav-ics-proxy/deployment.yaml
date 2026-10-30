@@ -1,4 +1,4 @@
-# Serves Scott's Stalwart calendar as one ICS feed at https://caldav-proxy.activescott.com/<token>.ics,
+# Serves Scott's Stalwart calendar as one ICS feed at https://caldav.activescott.com/<token>.ics,
 # for Google Calendar's "From URL" subscription. Source: github.com/activescott/caldav-ics-proxy.
 # Every other path, including a wrong token, is a 404; the token is the only access control.
 apiVersion: apps/v1

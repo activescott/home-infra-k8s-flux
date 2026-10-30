@@ -70,8 +70,8 @@ spec:
       type: CNAME
       ttl: 1
       content: wan.activescott.com
-    - key: caldav-proxy-cname
-      name: caldav-proxy.activescott.com
+    - key: caldav-cname
+      name: caldav.activescott.com
       type: CNAME
       ttl: 1
       content: k8s.activescott.com
