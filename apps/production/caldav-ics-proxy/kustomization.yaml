@@ -25,4 +25,4 @@ images:
   - name: caldav-ics-proxy-image
     newName: ghcr.io/activescott/caldav-ics-proxy
     # The full commit SHA of a main commit; activescott/caldav-ics-proxy publishes one tag per push.
-    newTag: set-after-caldav-ics-proxy-2-merges
+    newTag: b0e41a1f7e28e1b851f16d30e8980f0ba6ead485
