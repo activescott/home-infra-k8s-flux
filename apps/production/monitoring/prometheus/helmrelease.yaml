@@ -1079,7 +1079,7 @@ spec:
               - alert: StalwartServedCertNotRenewed
                 # The precise detector for that failure, and the one worth having:
                 # it compares what the server SERVES against what cert-manager HAS.
-                # A gap means the reload did not happen, and it fires within a day of
+                # A gap means the reload did not happen, and it fires about a day after
                 # the renewal -- about 30 days before anything actually breaks --
                 # rather than waiting for the served certificate to approach expiry.
                 #
@@ -1088,12 +1088,18 @@ spec:
                 # labels (one is from blackbox, one from cert-manager) so a normal
                 # vector match would silently find nothing and never fire.
                 #
-                # 5 days of slack absorbs the ordinary lag between cert-manager
-                # writing the Secret and the reload CronJob's next daily run.
+                # The 5 days of slack is in expiry time, not elapsed time: it absorbs
+                # small clock and probe differences, nothing more. A renewal moves
+                # cert-manager's expiry ~60 days past the served one at once, so this
+                # becomes true the moment the Secret is written. The lag between that
+                # and the reload CronJob's next daily run (00:17 local) is absorbed by
+                # `for:` instead: 26h covers a renewal just after a run, plus the pod
+                # restart. With `for: 2h` it fired on 2026-10-27 three hours after a
+                # renewal the CronJob had not yet had a chance to act on (#452).
                 expr: >-
                   min(probe_ssl_earliest_cert_expiry{job="blackbox_mail_tls"})
                   < max(certmanager_certificate_expiration_timestamp_seconds{namespace="email-stalwart",name="mail-activescott-com"}) - 432000
-                for: 2h
+                for: 26h
                 labels:
                   severity: warning
                 annotations:

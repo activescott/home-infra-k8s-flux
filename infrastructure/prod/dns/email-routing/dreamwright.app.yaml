@@ -63,9 +63,11 @@ spec:
   aliases:
     # Keeps the Secret's default destination (scott@willeke.com), so no override here.
     - localPart: scott
-    # Public support address for the Slack app and the dreamwright.app /support page;
-    # forwards to the operator for now.
+    # Public support address for the Slack app and the dreamwright.app /support page.
+    # Reaches both Scott and Olya: forwards to the Google Group, since Cloudflare allows
+    # only one forward destination per rule. Same shape as `it` below.
     - localPart: support
+      destination: scottandolya@pingpoet.com
     # Overrides the Secret's default to Olya's own address.
     - localPart: olya
       destination: olya@pingpoet.com
