@@ -129,9 +129,12 @@ configuration to Scott.
 
 ## DebethMevRelayUnreachable
 
-More than half of a relay's registrations in the last hour got no HTTP response, held for 30
-minutes. That is usually because the relay's hostname no longer resolves or it is down.
-Commit-Boost counts those as status code 555. An occasional timeout is expected and harmless:
+No relay is healthy. A relay counts as healthy when debeth sent it registrations in the last hour
+and at most half of them got no HTTP response; the alert fires when that set is empty for 30
+minutes, which includes the case where no cb-pbs metrics arrive at all. One relay down while
+others work does not alert, because one working relay is enough for MEV. That is usually because
+the relays' hostnames no longer resolve or they are down, or cb-pbs itself is not running.
+Commit-Boost counts a failed request as status code 555. An occasional timeout is expected and harmless:
 Flashbots sometimes takes 2.5-5 s to answer a registration against Commit-Boost's 3 s budget,
 and Lodestar re-registers every epoch, so the alert ignores them.
 Do not expect a log line for each one: at info, cb-pbs logs `reached retry limit for validator
@@ -144,7 +147,8 @@ sum by (relay_id, endpoint) (increase(cb_pbs_relay_status_code_total{host="debet
 ```
 
 The alert counts `endpoint="register_validator"` only. 555s on `status` or `get_header` for the
-same relay too mean it is unreachable for everything, not only registrations. The fix is changing the relay list in eth-docker's
+same relay too mean it is unreachable for everything, not only registrations. A single dead relay
+(agnostic-relay.net, say) is worth pruning from the list even though it no longer pages. The fix is changing the relay list in eth-docker's
 `commit-boost/cb-config.toml` and `MEV_RELAYS` in `.env`, which is Scott's call.
 
 ## DebethMevRelayErrors
