@@ -2158,23 +2158,31 @@ spec:
               # that got no HTTP response, a DNS, TCP or timeout failure, as
               # http_status_code 555 (TIMEOUT_ERROR_CODE in commit-boost-client
               # v0.10.1). Registration runs once per epoch, about nine times an hour.
-              # The alert fires when more than half of a relay's registrations in the
-              # last hour got no response, held for 30 minutes. Occasional timeouts are
-              # expected (Flashbots sometimes takes 2.5-5 s against the 3 s budget) and
-              # harmless, since Lodestar re-registers every epoch.
+              # A relay is healthy when it received registrations in the last hour
+              # and at most half of them got no response. Debeth needs only one
+              # healthy relay to keep MEV, so the alert fires only when none is left,
+              # held for 30 minutes. One relay down while the others work is not an
+              # incident. Occasional timeouts are expected (Flashbots sometimes takes
+              # 2.5-5 s against the 3 s budget) and harmless, since Lodestar
+              # re-registers every epoch.
+              # The ratio is not divided directly: a relay with no 555 series has no
+              # numerator and would drop out, so the failing relays are subtracted
+              # from the relays that registered at all. "or vector(0)" makes an empty
+              # healthy set (or no cb-pbs metrics at all) compare as 0 and fire.
               # cb-pbs serves these only with CB_METRICS_PORT set, from the
               # custom.yml override in home-infra-private hosts/debeth.
               - alert: DebethMevRelayUnreachable
-                expr: 'sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h])) / sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator"}[1h])) > 0.5'
+                expr: '(count((sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator"}[1h])) > 0) unless on (relay_id) (sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h])) / sum by (relay_id) (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator"}[1h])) > 0.5)) or vector(0)) == 0'
                 for: 30m
                 labels:
                   severity: warning
                 annotations:
-                  summary: 'debeth cannot reach MEV relay {{ $labels.relay_id }}'
+                  summary: debeth cannot reach any MEV relay
                   description: >-
-                    More than half of the validator registrations to {{ $labels.relay_id }} in the
-                    last hour got no HTTP response, for 30 minutes running. Lodestar falls back to
-                    local blocks, so this costs MEV rewards, not proposals.
+                    No MEV relay is healthy: every relay either got no registrations from debeth
+                    in the last hour or had more than half of them go unanswered, for 30 minutes
+                    running. Lodestar falls back to local blocks, so this costs MEV rewards, not
+                    proposals. A single relay failing while others work does not alert.
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
                   repo: activescott/home-infra-private
               - alert: DebethMevRelayErrors
