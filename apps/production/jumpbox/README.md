@@ -36,7 +36,7 @@ Host debprime
 
 Host nas
   HostName 10.1.111.10
-  User scott
+  User olya
   ProxyJump nas1-jump
 ```
 
