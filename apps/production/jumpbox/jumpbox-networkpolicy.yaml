@@ -101,3 +101,14 @@ spec:
       ports:
         - port: 22
           protocol: TCP
+
+    # nas, the node this pod runs on, for ProxyJump. A pod reaching its own node's address
+    # needs nothing beyond this ipBlock: the 6443 rule above already relies on it for the same
+    # address, and ingress to a node is not subject to pod NetworkPolicy. It does need the
+    # node's own sshd to listen on 22 and its host firewall to accept the pod CIDR.
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.10/32
+      ports:
+        - port: 22
+          protocol: TCP
