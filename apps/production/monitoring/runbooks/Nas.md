@@ -94,8 +94,8 @@ output for it.
 ## NasTextfileStale
 
 A textfile has stopped being rewritten: over 5 minutes for `zpool.prom` (rewritten every
-minute), over 3 hours for the others. The `job_*.prom` files are excluded, since they change
-only when their job runs. Find the timer that writes the named file and check its last run and
+minute), over 3 hours for the others. The `job_*.prom` files and `backup_b2.prom` are excluded,
+since they change only when their job runs (NasBackupB2Stale covers `backup_b2.prom`). Find the timer that writes the named file and check its last run and
 status. With no `file` label, node-exporter reports a read error on the directory, usually a
 malformed `.prom` file or one with the wrong permissions.
 

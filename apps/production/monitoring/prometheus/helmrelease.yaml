@@ -2302,11 +2302,13 @@ spec:
               # zpool.prom is rewritten every minute; the other collectors
               # (smartmon, nvme, zfs-snapshots) every few minutes. job_*.prom files
               # change only when their job runs, daily or weekly, so they are left
-              # out: the job staleness rules above cover them.
+              # out: the job staleness rules above cover them. backup_b2.prom is
+              # written only when the weekly B2 sync runs and is left out for the
+              # same reason; NasBackupB2Stale covers its freshness.
               - alert: NasTextfileStale
                 expr: >-
                   (time() - max by (file) (node_textfile_mtime_seconds{node="nas",file=~"(.*/)?zpool[.]prom"}) > 300)
-                  or (time() - max by (file) (node_textfile_mtime_seconds{node="nas",file!~"(.*/)?(zpool|job_.+)[.]prom"}) > 3 * 3600)
+                  or (time() - max by (file) (node_textfile_mtime_seconds{node="nas",file!~"(.*/)?(zpool|job_.+|backup_b2)[.]prom"}) > 3 * 3600)
                   or (max by (node) (node_textfile_scrape_error{node="nas"}) == 1)
                 for: 15m
                 labels:
