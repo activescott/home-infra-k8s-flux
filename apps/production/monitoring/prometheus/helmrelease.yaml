@@ -2496,6 +2496,13 @@ spec:
 
     prometheus-node-exporter:
       enabled: true
+      # Serve the .prom files the nas host's collectors write (job wrapper,
+      # zpool, smartmon, nvme). The chart mounts the host's / at /host/root
+      # (hostRootFsMount, on by default), so this is the host path
+      # /var/lib/prometheus/node-exporter. Nodes without that directory just
+      # report no textfile metrics.
+      extraArgs:
+        - --collector.textfile.directory=/host/root/var/lib/prometheus/node-exporter
 
     prometheus-pushgateway:
       enabled: false
