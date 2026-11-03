@@ -14,6 +14,7 @@ resources:
   - zones/datamanifest.com.yaml
   - zones/dreamwright.app.yaml
   - zones/fernfiles.com.yaml
+  - zones/getdreamwright.ai.yaml
   - zones/gpupoet.com.yaml
   - zones/pingpoet.com.yaml
   - zones/productpoet.com.yaml
