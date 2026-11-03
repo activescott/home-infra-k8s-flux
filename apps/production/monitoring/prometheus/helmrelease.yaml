@@ -2198,6 +2198,131 @@ spec:
                   runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayerrors
                   repo: activescott/home-infra-private
 
+          # Data protection on the nas host itself (activescott/home-infra-private#36).
+          # The host's timers write node-exporter textfiles under
+          # /var/lib/prometheus/node-exporter, which the cluster node-exporter
+          # serves with --collector.textfile.directory. The host code, including
+          # the nas1-run-job wrapper behind every nas1_job_* series, is
+          # provision-debian.sh in home-infra-private.
+          #
+          # The textfile label job="replicate" survives the scrape because the
+          # node-exporter endpoint is scraped with honor_labels. Rules take
+          # max by their identifying labels so a node-exporter pod restart,
+          # which briefly leaves two series per file, does not fire twice.
+          - name: nas
+            rules:
+              - alert: NasJobFailed
+                expr: 'max by (job) (nas1_job_last_exit_code) != 0'
+                for: 0m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'nas job {{ $labels.job }} exited {{ $value }}'
+                  description: >-
+                    The last run of the nas host's {{ $labels.job }} job, run by nas1-run-job,
+                    exited non-zero. The job's output is in the host journal, prefixed with
+                    [{{ $labels.job }}].
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nasjobfailed
+                  repo: activescott/home-infra-private
+              # The B2 sync runs weekly (Mon 00:00 PT), so 8 days is one missed run
+              # plus a day.
+              - alert: NasBackupB2Stale
+                expr: 'time() - max by (job) (nas1_job_last_success_timestamp_seconds{job="backup-b2"}) > 8 * 86400'
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'nas B2 backup last succeeded {{ $value | humanizeDuration }} ago'
+                  description: >-
+                    The weekly rclone sync to Backblaze B2 has not succeeded in over 8 days, so
+                    the offsite copy is at least one run behind.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nasbackupb2stale
+                  repo: activescott/home-infra-private
+              # Replication runs daily at 03:30 PT.
+              - alert: NasReplicationStale
+                expr: 'time() - max by (job) (nas1_job_last_success_timestamp_seconds{job="replicate"}) > 26 * 3600'
+                for: 30m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'nas replication last succeeded {{ $value | humanizeDuration }} ago'
+                  description: >-
+                    The daily syncoid replication from thedatapool to backupspool has not
+                    succeeded in over 26 hours.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nasreplicationstale
+                  repo: activescott/home-infra-private
+              # The staleness rules above compare against a series. If the series
+              # is gone (textfile deleted, collector broken, scrape label changed)
+              # they say nothing, so this is their dead-man. backup-b2 joins once
+              # its first run (2026-11-09) has written job_backup-b2.prom.
+              - alert: NasJobMetricsAbsent
+                expr: 'absent(nas1_job_last_run_timestamp_seconds{job="replicate"})'
+                for: 1h
+                labels:
+                  severity: warning
+                annotations:
+                  summary: No nas1_job metrics for the replicate job
+                  description: >-
+                    Prometheus has no nas1_job_last_run_timestamp_seconds series for the
+                    replicate job for an hour, so NasJobFailed and NasReplicationStale are
+                    blind for that job.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nasjobmetricsabsent
+                  repo: activescott/home-infra-private
+              # sanoid takes daily snapshots; zfs_snapshot_latest_time_seconds comes
+              # from Debian's zfs-snapshots collector. volume is the dataset path
+              # under the pool, with a leading slash.
+              - alert: NasSnapshotStale
+                expr: 'time() - max by (pool, volume) (zfs_snapshot_latest_time_seconds{pool="thedatapool",volume=~"/(app-data|audio|homes|shared-files|video|photos|job-accelerator-keys)"}) > 26 * 3600'
+                for: 30m
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Newest snapshot of thedatapool{{ $labels.volume }} is {{ $value | humanizeDuration }} old'
+                  description: >-
+                    sanoid's daily snapshot of thedatapool{{ $labels.volume }} is over 26 hours
+                    old, so a deletion or overwrite since then has no restore point.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nassnapshotstale
+                  repo: activescott/home-infra-private
+              # Replication at 03:30 PT copies the snapshot sanoid took at 16:00 PT
+              # the day before, so a healthy replica's newest snapshot is between
+              # 11.5 h and 35.5 h old. 36 h fires about two hours after the first
+              # missed run; NasReplicationStale keeps 26 h on the job itself.
+              - alert: NasReplicaSnapshotStale
+                expr: 'time() - max by (pool, volume) (zfs_snapshot_latest_time_seconds{pool="backupspool",volume=~"/replication/.+"}) > 36 * 3600'
+                for: 1h
+                labels:
+                  severity: critical
+                annotations:
+                  summary: 'Newest snapshot of backupspool{{ $labels.volume }} is {{ $value | humanizeDuration }} old'
+                  description: >-
+                    The replica backupspool{{ $labels.volume }} has no snapshot from the last
+                    36 hours, so replication has stopped bringing it up to date.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nasreplicasnapshotstale
+                  repo: activescott/home-infra-private
+              # zpool.prom is rewritten every minute; the other collectors
+              # (smartmon, nvme, zfs-snapshots) every few minutes. job_*.prom files
+              # change only when their job runs, daily or weekly, so they are left
+              # out: the job staleness rules above cover them. backup_b2.prom is
+              # written only when the weekly B2 sync runs and is left out for the
+              # same reason; NasBackupB2Stale covers its freshness.
+              - alert: NasTextfileStale
+                expr: >-
+                  (time() - max by (file) (node_textfile_mtime_seconds{node="nas",file=~"(.*/)?zpool[.]prom"}) > 300)
+                  or (time() - max by (file) (node_textfile_mtime_seconds{node="nas",file!~"(.*/)?(zpool|job_.+|backup_b2)[.]prom"}) > 3 * 3600)
+                  or (max by (node) (node_textfile_scrape_error{node="nas"}) == 1)
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'nas textfile {{ with $labels.file }}{{ . }} is stale{{ else }}collector reports a read error{{ end }}'
+                  description: >-
+                    A node-exporter textfile on the nas has stopped being rewritten (over 5
+                    minutes for zpool.prom, over 3 hours for the rest), or node-exporter could
+                    not read a file in the directory. The alerts fed by that file are reading
+                    old values.
+                  runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/Nas.md#nastextfilestale
+                  repo: activescott/home-infra-private
+
     # --- Extra Scrape Configs ---
     extraScrapeConfigs: |
       # WAN reachability/latency probed from inside the LAN via
