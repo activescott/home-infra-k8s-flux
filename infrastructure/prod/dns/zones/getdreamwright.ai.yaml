@@ -1,0 +1,18 @@
+# getdreamwright.ai is the company's domain: email on a new Google Workspace and the
+# marketing site. The app stays on dreamwright.app (see dreamwright.app.yaml).
+# Registered at the Cloudflare Registrar, which requires Cloudflare DNS, so the zone
+# already exists; this file adopts it into git with no records yet.
+#
+# The Google Workspace MX, SPF, DKIM and DMARC records and the verification TXT come in
+# later PRs, as the signup reaches each step (ping-poet/dreamwright#1886).
+apiVersion: dns.activescott.com/v1alpha1
+kind: DNSZone
+metadata:
+  name: getdreamwright-ai
+  namespace: cloudflare
+spec:
+  zoneId: 4c21fdefd750946aa765fa3e48c18254
+  defaults:
+    ttl: 300
+    proxied: false
+  records: []
