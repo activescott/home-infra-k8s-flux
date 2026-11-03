@@ -87,8 +87,27 @@ spec:
       spec:
         containers:
           - name: runner
-            image: ghcr.io/actions/actions-runner:2.337.0
-            command: ["/home/runner/run.sh"]
+            image: ghcr.io/actions/actions-runner:2.338.2
+            # Node 25+ Linux binaries need libatomic.so.1, which the runner
+            # image (dotnet runtime-deps:8.0-noble base) does not ship, so
+            # setup-node's node 26 exits 127 (activescott/home-infra-k8s-flux#485).
+            # Install it at pod start. Fail soft: if apt is unreachable the
+            # runner still registers and only node 25+ jobs fail, with the
+            # warning below in Loki. Delete this wrapper and go back to
+            # `command: ["/home/runner/run.sh"]` once the runner image ships
+            # libatomic1 (actions/runner#4640).
+            command:
+              - /bin/bash
+              - -c
+              - |
+                if ! ldconfig -p | grep -q 'libatomic\.so\.1'; then
+                  if sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libatomic1; then
+                    echo "libatomic1 installed for node 25+"
+                  else
+                    echo "WARNING: libatomic1 install failed; node 25+ will exit 127 on this runner" >&2
+                  fi
+                fi
+                exec /home/runner/run.sh
             resources:
               requests:
                 cpu: "500m"
