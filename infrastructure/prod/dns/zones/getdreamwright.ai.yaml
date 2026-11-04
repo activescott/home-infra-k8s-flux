@@ -21,8 +21,8 @@ spec:
       name: getdreamwright.ai
       type: TXT
       content: google-site-verification=DDCxI8aYTepIAEkqNkX0jFyvLOoQaiNZNBWP8IHzcSs
-    # Google Workspace mail (ping-poet/dreamwright#1886). Google's current single MX
-    # host; DKIM and DMARC follow once DKIM is generated in the admin console.
+    # Google Workspace mail (ping-poet/dreamwright#1886): Google's current single MX
+    # host, SPF, the DKIM key generated in the Workspace admin console, and DMARC.
     - key: apex-mx-google
       name: getdreamwright.ai
       type: MX
@@ -32,3 +32,11 @@ spec:
       name: getdreamwright.ai
       type: TXT
       content: v=spf1 include:_spf.google.com ~all
+    - key: google-dkim-txt
+      name: google._domainkey.getdreamwright.ai
+      type: TXT
+      content: v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA26LphIdNC0ud88fdhmHkMKmf9At1AP235ZD6VNzxz0HyZL6DeQu98KS6i8kdpEORUrMBij8P+1wvedXhtTdBt8HKqqSem+kQyJur+HsFqrScMARchQJooSl0wyzH1xvXxDhizbOYmhwzji6/w/iWfvL6FwauPR+JQCAQUIJ1hq6v45wAtC9Oa1Y1+uS58GqZQZB3BFXBTr05EbR4aJm/Vxe73pvccLQKKKVU7qOlniNFaEmDKdO+EJr/B186Putd6YrvR/z9+KH38+fEUvEUbJ53jWOZrWf5zJAQgRaoWhnIC/APjIvWnUBKTb8uN9WblON/NeLj9Nsm0rSiOnSc1QIDAQAB
+    - key: dmarc-txt
+      name: _dmarc.getdreamwright.ai
+      type: TXT
+      content: v=DMARC1; p=quarantine
