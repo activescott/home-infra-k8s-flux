@@ -15,4 +15,9 @@ spec:
   defaults:
     ttl: 300
     proxied: false
-  records: []
+  records:
+    # Google Workspace domain ownership check (ping-poet/dreamwright#1886).
+    - key: apex-google-site-verification-txt
+      name: getdreamwright.ai
+      type: TXT
+      content: google-site-verification=DDCxI8aYTepIAEkqNkX0jFyvLOoQaiNZNBWP8IHzcSs
