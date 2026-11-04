@@ -21,3 +21,14 @@ spec:
       name: getdreamwright.ai
       type: TXT
       content: google-site-verification=DDCxI8aYTepIAEkqNkX0jFyvLOoQaiNZNBWP8IHzcSs
+    # Google Workspace mail (ping-poet/dreamwright#1886). Google's current single MX
+    # host; DKIM and DMARC follow once DKIM is generated in the admin console.
+    - key: apex-mx-google
+      name: getdreamwright.ai
+      type: MX
+      priority: 1
+      content: smtp.google.com
+    - key: apex-spf-txt
+      name: getdreamwright.ai
+      type: TXT
+      content: v=spf1 include:_spf.google.com ~all
