@@ -21,7 +21,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: redis
-          image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+          image: redis:7.4.11-alpine@sha256:d9436322172a5b482c187bf1f363d3c4fea086fcca6b9c8a94de8f0f39ed3193
           args:
             - redis-server
             - --save
