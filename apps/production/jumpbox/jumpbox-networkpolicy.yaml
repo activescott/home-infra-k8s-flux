@@ -86,6 +86,20 @@ spec:
         - port: 3000
           protocol: TCP
 
+    # gpupoet's Postgres, for `ssh -L` to db.gpupoet-prod.svc:5432 (activescott/home-infra-k8s-flux#490).
+    # The db pod and port only; logging in still needs the olya_ro password. The other half is
+    # db-networkpolicy.yaml in ../gpupoet.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gpupoet-prod
+          podSelector:
+            matchLabels:
+              app: db
+      ports:
+        - port: 5432
+          protocol: TCP
+
     # debeth, for ProxyJump. Same address and port as olya-0's route through her egress proxy.
     - to:
         - ipBlock:

@@ -1,6 +1,11 @@
-# Only the app and the nightly backup may reach Postgres. Without this
-# the db Service answers anyone in the cluster who has the password
-# (activescott/home-infra-k8s-flux#178).
+# Only the app, the nightly backup and the jump box may reach Postgres.
+# Without this the db Service answers anyone in the cluster who has the
+# password (activescott/home-infra-k8s-flux#178).
+#
+# The jump box is how Olya, on the Dreamwright agents host, reaches the db
+# as olya_ro, a read-only role, for the monthly market report: an `ssh -L`
+# forward through nas1-jump (activescott/home-infra-k8s-flux#490). The other
+# half is the egress rule in ../jumpbox/jumpbox-networkpolicy.yaml.
 #
 # Nothing else connects over the network. ebay-revalidation,
 # amazon-revalidation and cleanup-listings are curl images that POST to
@@ -29,6 +34,12 @@ spec:
         - podSelector:
             matchLabels:
               app: db-backup
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: jumpbox
+          podSelector:
+            matchLabels:
+              app: jumpbox
       ports:
         - port: 5432
           protocol: TCP
