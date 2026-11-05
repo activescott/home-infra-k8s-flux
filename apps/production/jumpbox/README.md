@@ -1,6 +1,6 @@
 # jumpbox
 
-An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, debeth, debprime and nas over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
+An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, gpupoet's Postgres, debeth, debprime and nas over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
 
 Loki and Prometheus are not reachable directly, though olya-0 reaches both. Neither has auth: Prometheus runs with `web.enable-lifecycle` and the remote-write receiver, so a key holder could stop it or write fake series, and Loki's delete API could erase this box's own login records. Queries go through Grafana's datasources instead, which needs a login.
 
@@ -63,7 +63,14 @@ ssh -N -L 3000:grafana.monitoring.svc:80 nas1-jump
 
 Olya authenticates to Grafana with a token for a Grafana service account with the Viewer role, which is enough to run Loki and Prometheus queries through the datasource proxy. Git cannot mint that token, so Scott creates it by hand: in Grafana, Administration > Users and access > Service accounts, add one named `olya-jumpbox` with role Viewer, add a token, and put it on the agents host.
 
-The target name must be written exactly as above, since that is what `PermitOpen` lists. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [jumpbox-networkpolicy.yaml](jumpbox-networkpolicy.yaml).
+gpupoet's Postgres goes through a local forward too, logging in as the read-only `olya_ro` role (activescott/home-infra-k8s-flux#490). The password is set on the agents host by hand as `PGPASSWORD`; it is not in this repo:
+
+```bash
+ssh -N -L 15432:db.gpupoet-prod.svc:5432 nas1-jump
+PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=gpu_agent PGUSER=olya_ro psql
+```
+
+The target names must be written exactly as above, since that is what `PermitOpen` lists. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [jumpbox-networkpolicy.yaml](jumpbox-networkpolicy.yaml).
 
 ## Changing the key
 
