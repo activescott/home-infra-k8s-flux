@@ -20,8 +20,8 @@ spec:
     name: default
   forProvider:
     zoneId: 4c21fdefd750946aa765fa3e48c18254
-    name: getdreamwright.ai redirects
-    description: Redirect getdreamwright.ai and www to dreamwright.app
+    # Must stay `default` to match the zone's entrypoint ruleset; changing it forces a replace.
+    name: default
     kind: zone
     phase: http_request_dynamic_redirect
     rules:
