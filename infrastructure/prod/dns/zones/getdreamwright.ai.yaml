@@ -40,3 +40,36 @@ spec:
       name: _dmarc.getdreamwright.ai
       type: TXT
       content: v=DMARC1; p=quarantine
+    # Google Workspace custom service URLs (ping-poet/dreamwright#1886).
+    - key: calendar-google-cname
+      name: calendar.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    - key: drive-google-cname
+      name: drive.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    - key: mail-google-cname
+      name: mail.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    - key: groups-google-cname
+      name: groups.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    # Redirect to https://dreamwright.app (ping-poet/dreamwright#2149). Cloudflare only
+    # runs redirect rules on proxied traffic, so the apex and www are proxied records
+    # pointing at 192.0.2.1, a documentation-range address that is never contacted: the
+    # redirect in ../redirects/getdreamwright.ai.yaml answers at the edge.
+    - key: apex-redirect-a
+      name: getdreamwright.ai
+      type: A
+      ttl: 1
+      proxied: true
+      content: 192.0.2.1
+    - key: www-redirect-a
+      name: www.getdreamwright.ai
+      type: A
+      ttl: 1
+      proxied: true
+      content: 192.0.2.1

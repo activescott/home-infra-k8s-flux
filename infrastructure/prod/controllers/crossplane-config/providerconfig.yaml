@@ -1,7 +1,8 @@
 # The default config, used by everything except the Email Routing resources: DNS records, zone
-# settings, and the DNSZone composites. Its token carries DNS: Edit and Zone: Read, and after
-# the 2026-08-28 rotation it no longer carries Email Routing Rules -- the `email-routing` config
-# below owns that surface, on a separate token and therefore a separate rate-limit budget.
+# settings, redirect rulesets, and the DNSZone composites. Its token covers all zones with DNS:
+# Edit, Zone: Read, Zone Settings: Edit, Single Redirect: Edit, and Email Routing Rules: Edit and
+# Read. The `email-routing` config below is the one used for Email Routing resources, on a
+# separate token and therefore a separate rate-limit budget.
 apiVersion: cloudflare.m.cloudflare.com/v1beta1
 kind: ProviderConfig
 metadata:
