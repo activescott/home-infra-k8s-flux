@@ -9,6 +9,10 @@ apiVersion: firewall.cloudflare.m.cloudflare.com/v1alpha1
 kind: Ruleset
 metadata:
   name: getdreamwright-ai-redirects
+  # The entrypoint ruleset was created in the dashboard and imported here, because the
+  # provider fork can't create a Ruleset with no external name (see #507).
+  annotations:
+    crossplane.io/external-name: 36e89c95ca8844d4b235e312ec2ea5ae
   namespace: cloudflare
 spec:
   providerConfigRef:
