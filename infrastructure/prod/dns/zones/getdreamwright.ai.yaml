@@ -40,3 +40,20 @@ spec:
       name: _dmarc.getdreamwright.ai
       type: TXT
       content: v=DMARC1; p=quarantine
+    # Google Workspace custom service URLs (ping-poet/dreamwright#1886).
+    - key: calendar-google-cname
+      name: calendar.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    - key: drive-google-cname
+      name: drive.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    - key: mail-google-cname
+      name: mail.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
+    - key: groups-google-cname
+      name: groups.getdreamwright.ai
+      type: CNAME
+      content: ghs.googlehosted.com
