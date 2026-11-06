@@ -1,0 +1,34 @@
+# Single Redirect for getdreamwright.ai (ping-poet/dreamwright#2149): the apex and www
+# answer 301 at Cloudflare's edge, sending every path to the same path on
+# https://dreamwright.app with the query string kept. It needs the proxied A records in
+# ../zones/getdreamwright.ai.yaml, since redirect rules only run on proxied traffic.
+#
+# A zone has one ruleset per phase, so this one resource holds all redirect rules for the
+# zone; add further rules to `rules` rather than a second Ruleset.
+apiVersion: firewall.cloudflare.m.cloudflare.com/v1alpha1
+kind: Ruleset
+metadata:
+  name: getdreamwright-ai-redirects
+  namespace: cloudflare
+spec:
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+  forProvider:
+    zoneId: 4c21fdefd750946aa765fa3e48c18254
+    name: getdreamwright.ai redirects
+    description: Redirect getdreamwright.ai and www to dreamwright.app
+    kind: zone
+    phase: http_request_dynamic_redirect
+    rules:
+      - ref: getdreamwright-to-dreamwright-app
+        description: 301 to https://dreamwright.app, keeping path and query
+        action: redirect
+        enabled: true
+        expression: (http.host eq "getdreamwright.ai") or (http.host eq "www.getdreamwright.ai")
+        actionParameters:
+          fromValue:
+            statusCode: 301
+            preserveQueryString: true
+            targetUrl:
+              expression: concat("https://dreamwright.app", http.request.uri.path)

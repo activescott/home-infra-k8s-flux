@@ -20,6 +20,8 @@ resources:
   - zones/productpoet.com.yaml
   - zones/ramblefeed.com.yaml
   - zones/tinkerbellbot.com.yaml
+  # Zone redirect rules (Cloudflare Single Redirects), one file per zone.
+  - redirects/getdreamwright.ai.yaml
   # Email Routing rules, one file per zone. Kept out of zones/ because these are ordinary
   # managed resources, not records fanned out through the DNSZone composition.
   #
