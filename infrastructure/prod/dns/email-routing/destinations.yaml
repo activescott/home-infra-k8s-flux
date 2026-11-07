@@ -53,3 +53,21 @@ spec:
   forProvider:
     accountId: c88dfb5cc7256dd4a215040b01182eaa
     email: scottandolya@pingpoet.com
+
+---
+# Scott's getdreamwright.ai address, the destination of dreamwright.app's `scott` alias.
+# Like the others, it forwards nothing until the verification link Cloudflare mails to it is
+# clicked.
+apiVersion: email.cloudflare.m.cloudflare.com/v1alpha1
+kind: EmailRoutingAddress
+metadata:
+  name: scott-getdreamwright-ai
+  namespace: cloudflare
+spec:
+  managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+  providerConfigRef:
+    kind: ProviderConfig
+    name: email-routing
+  forProvider:
+    accountId: c88dfb5cc7256dd4a215040b01182eaa
+    email: scott@getdreamwright.ai
