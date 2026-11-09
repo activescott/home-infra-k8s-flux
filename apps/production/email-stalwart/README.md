@@ -455,7 +455,7 @@ To generate real end-to-end traffic (relay → Cloudflare → Google MX → dual
 ```
 
 Use `--send-only` — the default mode deliberately fails an authentication to prove the relay's
-access controls hold, which trips `EmailRelayAuthFailures`.
+access controls hold, which fires `EmailRelayAuthFailures`.
 
 ## Gotchas
 

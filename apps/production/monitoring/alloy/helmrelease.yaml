@@ -386,8 +386,9 @@ spec:
             // above stay flat — indistinguishable from a quiet day at this volume.
             // Note this counts log LINES, not attempts: postfix walks CRAM-MD5, PLAIN
             // and LOGIN, so a single rejected login increments it three times. The
-            // alert's threshold accounts for that, and for send-test-email.sh
-            // deliberately failing one auth per run.
+            // alert (EmailRelayAuthFailures) fires on any increase, so that
+            // multiplier does not matter; send-test-email.sh's deliberate bad-password
+            // check fires it too, which is why --send-only exists.
             stage.match {
               selector = "{namespace=\"email-relay\"} |= \"SASL\" |= \"authentication failed\""
 
