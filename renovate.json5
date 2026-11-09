@@ -1,9 +1,16 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  extends: ["config:recommended"],
+  // The shared preset for every repo on ping-poet/dreamwright#748. It brings
+  // config:recommended, the PR limits and a weekly non-major group. The
+  // overrides below keep this cluster's stricter guardrails (AGENTS.md
+  // "Dependency update decision criteria"): 7 days instead of the preset's
+  // 1 day, no automerge, opt-in majors.
+  extends: ["github>ping-poet/.github"],
 
   // Supply-chain guardrail: never propose a release younger than 7 days
   // (compromised releases are usually detected and yanked within days).
+  // Security fixes get the preset's 1 day (vulnerabilityAlerts), where
+  // before they had no minimum at all.
   minimumReleaseAge: "7 days",
 
   // Flux and kubernetes managers have no way to know which YAML files are
@@ -36,6 +43,13 @@
   ],
 
   packageRules: [
+    {
+      // Merge one at a time and watch Flux reconcile (AGENTS.md tier 1), so
+      // nothing here auto-merges, including the preset's weekly group.
+      description: "No automerge on the cluster",
+      matchPackageNames: ["*"],
+      automerge: false,
+    },
     {
       // Supply-chain guardrail: pin container images by digest (tag stays
       // visible: tag@sha256:...); a re-pointed tag then shows up as a
