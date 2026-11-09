@@ -150,6 +150,15 @@
       enabled: false,
     },
     {
+      // boky/postfix 5.2.0 upgraded SASL (0.25) and broke every SASL login
+      // against this relay's sasldb-based auth (#514). Hold below 5.2.0
+      // until the sasldb incompatibility is understood.
+      description: "Hold boky/postfix below 5.2.0 pending #514",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["boky/postfix"],
+      allowedVersions: "<5.2.0",
+    },
+    {
       // Flux image-update automation owns these images (see the
       // apps/production/*/image-scanning*/ kustomizations). Exactly one bot
       // per image: Renovate must not manage them or the two bots fight over
