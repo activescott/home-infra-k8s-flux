@@ -5,7 +5,7 @@
   // overrides below keep this cluster's stricter guardrails (AGENTS.md
   // "Dependency update decision criteria"): no automerge and opt-in majors.
   // The release age is the preset's 3 days, set here too so it is visible.
-  extends: ["github>ping-poet/.github"],
+  extends: ["github>activescott/.github"],
 
   // Supply-chain guardrail: never propose a release younger than 3 days
   // (compromised releases are usually detected and yanked within days).
