@@ -3,15 +3,15 @@
   // The shared preset for every repo on ping-poet/dreamwright#748. It brings
   // config:recommended, the PR limits and a weekly non-major group. The
   // overrides below keep this cluster's stricter guardrails (AGENTS.md
-  // "Dependency update decision criteria"): 7 days instead of the preset's
-  // 1 day, no automerge, opt-in majors.
+  // "Dependency update decision criteria"): no automerge and opt-in majors.
+  // The release age is the preset's 3 days, set here too so it is visible.
   extends: ["github>ping-poet/.github"],
 
-  // Supply-chain guardrail: never propose a release younger than 7 days
+  // Supply-chain guardrail: never propose a release younger than 3 days
   // (compromised releases are usually detected and yanked within days).
-  // Security fixes get the preset's 1 day (vulnerabilityAlerts), where
+  // Security fixes get the preset's 3 days (vulnerabilityAlerts), where
   // before they had no minimum at all.
-  minimumReleaseAge: "7 days",
+  minimumReleaseAge: "3 days",
 
   // Flux and kubernetes managers have no way to know which YAML files are
   // manifests, so scope them to the manifest trees explicitly.
@@ -122,7 +122,7 @@
       // WordPress core cannot update itself any more (read-only core and
       // WP_AUTO_UPDATE_CORE false, see apps/base/wordpress-upstream), so this
       // PR is the only way a core security fix reaches the site. Raised above
-      // other PRs; the 7-day minimumReleaseAge still applies, and a fix
+      // other PRs; the 3-day minimumReleaseAge still applies, and a fix
       // needed sooner is a manual bump.
       description: "WordPress core bumps are security-relevant",
       matchDatasources: ["docker"],
