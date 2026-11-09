@@ -120,7 +120,7 @@ automation") in `renovate.json5` in the same change. When you remove an
 automation, remove the image from that list. Skipping this makes Renovate
 and Flux fight over the tag.
 
-Renovate guardrails (`minimumReleaseAge: 7 days`, digest pinning) are
+Renovate guardrails (`minimumReleaseAge: 3 days`, digest pinning) are
 deliberate supply-chain controls — do not relax them to make an update land
 sooner. See `docs/specs/renovate-setup/plan.md`.
 
