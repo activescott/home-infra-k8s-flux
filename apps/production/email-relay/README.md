@@ -77,7 +77,7 @@ inside the pod and reads the SASL passwords from that container's own environmen
 credential reaches your shell or its history.
 
 ```bash
-./send-test-email.sh you@example.com                   # as noreply@fernfiles.com
+./send-test-email.sh you@example.com                   # as noreply@fernfiles.com; fires EmailRelayAuthFailures
 ./send-test-email.sh you@example.com tinkerbell        # or ramblefeed
 ./send-test-email.sh --send-only you@example.com       # one message, no refusals
 ```
