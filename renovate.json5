@@ -164,13 +164,14 @@
       enabled: false,
     },
     {
-      // boky/postfix 5.2.0 upgraded SASL (0.25) and broke every SASL login
-      // against this relay's sasldb-based auth (#514). Hold below 5.2.0
-      // until the sasldb incompatibility is understood.
-      description: "Hold boky/postfix below 5.2.0 pending #514",
+      // boky/postfix 5.2.0 shipped Debian's stock master.cf instead of its own,
+      // so smtpd ran chrooted, could not read /etc/sasldb2, and every SASL login
+      // failed (#514, #519). 5.2.1 restores the file (bokysan/docker-postfix#297).
+      // Exclude only 5.2.0 so nothing ever proposes it again.
+      description: "Never propose boky/postfix 5.2.0 (broken SASL, #519)",
       matchDatasources: ["docker"],
       matchPackageNames: ["boky/postfix"],
-      allowedVersions: "<5.2.0",
+      allowedVersions: "!/^v?5\\.2\\.0$/",
     },
     {
       // Flux image-update automation owns these images (see the
