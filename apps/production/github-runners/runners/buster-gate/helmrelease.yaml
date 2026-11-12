@@ -6,8 +6,8 @@
 # What the job gets is Buster's SSH key and nothing else: no Docker, no ServiceAccount token,
 # no sudo, and networkpolicy.yaml lets it reach only Buster on 22 and public addresses on 443
 # (GitHub). It cannot reach the Proxmox API on debprime, so a failed rollback needs a person.
-# job-started.sh fails any job that is not a push of a `v*` tag, so a PR that names this
-# runner does not get the key.
+# job-started.sh kills the runner's worker for any job that is not a push of a `v*` tag, so a
+# PR that names this runner runs none of its steps, `if: always()` ones included.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
