@@ -1,0 +1,10 @@
+Host buster
+  HostName 10.1.111.34
+  User debian
+  IdentityFile /etc/buster-gate/id_ed25519
+  IdentitiesOnly yes
+  UserKnownHostsFile /etc/buster-gate/known_hosts
+  StrictHostKeyChecking yes
+  BatchMode yes
+  ConnectTimeout 15
+  ServerAliveInterval 30

@@ -1,0 +1,139 @@
+# The Buster release gate (ping-poet/dreamwright#2486, requirement RC41 in dreamwright's
+# docs/requirements/release-channels.md). A workflow on a `v*` tag in ping-poet/dreamwright
+# runs here with `runs-on: buster-gate`, SSHes to Buster (VM 105, 10.1.111.34) as `debian`,
+# upgrades him to the candidate and rolls him back.
+#
+# What the job gets is Buster's SSH key and nothing else: no Docker, no ServiceAccount token,
+# no sudo, and networkpolicy.yaml lets it reach only Buster on 22 and public addresses on 443
+# (GitHub). It cannot reach the Proxmox API on debprime, so a failed rollback needs a person.
+# job-started.sh fails any job that is not a push of a `v*` tag, so a PR that names this
+# runner does not get the key.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: buster-gate-runners
+  namespace: arc-runners
+spec:
+  interval: 1h
+  dependsOn:
+    - name: arc-controller
+      namespace: arc-systems
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: "0.14.2"
+      sourceRef:
+        kind: HelmRepository
+        name: actions-runner-controller
+        namespace: arc-systems
+      interval: 24h
+  values:
+    # Registered on the one repo, not the org, so no other ping-poet repo can use it.
+    githubConfigUrl: https://github.com/ping-poet/dreamwright
+    githubConfigSecret: buster-gate-github-token
+    # The scale set's name is the `runs-on:` label.
+    runnerScaleSetName: buster-gate
+    # No idle runner, so the key is mounted only while a gate runs. One at a time, because
+    # there is one Buster and two gates upgrading him at once would each see the other's
+    # changes.
+    minRunners: 0
+    maxRunners: 1
+    listenerTemplate:
+      metadata:
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
+          prometheus.io/path: "/metrics"
+      spec:
+        containers:
+          - name: listener
+    listenerMetrics:
+      counters:
+        gha_started_jobs_total:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+        gha_completed_jobs_total:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+      gauges:
+        gha_assigned_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_running_jobs:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_registered_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_busy_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_min_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_max_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_desired_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+        gha_idle_runners:
+          labels: ["name", "namespace", "repository", "organization", "enterprise"]
+      histograms:
+        gha_job_startup_duration_seconds:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+        gha_job_execution_duration_seconds:
+          labels: ["repository", "organization", "enterprise", "job_name", "event_name", "job_result", "job_workflow_ref", "job_workflow_name", "job_workflow_target"]
+    # containerMode unset and no dind: the gate only runs ssh, which the runner image has.
+    template:
+      spec:
+        automountServiceAccountToken: false
+        securityContext:
+          # The runner user's group, so it can read the 0440 key below. ssh accepts it
+          # because the file is owned by root, not by the user running ssh.
+          fsGroup: 1001
+        containers:
+          - name: runner
+            image: ghcr.io/actions/actions-runner:2.338.2
+            command: ["/home/runner/run.sh"]
+            env:
+              - name: ACTIONS_RUNNER_HOOK_JOB_STARTED
+                value: /etc/buster-gate/job-started.sh
+            securityContext:
+              # The image gives `runner` passwordless sudo; this turns it off.
+              allowPrivilegeEscalation: false
+              runAsNonRoot: true
+              runAsUser: 1001
+              capabilities:
+                drop: ["ALL"]
+            # The job waits on Buster for most of its run (RC7 watches him for 30 minutes),
+            # so it needs little.
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "256Mi"
+              limits:
+                cpu: "1"
+                memory: "1Gi"
+            volumeMounts:
+              - name: work
+                mountPath: /home/runner/_work
+              - name: buster-gate
+                mountPath: /etc/buster-gate
+                readOnly: true
+        volumes:
+          - name: work
+            emptyDir: {}
+          # The workflow runs `ssh -F /etc/buster-gate/ssh_config buster ...`.
+          - name: buster-gate
+            projected:
+              sources:
+                - secret:
+                    name: buster-gate-ssh-key
+                    items:
+                      - key: id_ed25519
+                        path: id_ed25519
+                        mode: 0440
+                - configMap:
+                    name: buster-gate
+                    items:
+                      - key: ssh_config
+                        path: ssh_config
+                        mode: 0444
+                      - key: known_hosts
+                        path: known_hosts
+                        mode: 0444
+                      - key: job-started.sh
+                        path: job-started.sh
+                        mode: 0555
