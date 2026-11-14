@@ -1,0 +1,48 @@
+# The buster-gate runner pod reaches Buster's sshd, DNS, and public addresses on 443 for
+# GitHub (its API, the job broker, action downloads and the log and artifact blob stores, whose
+# addresses are not a fixed list). Every private range is refused, which keeps out the Proxmox
+# API on debprime (10.1.111.15), the rest of the LAN, the node and the cluster. Nothing
+# connects in.
+#
+# Only this scale set's pods are selected; the other runners in arc-runners are unchanged.
+# A destination missing from here fails as a CONNECTION TIMEOUT with nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: buster-gate
+spec:
+  podSelector:
+    matchLabels:
+      # Set by ARC from the scale set's name, on every runner pod it creates.
+      actions.github.com/scale-set-name: buster-gate
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.1.111.34/32 # dw-buster, VM 105 on debprime
+      ports:
+        - port: 22
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8
+      ports:
+        - port: 443
+          protocol: TCP

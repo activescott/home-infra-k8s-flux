@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./helmrelease.yaml
+  - ./networkpolicy.yaml
+
+namespace: arc-runners
+
+# The Helm chart references these by name string, with no resource for kustomize to follow,
+# so the hash suffix would break the reference. Runner pods are ephemeral, so each job mounts
+# whatever is current.
+secretGenerator:
+  # Registers the runner on ping-poet/dreamwright: a fine-grained PAT on that repo only, with
+  # Administration read and write. Key: github_token.
+  - name: buster-gate-github-token
+    envs:
+      - .env.secret.github-token.encrypted
+    options:
+      disableNameSuffixHash: true
+  # The private half of Buster's key for this runner, an unencrypted OpenSSH ed25519 key.
+  # Its public half is in debian@dw-buster's authorized_keys.
+  - name: buster-gate-ssh-key
+    files:
+      - id_ed25519=buster-ssh-key.encrypted
+    options:
+      disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: buster-gate
+    files:
+      - ssh_config
+      # Buster's host key, so the job never trusts a key on first use.
+      - known_hosts
+      - job-started.sh
+    options:
+      disableNameSuffixHash: true

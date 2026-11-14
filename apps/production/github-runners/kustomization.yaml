@@ -15,5 +15,6 @@ resources:
   - ./runners/activeassistant
   - ./runners/gpu-agent
   - ./runners/dreamwright
+  - ./runners/buster-gate
 
 buildMetadata: [originAnnotations, transformerAnnotations]
