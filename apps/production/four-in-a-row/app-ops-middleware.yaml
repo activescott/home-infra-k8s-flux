@@ -1,0 +1,13 @@
+# Blocks the app's operator surfaces (/ops/health/*) at the ingress, copied
+# from apps/production/job-accelerator/app-ops-middleware.yaml (fernfiles' has
+# the full reasoning). Kubelet probes reach the pod directly and never traverse
+# Traefik; everything arriving through four-in-a-row.activescott.com gets a 403.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: four-in-a-row-ops-deny
+  namespace: four-in-a-row-prod
+spec:
+  ipAllowList:
+    sourceRange:
+      - 127.0.0.1/32

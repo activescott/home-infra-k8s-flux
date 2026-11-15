@@ -104,6 +104,14 @@ spec:
       ttl: 1
       comment: for the flux webhook receiver in kubernetes
       content: k8s.activescott.com
+    # DNS only, not proxied: the app reads the client IP from the one hop
+    # Traefik adds to X-Forwarded-For, and its sign-in rate limit is per IP.
+    # See apps/production/four-in-a-row/README.md#client-ip before proxying.
+    - key: four-in-a-row-cname
+      name: four-in-a-row.activescott.com
+      type: CNAME
+      ttl: 1
+      content: k8s.activescott.com
     - key: grafana-cname
       name: grafana.activescott.com
       type: CNAME

@@ -1,0 +1,23 @@
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: repo-four-in-a-row-app
+  annotations:
+    activescott.com/source-repo: activescott/four-in-a-row
+spec:
+  image: ghcr.io/activescott/four-in-a-row
+  interval: 5h
+  secretRef:
+    name: github-container-registry-secret
+---
+# The app's release-please tags releases `0.1.0`, with no `v`; semver accepts both.
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: policy-four-in-a-row-app
+spec:
+  imageRepositoryRef:
+    name: repo-four-in-a-row-app
+  policy:
+    semver:
+      range: ">=0.0.0"

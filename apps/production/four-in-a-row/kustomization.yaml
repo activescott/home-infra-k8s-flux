@@ -1,0 +1,49 @@
+resources:
+  - namespace.yaml
+  - db-pv.yaml
+  - ../../base/four-in-a-row/
+  - app-ingress-certificate.yaml
+  # /ops/* (kubelet probes) denied at the ingress; the probes reach the app
+  # directly instead.
+  - app-ops-middleware.yaml
+  - app-ops-ingress.yaml
+  - db-networkpolicy.yaml
+  - ../../../infrastructure/prod/configs/ghcr-pull-secret/
+patches:
+  - path: patch-app-deployment.yaml
+    target:
+      kind: Deployment
+      name: app
+  - path: patch-app-ingress.yaml
+    target:
+      kind: Ingress
+      name: app-ingress
+  - path: patch-db-statefulset.yaml
+    target:
+      kind: StatefulSet
+      name: db
+namespace: four-in-a-row-prod
+# None of these files exist until Scott creates them; see README.md#secrets.
+# kustomize build of this overlay, and so of apps/production, fails until they do.
+secretGenerator:
+  # db
+  - name: db-creds
+    envs:
+      - .env.secret.db.encrypted
+  # app
+  - name: app-creds
+    envs:
+      - .env.secret.app.encrypted
+  # Signs the cookie that binds a WebAuthn ceremony to the browser it started
+  # in. `public-key-encrypted` because nobody ever sees it: it is piped
+  # straight into sops against the age recipient and never written to disk in
+  # the clear, so onepassword-secrets.mts skips it rather than reporting a
+  # missing backup. Replacing the file only drops the challenges in flight.
+  - name: passkey-challenge
+    envs:
+      - .env.secret.passkey-challenge.public-key-encrypted.encrypted
+# the images tag: https://kubectl.docs.kubernetes.io/references/kustomize/builtins/#_imagetagtransformer_
+images:
+  - name: four-in-a-row-image-app
+    newName: ghcr.io/activescott/four-in-a-row # {"$imagepolicy": "flux-system:policy-four-in-a-row-app:name"}
+    newTag: 0.1.0 # {"$imagepolicy": "flux-system:policy-four-in-a-row-app:tag"}

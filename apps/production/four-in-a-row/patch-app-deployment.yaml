@@ -1,0 +1,22 @@
+# ghcr.io/activescott/four-in-a-row is public today, but the pull secret is
+# kept as for job-accelerator: it costs nothing and the pod keeps pulling if
+# the package is ever made private.
+- op: add
+  path: /spec/template/spec/imagePullSecrets
+  value:
+    - name: github-container-registry-secret
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: APP_URL
+    value: https://four-in-a-row.activescott.com
+# The `From:` address on outgoing mail. A role account that rides in the
+# headers of every message, not a credential, so plain env rather than
+# app-creds. email-relay ties exactly this address to the
+# four-in-a-row@relay.local login and refuses any other activescott.com sender
+# from it.
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: FROM_EMAIL
+    value: four-in-a-row-noreply@activescott.com
