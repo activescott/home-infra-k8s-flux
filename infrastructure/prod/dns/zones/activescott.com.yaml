@@ -247,3 +247,32 @@ spec:
       ttl: 1
       comment: TEMP just for testing eleventy scott.willeke.com in k8s before the main domain moves over.
       content: k8s.activescott.com
+    # Created by Cloudflare Email Sending, not by us, and read-only through the API. Declared
+    # Observe so git records that they exist and who owns them, and Crossplane never attempts
+    # a write it cannot win. Content is deliberately omitted; Cloudflare owns the values,
+    # including the DKIM key. See zones/pingpoet.com.yaml.
+    - key: cf-bounce-mx-route1
+      name: cf-bounce.activescott.com
+      type: MX
+      adopt: c744f1437a9f134f07045fc93ed98359
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route2
+      name: cf-bounce.activescott.com
+      type: MX
+      adopt: 3da8196adab133da878f57fa530d31a5
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-mx-route3
+      name: cf-bounce.activescott.com
+      type: MX
+      adopt: ac2b744b1eaaf5b5f765f3a56053a64e
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-spf-txt
+      name: cf-bounce.activescott.com
+      type: TXT
+      adopt: d654b249a92b1ff1bad7d60b8695cac6
+      managementPolicies: ["Observe"]
+    - key: cf-bounce-domainkey-txt
+      name: cf-bounce._domainkey.activescott.com
+      type: TXT
+      adopt: 691e67c8b5346df6e162301c272b903e
+      managementPolicies: ["Observe"]
