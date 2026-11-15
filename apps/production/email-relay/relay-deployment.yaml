@@ -49,7 +49,7 @@ spec:
             # Email Sending; Cloudflare would reject anything else, this just fails it here
             # with a legible error instead. productpoet.com is the throwaway test domain.
             - name: ALLOWED_SENDER_DOMAINS
-              value: fernfiles.com ramblefeed.com tinkerbellbot.com pingpoet.com productpoet.com
+              value: fernfiles.com ramblefeed.com tinkerbellbot.com pingpoet.com productpoet.com activescott.com
 
             # Pod IPs come out of 172.16.0.0/16, which sits inside the 172.16.0.0/12 that
             # this image trusts by default -- that would let every pod in the cluster relay
@@ -65,8 +65,14 @@ spec:
             # address and is what makes any local part work: `privacy@fernfiles.com` and
             # `noreply@fernfiles.com` both resolve to the same owner. A bare `fernfiles.com`
             # key is NOT a form postfix looks up and would reject every message.
+            #
+            # activescott.com is the exception: it is Scott's personal domain, so a
+            # `@activescott.com` key would let four-in-a-row's login send as any address
+            # there, Scott's own included. Its key is the one full address instead, which
+            # postfix looks up before `@domain`; every other activescott.com sender has no
+            # owner and is refused (activescott/four-in-a-row#2, Q4).
             - name: POSTFIX_smtpd_sender_login_maps
-              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, @productpoet.com=test@relay.local}"
+              value: "inline:{@fernfiles.com=fernfiles@relay.local, @ramblefeed.com=ramblefeed@relay.local, @tinkerbellbot.com=tinkerbell@relay.local, @pingpoet.com=jobaccelerator@relay.local, @productpoet.com=test@relay.local, four-in-a-row-noreply@activescott.com=four-in-a-row@relay.local}"
             - name: POSTFIX_smtpd_sender_restrictions
               value: reject_sender_login_mismatch,reject_unknown_sender_domain
             - name: SMTPD_SASL_USERS

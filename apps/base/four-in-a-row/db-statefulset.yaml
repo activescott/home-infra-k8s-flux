@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+        app.activescott.com/component: db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: db-creds
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-creds
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-creds
+                  key: POSTGRES_PASSWORD
+            # postgres:18 moved its VOLUME to /var/lib/postgresql and its
+            # default PGDATA to /var/lib/postgresql/18/docker, so a major
+            # upgrade can pg_upgrade --link between sibling directories on one
+            # mount. The volume goes on /var/lib/postgresql, the image's own
+            # VOLUME path, so no anonymous volume shadows it. PGDATA is spelled
+            # out even though it is the default: scripts/check-persistent-mounts.mts
+            # assumes the pre-18 /var/lib/postgresql/data otherwise.
+            - name: PGDATA
+              value: /var/lib/postgresql/18/docker
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "0.05"
+              memory: "128Mi"
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - fourinarow
+                - -d
+                - fourinarow
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - fourinarow
+                - -d
+                - fourinarow
+            initialDelaySeconds: 30
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        resources:
+          requests:
+            storage: 5Gi

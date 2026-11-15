@@ -9,6 +9,7 @@ resources:
   - fernfiles-app.yaml
   - fernfiles-inference-service.yaml
   - fernfiles-worker.yaml
+  - four-in-a-row-app.yaml
   - gpu-poet-collector.yaml
   - gpupoet-app.yaml
   - indexnow-notifier.yaml
