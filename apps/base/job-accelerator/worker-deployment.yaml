@@ -81,6 +81,13 @@ spec:
                 secretKeyRef:
                   name: master-key
                   key: MASTER_KEY_1
+            # Signs approval links for approval_batch emails
+            # (activescott/job-accelerator#379).
+            - name: APPROVAL_LINK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: approval-link
+                  key: APPROVAL_LINK_SECRET
           volumeMounts:
             - name: keys
               mountPath: /keys

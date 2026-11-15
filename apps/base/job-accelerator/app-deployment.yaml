@@ -69,8 +69,9 @@ spec:
             # Signs and verifies the client's approval links
             # (activescott/job-accelerator#157). Its own Secret, generated
             # straight into sops, for the same reason as
-            # PASSKEY_CHALLENGE_SECRET above. Only this Deployment: the
-            # worker never signs or checks a link.
+            # PASSKEY_CHALLENGE_SECRET above. The worker signs these too now,
+            # for approval_batch emails (activescott/job-accelerator#379); see
+            # worker-deployment.yaml.
             - name: APPROVAL_LINK_SECRET
               valueFrom:
                 secretKeyRef:
