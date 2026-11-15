@@ -128,3 +128,6 @@ spec:
     - kind: ImageRepository
       name: repo-job-accelerator-app
       namespace: flux-system
+    - kind: ImageRepository
+      name: repo-four-in-a-row-app
+      namespace: flux-system

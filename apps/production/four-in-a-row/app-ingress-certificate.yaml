@@ -1,0 +1,13 @@
+# Certificate for four-in-a-row.activescott.com
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: four-in-a-row-activescott-com-tls
+  namespace: four-in-a-row-prod
+spec:
+  secretName: four-in-a-row-activescott-com-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - four-in-a-row.activescott.com

@@ -13,14 +13,17 @@ applications.
 
 Three independent layers, because each one alone has a hole:
 
-1. **NetworkPolicy** — only `fernfiles-prod`, `ramblefeed-prod`, `tinkerbell-prod` and
-   `job-accelerator-prod` can open the port.
+1. **NetworkPolicy** — only `fernfiles-prod`, `ramblefeed-prod`, `tinkerbell-prod`,
+   `job-accelerator-prod` and `four-in-a-row-prod` can open the port.
 2. **SASL** — `mynetworks` is narrowed to loopback and `smtpd_relay_restrictions` is
    `permit_sasl_authenticated,reject`. Left at the image's default, `mynetworks` would cover
    `172.16.0.0/12`, which contains this cluster's entire pod CIDR — every pod could relay.
 3. **`smtpd_sender_login_maps`** — each app's SASL login owns exactly one domain, so a
    compromised app cannot send as another's. Keys are the `@domain` form; a bare `domain` key
    is not a lookup postfix performs and would reject everything.
+   The one exception is `activescott.com`, Scott's personal domain: its key is the full
+   address `four-in-a-row-noreply@activescott.com`, owned by `four-in-a-row@relay.local`,
+   so that login cannot send as anyone else on the domain.
 
 ## Credentials
 

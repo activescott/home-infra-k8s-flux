@@ -1,0 +1,27 @@
+# A second Ingress for the same host, carrying only /ops, so the deny
+# middleware applies to that prefix alone. Traefik merges rules by host and
+# prefers the longer path match. Same shape as job-accelerator's.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ops-ingress
+  namespace: four-in-a-row-prod
+  annotations:
+    # <middleware-namespace>-<middleware-name>@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: four-in-a-row-prod-four-in-a-row-ops-deny@kubernetescrd
+spec:
+  tls:
+    - hosts:
+        - four-in-a-row.activescott.com
+      secretName: four-in-a-row-activescott-com-tls
+  rules:
+    - host: four-in-a-row.activescott.com
+      http:
+        paths:
+          - path: /ops
+            pathType: Prefix
+            backend:
+              service:
+                name: app
+                port:
+                  number: 3000

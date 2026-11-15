@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  # One replica: sign-in challenges live in the app's memory until
+  # activescott/auth#154 gives them a database-backed store.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      labels:
+        app: app
+        app.activescott.com/component: app
+    spec:
+      # The image runs as `node` (uid 1000) and installs the Prisma engines at
+      # build time, so unlike job-accelerator nothing downloads at boot and
+      # the root filesystem can be read-only. The app repo's build.yaml
+      # smoke-tests exactly this: --user 1000:1000 --read-only --tmpfs /tmp.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: app
+          image: four-in-a-row-image-app
+          # docker-entrypoint.sh runs `prisma migrate deploy`, then the server
+          # (activescott/four-in-a-row#23 kept migrations at boot; see
+          # apps/production/four-in-a-row/README.md#migrations).
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: NODE_ENV
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: DATABASE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: JWT_SECRET
+            # Signs the cookie that binds a WebAuthn ceremony to one browser.
+            # Its own Secret, generated straight into sops, so the session key
+            # and the challenge key fail separately. Same as job-accelerator.
+            - name: PASSKEY_CHALLENGE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: passkey-challenge
+                  key: PASSKEY_CHALLENGE_SECRET
+            # Addresses that may sign up without an invite. Without one, nobody
+            # can create the first account, so this is not optional. Encrypted
+            # because this repo is public and the addresses are private people's.
+            - name: SIGNUP_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SIGNUP_EMAILS
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_HOST
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PORT
+            - name: SMTP_SECURE
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_SECURE
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_USER
+            - name: SMTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: SMTP_PASS
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "0.02"
+              memory: "128Mi"
+          # Boot runs Prisma migrations before binding :3000; the startupProbe
+          # gives boot 150s (30 x 5s) and holds off the other two until it
+          # passes. Same as job-accelerator.
+          startupProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /ops/health/readiness
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ops/health/liveness
+              port: 3000
+            periodSeconds: 10
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

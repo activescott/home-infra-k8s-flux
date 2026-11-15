@@ -1,0 +1,26 @@
+# Only the app may reach Postgres. Without this the db Service answers anyone
+# in the cluster who has the password.
+#
+# Nothing else connects over the network: the app pod applies migrations at
+# boot, there is no backup CronJob or exporter, and the db's probes are `exec
+# pg_isready`. Anything added later that talks to 5432 needs a rule here, or it
+# times out with nothing logged.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-app
+  namespace: four-in-a-row-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: app
+      ports:
+        - port: 5432
+          protocol: TCP

@@ -1,0 +1,10 @@
+# Traefik (k3s default) handles the ingress in production, as for job-accelerator.
+- op: replace
+  path: /spec/rules/0/host
+  value: four-in-a-row.activescott.com
+- op: add
+  path: /spec/tls
+  value:
+    - hosts:
+        - four-in-a-row.activescott.com
+      secretName: four-in-a-row-activescott-com-tls
