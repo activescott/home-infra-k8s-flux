@@ -167,13 +167,6 @@ spec:
       ttl: 1
       proxied: true
       content: ghs.google.com
-    - key: stockpoet-cname
-      name: stockpoet.pingpoet.com
-      type: CNAME
-      adopt: 74bc6355242653279293f64e2458d414
-      ttl: 1
-      comment: https://vercel.com/pingpoet/stockpoet/settings/domains
-      content: cname.vercel-dns.com
     - key: www-cname
       name: www.pingpoet.com
       type: CNAME
