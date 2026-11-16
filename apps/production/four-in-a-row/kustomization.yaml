@@ -46,4 +46,4 @@ secretGenerator:
 images:
   - name: four-in-a-row-image-app
     newName: ghcr.io/activescott/four-in-a-row # {"$imagepolicy": "flux-system:policy-four-in-a-row-app:name"}
-    newTag: 0.1.0 # {"$imagepolicy": "flux-system:policy-four-in-a-row-app:tag"}
+    newTag: 0.2.0 # {"$imagepolicy": "flux-system:policy-four-in-a-row-app:tag"}
