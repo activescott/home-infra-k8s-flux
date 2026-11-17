@@ -28,7 +28,7 @@ jobs:
 
       - uses: azure/setup-helm@v5
         with:
-          version: v4.3.1
+          version: v4.3.2
 
       # GitHub-hosted runners ship yq; the stock self-hosted runner image does not.
       - name: Install yq
