@@ -23,12 +23,42 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         runAsGroup: 1000
+      initContainers:
+        # Runs `prisma migrate deploy` from the app's `migrate` image target
+        # (activescott/four-in-a-row#23; see
+        # apps/production/four-in-a-row/README.md#migrations). The app's own
+        # entrypoint still migrates at boot until the app drops the Prisma CLI,
+        # so the second run is a no-op.
+        - name: migrate
+          image: four-in-a-row-image-migrate
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-creds
+                  key: DATABASE_URL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "512Mi"
+            requests:
+              cpu: "0.02"
+              memory: "128Mi"
       containers:
         - name: app
           image: four-in-a-row-image-app
-          # docker-entrypoint.sh runs `prisma migrate deploy`, then the server
-          # (activescott/four-in-a-row#23 kept migrations at boot; see
-          # apps/production/four-in-a-row/README.md#migrations).
+          # docker-entrypoint.sh runs `prisma migrate deploy`, then the server.
+          # The migrate init container above runs it first.
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

@@ -47,20 +47,23 @@ every Secret here comes from `secretGenerator`, so a changed value rolls the pod
 
 ## Migrations
 
-`docker-entrypoint.sh` runs `prisma migrate deploy` on every boot, before the server binds
-:3000, and the startupProbe gives that 150s. This is the decision on
-activescott/four-in-a-row#23 (keep migrating at boot, not a Kubernetes Job):
+An init container named `migrate` runs `prisma migrate deploy` before the app container
+starts. It uses `ghcr.io/activescott/four-in-a-row-migrate`, a second target of the app's
+Dockerfile that carries the Prisma CLI, the schema and the migrations. This is the decision on
+activescott/four-in-a-row#23: the app image cannot drop `@prisma/studio-core` and `@prisma/dev`,
+because `prisma migrate deploy` loads them, so the CLI moves to an image that only migrates.
 
-- A Job still needs the Prisma CLI, and so `@prisma/studio-core` and the rest, in some image.
-  Moving migrations to a Job removes nothing unless the app also publishes a second image.
-- Flux applies a Job and the Deployment from one Kustomization with no ordering between them,
-  so the new app pod could start against an unmigrated schema. Booting through the migration
-  makes that impossible.
-- Jobs are immutable, so every image bump would need the Job deleted and recreated
-  (`kustomize.toolkit.fluxcd.io/force`), on top of the image automation.
-
-None of those packages run in production. Trimming them belongs in the app's Dockerfile,
-not here.
+- The init container takes `DATABASE_URL` from `app-creds` and has the app's security context.
+  It stays in the `app: app` pod, so the db NetworkPolicy allows it.
+- Both images in `kustomization.yaml` carry the marker of `policy-four-in-a-row-app`. The app's
+  release workflow pushes both with one version tag, so one policy keeps them on the same
+  version. A second ImagePolicy would scan on its own schedule and could split them.
+- The app's `docker-entrypoint.sh` still runs `prisma migrate deploy` at boot until the app
+  drops the CLI; with the init container ahead of it, that run is a no-op.
+- A Job was rejected: Flux applies a Job and the Deployment with no ordering between them, and
+  Jobs are immutable, so every image bump needs the Job recreated.
+- `ghcr.io/activescott/four-in-a-row-migrate` must be public, or pulled with the same secret
+  as the app image.
 
 ## Client IP
 
