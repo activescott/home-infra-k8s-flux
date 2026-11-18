@@ -197,7 +197,10 @@ Alloy runs as a DaemonSet and collects logs from **all namespaces** with no excl
 
 The Alloy pipeline also:
 - Joins multi-line stack traces
-- Drops health check logs (`GET /health/*` and `GET /api/health/*`)
+- Drops health check logs (`GET /health/*` and `GET /api/health/*`), only in the
+  tinkerbell, gpupoet, fernfiles and ramblefeed namespaces
+- Counts job-accelerator Postgres logins first, before any drop stage, so no
+  line content can hide one from its alert
 - Parses pino JSON logs, extracting `level`, `msg`, and `module`
 - Replaces raw JSON body with the parsed `msg` field for readability
 
