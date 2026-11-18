@@ -85,7 +85,7 @@ spec:
       #
       # This is why every alert reading these counters pairs its threshold with an
       # `or absent(...)` arm -- see FirewallSyslogFeedDown and StalwartLogFeedDown
-      # in prometheus/helmrelease.yaml. A bare `== 0` cannot fire on a series that
+      # in ../grafana/alerting/rules/. A bare `== 0` cannot fire on a series that
       # does not exist, which is exactly the state this bug produces.
       # ---------------------------------------------------------------------
       configMap:
@@ -323,7 +323,7 @@ spec:
             // General log-volume backstop for tinkerbell: counts ANY
             // warn/fatal-or-error log line, not just failure modes someone
             // has specifically instrumented with a Prometheus counter (see
-            // prometheus/helmrelease.yaml's tinkerbell-log-health group).
+            // the tinkerbell-log-health group in ../grafana/alerting/rules/).
             // Split into two separate metric.counter blocks (warn vs
             // error/fatal) so they back two independently-alertable series
             // (TinkerbellAppWarnVolumeElevated vs
@@ -852,7 +852,7 @@ spec:
             // activescott/home-infra-k8s-flux#276: kustomize-controller no
             // longer exposes gotk_reconcile_condition (confirmed absent from
             // Prometheus on 2026-09-30 -- see the flux-reconcile-log-health
-            // group's comment in prometheus/helmrelease.yaml), so Kustomization
+            // group's comment in ../grafana/alerting/rules/), so Kustomization
             // readiness has to come from its own reconcile logs instead. It
             // logs this on every failed reconcile attempt, repeating at the
             // Kustomization's retry interval for as long as it stays
@@ -1191,7 +1191,7 @@ spec:
 
       # Let Prometheus scrape Alloy's /metrics so the stage.metrics counter
       # (loki_process_custom_wan_link_down_total) reaches the alerting rules
-      # in prometheus/helmrelease.yaml. Uses the pod-annotation method — see
+      # in ../grafana/alerting/rules/. Uses the pod-annotation method — see
       # "Adding a scrape target" in ../README.md. Do NOT also add a static
       # extraScrapeConfigs entry for Alloy or every series is duplicated.
       podAnnotations:

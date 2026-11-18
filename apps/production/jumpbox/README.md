@@ -70,7 +70,7 @@ ssh -N -L 15432:db.gpupoet-prod.svc:5432 nas1-jump
 PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=gpu_agent PGUSER=olya_ro psql
 ```
 
-job-accelerator's Postgres is the same, with its own `olya_ro` role and password (activescott/home-infra-k8s-flux#535). Every login as `olya_ro` there sends Scott an FYI on Telegram (`OlyaRoJobAcceleratorDbConnection`):
+job-accelerator's Postgres is the same, with its own `olya_ro` role and password (activescott/home-infra-k8s-flux#535). Every login as `olya_ro` there posts an FYI to the Dreamwright alerts Slack channel (`OlyaRoJobAcceleratorDbConnection`):
 
 ```bash
 ssh -N -L 15433:db.job-accelerator-prod.svc:5432 nas1-jump

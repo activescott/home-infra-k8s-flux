@@ -3,8 +3,11 @@
 Every alert rule for the cluster lives here, as a Grafana alert-rule provisioning file, and
 every notification goes to one Slack contact point, the Dreamwright alerts channel (#537).
 Before #537 the same rules were Prometheus rules routed by Alertmanager to Telegram and Slack.
-Until the second #537 PR retires that path, both run side by side, so a rule added in the
-meantime goes in both places.
+Prometheus now evaluates no rules and Alertmanager is off.
+
+Prometheus's `ALERTS` series went with them. A dashboard panel that shows alerts is an
+`alertlist` panel filtered by labels (`alertInstanceLabelFilter`), as on the email, fernfiles,
+gpupoet and tinkerbell dashboards.
 
 | File                 | What it provisions                                                |
 | -------------------- | ----------------------------------------------------------------- |

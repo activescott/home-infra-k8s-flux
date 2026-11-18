@@ -63,7 +63,7 @@
       "panels": []
     },
     {
-      "type": "stat",
+      "type": "alertlist",
       "title": "Firing alerts",
       "description": "Count of email alerts currently firing, across the email-stalwart and email-relay rule groups. Zero is the expected value.",
       "id": 2,
@@ -73,64 +73,29 @@
         "x": 0,
         "y": 1
       },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
+        "viewMode": "stat",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{alertname=~\"Stalwart.*|EmailRelay.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": false,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": false
         },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "count(ALERTS{alertname=~\"Stalwart.*|EmailRelay.*\",alertstate=\"firing\"}) or vector(0)",
-          "instant": true,
-          "legendFormat": "firing",
-          "range": false,
-          "refId": "A"
-        }
-      ]
+        "showInstances": false
+      }
     },
     {
-      "type": "table",
+      "type": "alertlist",
       "title": "Firing now",
       "description": "Empty is the healthy state. Each row corresponds to a rule in the email-stalwart or email-relay group in prometheus/helmrelease.yaml, where the reasoning and the remediation for each is written out in full.",
       "id": 4,
@@ -140,63 +105,26 @@
         "x": 4,
         "y": 1
       },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "filterable": false
-          },
-          "mappings": []
-        },
-        "overrides": []
-      },
       "options": {
-        "showHeader": true,
-        "footer": {
-          "show": false,
-          "reducer": [
-            "sum"
-          ],
-          "fields": ""
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "ALERTS{alertname=~\"Stalwart.*|EmailRelay.*\",alertstate=\"firing\"}",
-          "format": "table",
-          "instant": true,
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true,
-              "job": true,
-              "instance": true
-            },
-            "renameByName": {
-              "alertname": "Alert",
-              "severity": "Severity",
-              "alertstate": "State"
-            }
-          }
-        }
-      ]
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{alertname=~\"Stalwart.*|EmailRelay.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": false,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": false
+        },
+        "showInstances": true
+      }
     },
     {
       "type": "stat",

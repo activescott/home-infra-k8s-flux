@@ -149,7 +149,6 @@ configMapGenerator:
   - name: grafana-alerting-rules
     namespace: monitoring
     files:
-      - alerting/rules/alertmanager-self-monitoring.yaml
       - alerting/rules/auth-origin-probe.yaml
       - alerting/rules/cloudflare-proxied-sites.yaml
       - alerting/rules/cluster-pod-health.yaml

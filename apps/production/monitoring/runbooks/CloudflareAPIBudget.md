@@ -1,7 +1,7 @@
 # CloudflareAPIBudget
 
 `CloudflareAPIBudgetHigh` and `CloudflareAPIBudgetCritical` (rule group
-`crossplane-cloudflare-api` in `prometheus/helmrelease.yaml`) watch the same counter at
+`crossplane-cloudflare-api` in `grafana/alerting/rules/crossplane-cloudflare-api.yaml`) watch the same counter at
 two thresholds against Cloudflare's 1200-calls-per-5-minutes token limit, so they always
 diagnose the same way.
 

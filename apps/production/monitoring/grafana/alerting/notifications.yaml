@@ -35,8 +35,8 @@ policies:
     repeat_interval: 4h
     routes:
       # The per-login FYI from #535 keeps the timing its Alertmanager route had: sent at once,
-      # repeated daily while a session lasts. Alertmanager sent it to Scott alone on Telegram,
-      # not to Slack; with one contact point it now goes to the channel like everything else.
+      # repeated daily while a session lasts. Until #537 it went to Scott alone on Telegram;
+      # with one contact point it goes to the channel like everything else.
       - receiver: dreamwright-alerts-slack
         object_matchers:
           - ["alertname", "=", "OlyaRoJobAcceleratorDbConnection"]
