@@ -1,3 +1,13 @@
+- op: add
+  path: /spec/template/spec/containers/0/args
+  value:
+    # One "connection authorized: user=... database=..." line per login, which
+    # Alloy turns into the counter behind OlyaRoJobAcceleratorDbConnection
+    # (activescott/home-infra-k8s-flux#535). `authorization` alone, not `on`,
+    # which would add two more lines per login. The pg_isready probes log one
+    # every 5s; Alloy drops those.
+    - -c
+    - log_connections=authorization
 - op: replace
   path: /spec/volumeClaimTemplates/0/spec/storageClassName
   value: local-path

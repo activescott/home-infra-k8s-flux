@@ -322,6 +322,35 @@ spec:
               }
             }
 
+            // job-accelerator's Postgres runs with log_connections=authorization
+            // (apps/production/job-accelerator/patch-db-statefulset.yaml), which logs
+            // one line per login:
+            //   ... LOG:  connection authorized: user=olya_ro database=jobaccelerator application_name=psql
+            // Its pg_isready probes log one of those every 5s too, so drop them first.
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"application_name=pg_isready\""
+              action   = "drop"
+              drop_counter_reason = "pg_isready_connection"
+            }
+
+            // Every login as olya_ro, Olya's read-only role, feeds
+            // OlyaRoJobAcceleratorDbConnection, an FYI to Scott
+            // (activescott/home-infra-k8s-flux#535). The phrase is Postgres's own; the
+            // trailing space keeps a role like olya_ro2 from matching.
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"connection authorized: user=olya_ro \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "job_accelerator_db_olya_ro_connections_total"
+                  description = "logins to job-accelerator's Postgres as olya_ro"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
             // email-relay: outbound mail delivery outcomes. Postfix is the only
             // evidence that mail is or is not leaving — it exports no metrics, and
             // the applications cannot tell either, since the relay accepts a message

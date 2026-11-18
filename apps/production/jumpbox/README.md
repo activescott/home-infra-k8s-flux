@@ -1,6 +1,6 @@
 # jumpbox
 
-An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, gpupoet's Postgres, debeth, debprime and nas over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
+An sshd that Olya, running on the Dreamwright agents host in AWS, uses to reach what olya-0 reaches from inside the cluster: read-only `kubectl` on nas1, Grafana, gpupoet's and job-accelerator's Postgres, debeth, debprime and nas over SSH (ping-poet/dreamwright#123). Phoenix is not routed through here, because `phoenix.activescott.com` is public.
 
 Loki and Prometheus are not reachable directly, though olya-0 reaches both. Neither has auth: Prometheus runs with `web.enable-lifecycle` and the remote-write receiver, so a key holder could stop it or write fake series, and Loki's delete API could erase this box's own login records. Queries go through Grafana's datasources instead, which needs a login.
 
@@ -68,6 +68,13 @@ gpupoet's Postgres goes through a local forward too, logging in as the read-only
 ```bash
 ssh -N -L 15432:db.gpupoet-prod.svc:5432 nas1-jump
 PGHOST=127.0.0.1 PGPORT=15432 PGDATABASE=gpu_agent PGUSER=olya_ro psql
+```
+
+job-accelerator's Postgres is the same, with its own `olya_ro` role and password (activescott/home-infra-k8s-flux#535). Every login as `olya_ro` there sends Scott an FYI on Telegram (`OlyaRoJobAcceleratorDbConnection`):
+
+```bash
+ssh -N -L 15433:db.job-accelerator-prod.svc:5432 nas1-jump
+PGHOST=127.0.0.1 PGPORT=15433 PGDATABASE=jobaccelerator PGUSER=olya_ro psql
 ```
 
 The target names must be written exactly as above, since that is what `PermitOpen` lists. A forward refused as `administratively prohibited` is `PermitOpen`; one that hangs is the NetworkPolicy in [jumpbox-networkpolicy.yaml](jumpbox-networkpolicy.yaml).

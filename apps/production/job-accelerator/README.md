@@ -153,6 +153,23 @@ kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
 
 Then update `POSTGRES_PASSWORD` and the password embedded in `DATABASE_URL` to match.
 
+### `olya_ro` password
+
+`olya_ro` is a read-only login for Olya's troubleshooting, reached through the jump box
+(`apps/production/jumpbox/README.md`, activescott/home-infra-k8s-flux#535). The app's
+migration `20261118120000_olya_ro_role` creates the role and its grants but no password, so it
+cannot log in over the network until one is set. The password is in neither repo: it lives in
+the db and on the Dreamwright agents host. Rotate both together:
+
+```bash
+kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
+  psql -U jobaccelerator -d jobaccelerator -c '\password olya_ro'
+```
+
+then on the agents host, `sudo dreamwright-host agent-secret set` the same value. Setting the
+password to NULL (`ALTER ROLE olya_ro PASSWORD NULL;`) revokes the access. Each login alerts
+Scott (`OlyaRoJobAcceleratorDbConnection`).
+
 ### `CLIENT_DATA_OWNER_EMAIL`
 
 There is no plaintext file to edit and nothing in 1Password. Re-encrypt straight to the
