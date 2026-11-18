@@ -1,0 +1,194 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `gpupoet` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: gpupoet
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: probefailure
+        title: ProbeFailure
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'up{instance="gpupoet.com"} < 1.0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 60m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Probe failure. Check https://gpupoet.com/ops/metrics
+      - uid: missingmetricsfailure
+        title: MissingMetricsFailure
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'scrape_samples_scraped{instance="gpupoet.com"} < 7.0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 60m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Missing metrics. Check https://gpupoet.com/ops/metrics
+      - uid: cacherevalidationjobfailure
+        title: CacheRevalidationJobFailure
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'coinpoet_last_job_success{instance="gpupoet.com"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Cache revalidation job failed
+          description: The gpupoet cache revalidation cronjob has failed. Check the app logs and
+            https://gpupoet.com/ops/metrics for details.
+      - uid: amazonsearchfailure
+        title: AmazonSearchFailure
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(coinpoet_amazon_searches_total{status="error",instance="gpupoet.com"}[1h]) > 4'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Multiple Amazon search failures in the last hour
+          description: More than 4 Amazon search errors in 1 hour. Check proxy config and amazon-searcher
+            service.
+      - uid: amazonsearchstale
+        title: AmazonSearchStale
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(time() - coinpoet_amazon_last_success_timestamp_seconds{instance="gpupoet.com"}) > 7200'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: No successful Amazon searches in over 2 hours
+          description: Amazon searching has not succeeded in over 2 hours. Check amazon-searcher pod logs.
+      # ProbeFailure above only sees the app's own /ops/metrics being
+      # scraped -- it says nothing about whether the public URL actually
+      # answers through DNS, TLS and the ingress. This is that check,
+      # same shape as FernfilesSiteProbeFailing.
+      - uid: gpupoetsiteprobefailing
+        title: GpupoetSiteProbeFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'probe_success{job="blackbox_https",instance=~"https://gpupoet.com/.*"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            gpupoet.com is not answering its https probe.
+          description: >-
+            Known cause so far: every blackbox_https target failed together during Ziply Fiber's
+            planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage upstream of any one app)
+            -- gpupoet-prod also logged ErrImagePull failures resolving registry-1.docker.io in the
+            same window. See activescott/gpu-poet#75. Confirm with the query below: if other sites
+            are down at the same time, this is the shared outage, not an app or ingress problem.
+            Anything that doesn't match is a new failure.
+          query: 'count(probe_success{job="blackbox_https"} == 0)'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#gpupoetsiteprobefailing
+          repo: activescott/gpu-poet
+      - uid: gpupoetcertexpiringsoon
+        title: GpupoetCertExpiringSoon
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://gpupoet.com/.*"} -
+                time()) / 86400 < 14'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            gpupoet.com TLS certificate expires in under 14 days — cert-manager renewal is likely
+            broken.
+          description: >-
+            {{ $values.query.Value | printf "%.1f" }} days of validity left on {{ $labels.instance
+            }}. cert-manager normally renews at 30 days, so reaching 14 means renewal is not
+            happening.

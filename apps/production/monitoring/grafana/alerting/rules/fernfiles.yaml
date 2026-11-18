@@ -1,0 +1,393 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `fernfiles` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  # Alert names here are prefixed "Fernfiles" on purpose. AlertManager
+  # groups by `alertname` alone (see route.group_by above) and the
+  # inhibit_rule matches on it too, so two projects sharing a generic
+  # name like PodNotReady would have their notifications merged and
+  # could inhibit each other. The older groups above predate that
+  # realization; new rules should stay project-qualified.
+  - orgId: 1
+    name: fernfiles
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: fernfilesapppodrestarted
+        title: FernfilesAppPodRestarted
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(kube_pod_container_status_restarts_total{namespace="fernfiles-prod",container="app"}[15m])
+                > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Fernfiles app pod restarted. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            The app container restarted in the last 15 minutes. With a single replica this means the
+            site was down. Check `kubectl --context nas -n fernfiles-prod logs app-... --previous`
+            for the fatal error, and the Restarts panel on the dashboard.
+      # The restart alert above catches the first crash; this catches
+      # the state where it has given up and is backing off, which is a
+      # sustained outage rather than a blip.
+      - uid: fernfilesappcrashloopbackoff
+        title: FernfilesAppCrashLoopBackOff
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_pod_container_status_waiting_reason{namespace="fernfiles-prod",reason="CrashLoopBackOff"}
+                > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Fernfiles pod in CrashLoopBackOff. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            Pod {{ $labels.pod }} is in CrashLoopBackOff and the site is down for everyone.
+            Kubernetes will keep retrying with growing backoff; it will not recover on its own if
+            the crash is deterministic.
+      # What a user experiences as "no available server" from the
+      # ingress: zero ready endpoints behind the service.
+      - uid: fernfilesappdeploymentnotavailable
+        title: FernfilesAppDeploymentNotAvailable
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_deployment_status_condition{namespace="fernfiles-prod",deployment="app",condition="Available",status="false"}
+                > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Fernfiles app deployment not available. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+      # Postgres. Losing this is worse than losing the web pod: the app
+      # cannot serve anything, and this is the tenet-#1 store.
+      - uid: fernfilesdbstatefulsetnotready
+        title: FernfilesDbStatefulSetNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_statefulset_status_replicas_ready{namespace="fernfiles-prod",statefulset="db"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Fernfiles database has no ready replicas. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+      # Slower burn than the conditions above — catches a pod that is
+      # up but failing its readiness probe. 10m so a normal rollout
+      # (and the terminating old pod) never trips it.
+      - uid: fernfilespodnotready
+        title: FernfilesPodNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_pod_status_ready{namespace="fernfiles-prod",condition="false"} > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Fernfiles pod {{ $labels.pod }} not ready for 10m. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+      # A derived job that failed and is NOT recovering. The worker's
+      # hourly sweep re-enqueues every drifted path, so a file that
+      # failed once is retried and usually succeeds; this gauge counts
+      # only rows that already outlived that retry window.
+      #
+      # The threshold is computed inside the worker from
+      # SEARCH_SWEEP_INTERVAL_MS, not here: that variable is never set
+      # in k8s, so the worker is the only process that knows it, and
+      # duplicating it in PromQL would be the same drift that caused
+      # activescott/fernfiles#272. `for:` below is scrape debounce
+      # only — Prometheus parses it as a literal duration and cannot
+      # derive it from a metric anyway.
+      #
+      # Why it matters: the bytes are safe, but a file nobody can find
+      # is a discoverability failure under the project's durability
+      # tenet. This is the alert that would have caught #272 on the
+      # day it started, instead of a user noticing.
+      - uid: fernfilessearchjobstuckfailed
+        title: FernfilesSearchJobStuckFailed
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'fernfiles_worker_jobs_stuck_failed > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Fernfiles {{ $labels.kind }} job stuck FAILED. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            {{ $values.query.Value }} {{ $labels.kind }} job(s) have been FAILED for longer than the
+            sweep's retry window, so the sweep has already retried them and they failed again. The
+            oldest one's age is `max(fernfiles_worker_oldest_failed_job_age_seconds)`. Check
+            `kubectl --context nas -n fernfiles-prod logs deploy/worker | grep "search job failed"`.
+      # The checks above all watch Kubernetes objects. This one asks
+      # the question a user asks: does the URL answer? It goes through
+      # the real ingress and TLS, so it catches a 502-with-healthy-pods
+      # or a bad ingress rule that the object-level checks cannot see.
+      # 5m because a rollout can blip a request or two.
+      - uid: fernfilessiteprobefailing
+        title: FernfilesSiteProbeFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'probe_success{job="blackbox_https",instance=~"https://fernfiles.com/.*"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            fernfiles.com is not answering its https probe. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            The https probe to {{ $labels.instance }} has failed for 5 minutes. Probed from inside
+            the LAN, so this does not rule out (or in) an ISP or external DNS problem — but the
+            ingress, TLS and app path are all covered by it.
+      # Certificate expiry is the one failure that is both entirely
+      # predictable and total when it lands. cert-manager renews at
+      # 30 days remaining, so 14 days left means renewal is broken and
+      # there is still time to fix it by hand.
+      - uid: fernfilescertexpiringsoon
+        title: FernfilesCertExpiringSoon
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://fernfiles.com/.*"} -
+                time()) / 86400 < 14'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            fernfiles.com TLS certificate expires in under 14 days — cert-manager renewal is likely
+            broken.
+          description: >-
+            {{ $values.query.Value | printf "%.1f" }} days of validity left on {{ $labels.instance
+            }}. cert-manager normally renews at 30 days, so reaching 14 means renewal is not
+            happening. Check the Certificate and CertificateRequest objects in the fernfiles-prod
+            namespace.
+      # Search moved its models out of the app pod and into
+      # inference-service (fernfiles
+      # docs/specs/036-search-inference-service/plan.md). The app no
+      # longer waits on search warmth to report itself ready — search
+      # is one feature, not the whole site — so nothing about a broken
+      # inference path shows up in any of the object-level alerts
+      # above. This counter is the only signal it produces: the app
+      # increments it whenever a search cannot reach a model at all
+      # (unreachable, non-2xx, or timed out). A superseded request —
+      # the scheduler abandoning a keystroke the user already replaced
+      # — is deliberately NOT counted, or normal type-ahead would fire
+      # this constantly.
+      - uid: fernfilessearchinferencefailing
+        title: FernfilesSearchInferenceFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(fernfiles_search_inference_failures_total{job="fernfiles_app"}[10m]) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Fernfiles search cannot reach its {{ $labels.phase }} model. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            Searches are failing at the {{ $labels.phase }} stage and every one of them returns no
+            results. The site is otherwise up. Check `kubectl --context nas -n fernfiles-prod logs
+            deploy/inference-service` and the app's own "search inference hard failure" log events.
+      # The app restart alert above is scoped to container="app", so
+      # it says nothing about this pod. One replica, one forked child
+      # holding both models: a restart means every search 503s until
+      # the models reload.
+      - uid: fernfilesinferenceservicerestarted
+        title: FernfilesInferenceServiceRestarted
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(kube_pod_container_status_restarts_total{namespace="fernfiles-prod",container="inference-service"}[15m])
+                > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Fernfiles inference-service restarted. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            The inference-service container restarted in the last 15 minutes, so search was
+            unavailable while its models reloaded. Check `kubectl --context nas -n fernfiles-prod
+            logs deploy/inference-service --previous`.
+      # Both ONNX models plus their arenas live in this one container.
+      # Its limit is 2Gi (fernfiles
+      # k8s/base/inference-service-deployment.yaml), raised from 1Gi
+      # after the 2026-09-04 OOMKills.
+      # 1700MB was raised from 900MB on 2026-09-07: the 2026-09-04
+      # spike has recurred twice, both times plateauing around
+      # 1.5 GB during inference bursts (worker batch-embed +
+      # interactive searches). Plateau is bounded — measured at
+      # ~1.50 GB and flat for 5+ minutes during the 2026-09-07
+      # incident — so the alert was firing on the bug-as-baseline
+      # rather than on growth toward the 2Gi OOMKill ceiling.
+      # 1700MB is the smallest value that suppresses the bounded
+      # plateau while still firing well before OOMKill (300MB
+      # headroom). Raise it again if the plateau grows; lower it
+      # back toward 900MB if a code fix eliminates the spike.
+      - uid: fernfilesinferenceservicememoryhigh
+        title: FernfilesInferenceServiceMemoryHigh
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'container_memory_working_set_bytes{namespace="fernfiles-prod",container="inference-service"}
+                > 1700e6'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Fernfiles inference-service is near its memory limit. See
+            https://grafana.activescott.com/d/fernfiles-prod/fernfiles-prod-status
+          description: >-
+            {{ $values.query.Value | humanize1024 }}B working set against a 2Gi limit, where steady
+            state under load is ~1.1GB and a documented unexplained spike plateaus around 1.5GB.
+            This alert fires if working_set crosses 1700MB (300MB of headroom before OOMKill at
+            2Gi). If this fires, capture evidence before it resolves or restarts: `kubectl --context
+            nas -n fernfiles-prod logs deploy/inference-service` plus the container_memory_rss
+            series for the pod.

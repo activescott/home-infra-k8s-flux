@@ -1,0 +1,44 @@
+# Where every Grafana-managed alert goes: one Slack contact point, the Dreamwright alerts
+# channel (#537). Provisioning the policy tree replaces the whole tree, so the root policy
+# below is the only route there is. See ./README.md.
+#
+# The webhook URL is never in git. GRAFANA_ALERTS_SLACK_WEBHOOK_URL comes from the
+# grafana-alerts-slack Secret (../.env.secret.grafana-alerts-slack.encrypted, wired up under
+# envValueFrom in ../helmrelease.yaml), and Grafana substitutes it when it reads this file.
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: dreamwright-alerts-slack
+    receivers:
+      - uid: dreamwright-alerts-slack
+        type: slack
+        settings:
+          url: $GRAFANA_ALERTS_SLACK_WEBHOOK_URL
+        disableResolveMessage: false
+
+# Same grouping and timing Alertmanager used (route in ../../prometheus/helmrelease.yaml before
+# #537), plus grafana_folder so the default Slack title reads "<alertname> nas1" in a channel
+# other clusters post to as well. Every rule is in the one folder, so the groups themselves are
+# unchanged.
+#
+# Alertmanager's one inhibit rule (critical silences warning with the same alertname, job and
+# instance) has no Grafana equivalent. Only DebethDiskFull has a warning and a critical rule
+# under one name, and group_by alertname puts both in the same message anyway.
+policies:
+  - orgId: 1
+    receiver: dreamwright-alerts-slack
+    group_by:
+      - grafana_folder
+      - alertname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      # The per-login FYI from #535 keeps the timing its Alertmanager route had: sent at once,
+      # repeated daily while a session lasts. Alertmanager sent it to Scott alone on Telegram,
+      # not to Slack; with one contact point it now goes to the channel like everything else.
+      - receiver: dreamwright-alerts-slack
+        object_matchers:
+          - ["alertname", "=", "OlyaRoJobAcceleratorDbConnection"]
+        group_wait: 0s
+        repeat_interval: 24h

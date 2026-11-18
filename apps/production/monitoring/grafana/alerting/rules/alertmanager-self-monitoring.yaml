@@ -1,0 +1,43 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `alertmanager-self-monitoring` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  # Alertmanager's own delivery health. Scraped via the podAnnotations block under
+  # alertmanager: above, not extraScrapeConfigs, since it's already a discoverable
+  # pod — see "Adding a scrape target" in the README.
+  - orgId: 1
+    name: alertmanager-self-monitoring
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: alertmanagernotificationfailed
+        title: AlertmanagerNotificationFailed
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum by (integration) (increase(alertmanager_notifications_failed_total[15m])) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Alertmanager failed to deliver a notification via {{ $labels.integration }}.'
+          description: >-
+            alertmanager_notifications_failed_total rose for integration {{ $labels.integration }}
+            in the last 15 minutes. Every other alert in this file depends on this delivery path, so
+            some other firing alert may not have reached anyone.
+          repo: activescott/home-infra-k8s-flux

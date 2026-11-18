@@ -1,0 +1,128 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `flux-system` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  # Flux reconciliation health. The 10h incident on 2026-09-13 (issue #32)
+  # showed that infra-configs can wedge on a stuck ImagePolicy and cascade
+  # failure through apps and crossplane without anyone noticing.
+  - orgId: 1
+    name: flux-system
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: fluxkustomizationnotready
+        title: FluxKustomizationNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'gotk_reconcile_condition{type="Ready", kind="Kustomization"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flux Kustomization {{ $labels.name }} not ready for 15m"
+          description: >-
+            Kustomization {{ $labels.name }} in {{ $labels.namespace }} has not been Ready for over
+            15 minutes. Downstream Kustomizations that depend on it will also stop reconciling.
+      - uid: fluxkustomizationnotreadycritical
+        title: FluxKustomizationNotReadyCritical
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'gotk_reconcile_condition{type="Ready", kind="Kustomization"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "Flux Kustomization {{ $labels.name }} not ready for 1h"
+          description: >-
+            Kustomization {{ $labels.name }} has been unhealthy for over an hour. Check the
+            kustomize-controller logs and the resource's status conditions.
+      - uid: fluxhelmreleasenotready
+        title: FluxHelmReleaseNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'gotk_reconcile_condition{type="Ready", kind="HelmRelease"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flux HelmRelease {{ $labels.name }} not ready for 15m"
+          description: >-
+            HelmRelease {{ $labels.name }} in {{ $labels.namespace }} has not been Ready for over 15
+            minutes.
+      - uid: fluxreconcileerrors
+        title: FluxReconcileErrors
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum by (controller)
+                (rate(controller_runtime_reconcile_errors_total{namespace="flux-system"}[10m])) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flux controller {{ $labels.controller }} has sustained errors"
+          description: >-
+            The {{ $labels.controller }} controller in flux-system has been producing reconciliation
+            errors for 15 minutes. Known cause so far: fired 2026-09-24 for the gitrepository
+            controller during Ziply Fiber's planned maintenance -- source-controller logged 10
+            errors in 6 minutes failing to reach GitHub (a dial tcp i/o timeout, then lookup
+            github.com ... server misbehaving), then recovered on its own once DNS came back.
+            WanGatewayDegraded and the site probe alerts fired from the same outage in the same
+            window. This is a 10-minute rate window, so a genuine blip like this clears itself. See
+            activescott/activeassistant#378. Anything that doesn't match -- no DNS or network error
+            in the named controller's logs, or errors that don't stop once network access is
+            restored -- is a new failure; check its logs.
+          query: '{namespace="flux-system"} |~ "i/o timeout|server misbehaving"'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/FluxReconcileErrors.md
+          repo: activescott/home-infra-k8s-flux

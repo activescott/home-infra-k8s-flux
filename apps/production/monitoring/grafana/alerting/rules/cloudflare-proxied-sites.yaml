@@ -1,0 +1,137 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `cloudflare-proxied-sites` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: cloudflare-proxied-sites
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: ramblefeedsiteprobefailing
+        title: RamblefeedSiteProbeFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'probe_success{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            ramblefeed.com is not answering its https probe.
+          description: >-
+            Known cause so far: every blackbox_https target failed together during Ziply Fiber's
+            planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage upstream of any one app),
+            not Cloudflare's SSL/TLS mode drifting off Full as first suspected -- DNS kept resolving
+            correctly throughout. See activescott/ramblefeed#112. Confirm with the query below: if
+            other sites are down at the same time, this is the shared outage. Anything that doesn't
+            match -- only this site down, or a pod/ingress problem -- is a new failure.
+          query: 'count(probe_success{job="blackbox_https"} == 0)'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#ramblefeedsiteprobefailing
+          repo: activescott/ramblefeed
+      - uid: ramblefeedcertexpiringsoon
+        title: RamblefeedCertExpiringSoon
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://ramblefeed.com/.*"} -
+                time()) / 86400 < 14'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            ramblefeed.com TLS certificate expires in under 14 days — cert-manager renewal is likely
+            broken.
+          description: >-
+            {{ $values.query.Value | printf "%.1f" }} days of validity left on {{ $labels.instance
+            }}. cert-manager normally renews at 30 days, so reaching 14 means renewal is not
+            happening.
+      - uid: tinkerbellbotsiteprobefailing
+        title: TinkerbellbotSiteProbeFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'probe_success{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            tinkerbellbot.com is not answering its https probe.
+          description: >-
+            Known cause so far: every blackbox_https target failed together during Ziply Fiber's
+            planned maintenance on 2026-09-24 (12 minutes, WAN/DNS outage upstream of any one app),
+            a connection-level failure rather than an HTTP error, which rules out an app or
+            ingress-specific cause like the 2026-08-30 flexible-mode redirect loop. See
+            activescott/tinkerbell#197. Confirm with the query below: if other sites are down at the
+            same time, this is the shared outage. Anything that doesn't match is a new failure.
+          query: 'count(probe_success{job="blackbox_https"} == 0)'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#tinkerbellbotsiteprobefailing
+          repo: activescott/tinkerbell
+      - uid: tinkerbellbotcertexpiringsoon
+        title: TinkerbellbotCertExpiringSoon
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_https",instance=~"https://tinkerbellbot.com/.*"}
+                - time()) / 86400 < 14'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            tinkerbellbot.com TLS certificate expires in under 14 days — cert-manager renewal is
+            likely broken.
+          description: >-
+            {{ $values.query.Value | printf "%.1f" }} days of validity left on {{ $labels.instance
+            }}. cert-manager normally renews at 30 days, so reaching 14 means renewal is not
+            happening.

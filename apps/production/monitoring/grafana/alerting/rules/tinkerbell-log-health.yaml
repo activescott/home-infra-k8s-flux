@@ -1,0 +1,113 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `tinkerbell-log-health` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: tinkerbell-log-health
+    folder: nas1
+    interval: 1m
+    rules:
+      # 50 is measured, not guessed: across 3.5 days of aggregated data,
+      # sum(increase(...[1h])) had max 55.59, p99 43.7, p95 15.1. That max is an
+      # increase() extrapolation artifact from an Alloy restart, which `for: 10m`
+      # absorbs; genuine hourly spikes top out near 40.
+      - uid: tinkerbellappwarnvolumeelevated
+        title: TinkerbellAppWarnVolumeElevated
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_tinkerbell_app_warn_log_lines_total[1h])) > 50'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Tinkerbell warn volume up, known cause: searxng-google failing the relevance guard.'
+          description: >-
+            Known cause so far: the relevance guard rejecting searxng-google results on job-board
+            queries (quoted `site:` operators plus `OR`) at a chronic ~50% rate, which a burst of
+            concurrent searches pushes past the hourly threshold. Confirm by checking that info
+            lines still dominate and rejected searches are served as degraded results rather than
+            failing outright. See activescott/tinkerbell#186. Anything that doesn't match this
+            pattern is a new failure.
+          query: 'topk(10, sum by (msg) (count_over_time({namespace="tinkerbell-prod", level="warn"}[1h])))'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppWarnVolumeElevated.md
+          repo: activescott/tinkerbell
+      # Threshold unchanged, but it now means 3 error lines from the app rather
+      # than 3 from any single pod-revision. Re-check it against aggregated data
+      # once a week of history exists under the new expression.
+      - uid: tinkerbellapperrorvolumeelevated
+        title: TinkerbellAppErrorVolumeElevated
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_tinkerbell_app_error_log_lines_total[1h])) > 3'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Tinkerbell error volume up.'
+          description: >-
+            More than 3 error or fatal log lines from the tinkerbell app in the past hour, still
+            elevated after 10 minutes. There is no known benign cause, so treat each error line as a
+            new failure.
+          query: '{namespace="tinkerbell-prod", level=~"error|fatal"} | json'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/TinkerbellAppErrorVolumeElevated.md
+          repo: activescott/tinkerbell
+      # tinkerbell-prod's access log recording 401s on POST /mcp
+      # (activescott/home-infra-k8s-flux#338). Fed by
+      # loki_process_custom_tinkerbell_mcp_unauthorized_total; see the stage.match
+      # comment in alloy/helmrelease.yaml for the log line. More than 5 in 15m, held
+      # for 10m, to ride out a handful of stray probes without paging.
+      - uid: tinkerbellmcpunauthorized
+        title: TinkerbellMcpUnauthorized
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_tinkerbell_mcp_unauthorized_total[15m])) > 5'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'tinkerbell-prod is rejecting POST /mcp with 401.'
+          description: >-
+            More than 5 401 responses from tinkerbell's /mcp endpoint in 15 minutes, still elevated
+            after 10 minutes. Check whether a caller is using a stale or missing credential.
+          query: '{namespace="tinkerbell-prod", app="app"} |= "POST /mcp 401"'
+          repo: activescott/tinkerbell

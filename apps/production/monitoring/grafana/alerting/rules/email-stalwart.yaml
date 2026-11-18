@@ -1,0 +1,734 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `email-stalwart` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  # Stalwart, the self-hosted mailboxes for willeke.com
+  # (apps/production/email-stalwart). Every alert in this group has a
+  # matching panel on the "Email" dashboard, in the "Alerts" row at the top
+  # -- so anything that can page has somewhere to be looked at.
+  #
+  # Two independent evidence sources on purpose. Stalwart's own exporter is a
+  # setting in its datastore that git does not describe and that a restore
+  # could silently revert; the loki_process_custom_stalwart_* counters come
+  # from container stdout, which cannot be turned off from inside the app.
+  # Where a question can be answered by either, it is answered by the log
+  # counter, because that is the one that keeps working.
+  - orgId: 1
+    name: email-stalwart
+    folder: nas1
+    interval: 1m
+    rules:
+      # The precise detector for that failure, and the one worth having:
+      # it compares what the server SERVES against what cert-manager HAS.
+      # A gap means the reload did not happen, and it fires about a day after
+      # the renewal -- about 30 days before anything actually breaks --
+      # rather than waiting for the served certificate to approach expiry.
+      #
+      # min()/max() reduce both sides to label-less scalars, which is what
+      # makes the comparison possible at all: the two metrics share no
+      # labels (one is from blackbox, one from cert-manager) so a normal
+      # vector match would silently find nothing and never fire.
+      #
+      # The 5 days of slack is in expiry time, not elapsed time: it absorbs
+      # small clock and probe differences, nothing more. A renewal moves
+      # cert-manager's expiry ~60 days past the served one at once, so this
+      # becomes true the moment the Secret is written. The lag between that
+      # and the reload CronJob's next daily run (00:17 local) is absorbed by
+      # `for:` instead: 26h covers a renewal just after a run, plus the pod
+      # restart. With `for: 2h` it fired on 2026-10-27 three hours after a
+      # renewal the CronJob had not yet had a chance to act on (#452).
+      - uid: stalwartservedcertnotrenewed
+        title: StalwartServedCertNotRenewed
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: >-
+                min(probe_ssl_earliest_cert_expiry{job="blackbox_mail_tls"}) <
+                max(certmanager_certificate_expiration_timestamp_seconds{namespace="email-stalwart",name="mail-activescott-com"})
+                - 432000
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 26h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Stalwart is serving an older certificate than cert-manager has issued
+          description: >-
+            cert-manager has renewed mail-activescott-com but the certificate offered on the mail
+            ports is still the previous one, so the reload did not happen. Check the
+            stalwart-tls-reload CronJob in email-stalwart; the fix is to restart the pod. Nothing is
+            broken for users yet — this fires ~30 days before the served certificate expires, which
+            is the entire point of it.
+      # Backstop for the above: whatever the reason, the certificate on the
+      # wire is about to lapse. Fires on the served certificate, so it
+      # covers a failed renewal AND a failed reload.
+      - uid: stalwartservedcertexpiringsoon
+        title: StalwartServedCertExpiringSoon
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(probe_ssl_earliest_cert_expiry{job="blackbox_mail_tls"} - time()) / 86400 < 14'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Stalwart is serving a certificate that expires in under 14 days on {{ $labels.instance }}
+          description: >-
+            {{ $values.query.Value | printf "%.1f" }} days of validity left on the certificate
+            actually served by {{ $labels.instance }}. cert-manager renews at 30 days, so reaching
+            14 means either renewal or the reload is broken. When this expires, every mail client on
+            993 and 465 fails to connect.
+      # cert-manager's own view. Catches the case the two probes above
+      # cannot: ACME renewal failing for the admin hostname as well, and
+      # any future certificate in this namespace, without needing a probe
+      # target added for each.
+      - uid: stalwartcertificatenotrenewing
+        title: StalwartCertificateNotRenewing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(certmanager_certificate_expiration_timestamp_seconds{namespace="email-stalwart"} - time()) /
+                86400 < 14'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            cert-manager has not renewed {{ $labels.name }} — under 14 days left
+          description: >-
+            {{ $values.query.Value | printf "%.1f" }} days left on Certificate {{ $labels.name }} in
+            email-stalwart. cert-manager renews at 30 days, so this means issuance is failing. Check
+            the Certificate and CertificateRequest objects and the ACME HTTP-01 route through
+            Traefik.
+      # THE MAIL-PATH ALERTS
+      # IMAP and submission. A user experiences this as "my mail app stopped
+      # working" with no other symptom.
+      - uid: stalwartmailportdown
+        title: StalwartMailPortDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'probe_success{job="blackbox_mail_tls"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Stalwart is not answering TLS on {{ $labels.instance }}'
+          description: >-
+            The TLS handshake to {{ $labels.instance }} has failed for 5 minutes. Probed from inside
+            the cluster against the Service, so this is the server itself rather than the firewall
+            or WAN — which also means it does NOT rule out an external-only problem when it is
+            quiet.
+      # Three probes, three different backends behind one hostname pattern:
+      # admin.mail.activescott.com (Stalwart), mail.activescott.com/setup
+      # (the mail-setup nginx) and mail.activescott.com/api/health (Bulwark
+      # webmail). The instance label says which.
+      #
+      # One alert rather than one per app on purpose: the regex already
+      # matched every path on these hosts, so a separate webmail alert would
+      # fire alongside this one for the same failure.
+      #
+      # This is the alert that would have caught the 2026-08-28 outage,
+      # where Stalwart banned the Traefik pod's address and every request
+      # became a 502 with no HTTP log line to explain it.
+      - uid: stalwartwebsurfacedown
+        title: StalwartWebSurfaceDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'probe_success{job="blackbox_https",instance=~"https://(admin\\.)?mail\\.activescott\\.com/.*"}
+                == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.instance }} is not answering its https probe'
+          description: >-
+            Five minutes of failures through the real ingress and TLS. Check the instance label
+            first — /api/health is the webmail, /setup is the nginx setup page, and the admin host
+            is Stalwart itself; they share a hostname but not a backend. If the admin host is the
+            one failing while the mail ports are fine, suspect Stalwart having banned the ingress
+            controller's address — it drops banned addresses at TCP accept, so there is no request
+            log to find. Confirm with the "In-cluster addresses blocked" panel on the Email
+            dashboard. If only /api/health is failing, mail delivery is unaffected and nothing else
+            will alert; that is the webmail alone. Known cause so far: on 2026-09-24 every
+            blackbox_https target failed together for 12 minutes during Ziply Fiber's planned
+            maintenance, not a Stalwart ban -- three unrelated backends failing and recovering in
+            lockstep rules that out. See activescott/home-infra-k8s-flux#238. Confirm with the query
+            below: if other sites are down at the same time, this is the shared outage. Anything
+            that doesn't match is a new failure.
+          query: 'count(probe_success{job="blackbox_https"} == 0)'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/SiteProbeFailing.md#stalwartwebsurfacedown
+          repo: activescott/home-infra-k8s-flux
+      # The direct detector for that ban, rather than its 502 symptom.
+      # Bans never expire here (no *BanPeriod is set), so one occurrence
+      # is worth acting on.
+      #
+      # The counter measures blocked connection ATTEMPTS, not the
+      # existence of the ban, so this alert does self-resolve however
+      # permanent the ban is: it goes quiet as soon as nothing is
+      # connecting from the banned address. The window is 6h rather than
+      # 15m so a single event holds the alert open long enough for a
+      # human to see it, instead of clearing itself in a quarter hour --
+      # which is what happened on 2026-09-04. Resolution still means
+      # "nothing blocked recently", never "ban lifted"; only Security >
+      # Allowed IPs plus a pod restart means that.
+      - uid: stalwartblockingclusteraddress
+        title: StalwartBlockingClusterAddress
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_stalwart_ip_blocked_cluster_total[6h])) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Stalwart is refusing connections from inside the cluster
+          description: >-
+            Stalwart banned a 172.16/16 address, which is the ingress controller or another cluster
+            pod, and is dropping its connections. The admin UI and CalDAV are down for everyone
+            while this holds, and the ban will NOT expire on its own. Add the range under Security >
+            Allowed IPs and restart the pod — deleting the block alone does not take effect, the
+            running process keeps a stale copy. This alert resolving means only that nothing has
+            been blocked in the last 6h; it is not evidence the ban is gone, so confirm before
+            closing. Full write-up in apps/production/email-stalwart/README.md.
+      # willeke.com's MX is still Google; this server receives a copy through
+      # a dual-delivery routing rule. That path crosses the firewall NAT
+      # rule, the LoadBalancer and Stalwart, and a break anywhere in it is
+      # completely silent — Google keeps delivering to its own mailbox, so
+      # nobody notices mail stopped arriving HERE until they go looking.
+      #
+      # Retuned 2026-09-01 from 36h to 12h, against real traffic instead of
+      # the ~24h of a day-old namespace the first number came from. The
+      # original comment recorded "one inbound message per day"; measured
+      # over the three days to 2026-09-01 the rate is ~49/day, and the
+      # minimum of a rolling window stepped hourly never reached zero:
+      #
+      #   window   fewest messages observed
+      #   4h       2
+      #   6h       6
+      #   8h       8
+      #   12h      14
+      #
+      # 12h is therefore ~14x margin over the quietest half-day actually
+      # seen, and it includes a weekend. It cuts detection of a silent break
+      # from ~36.5h to ~12.5h. Widen it again if a holiday produces a
+      # genuinely dead half-day; do not narrow below 8h without new data.
+      #
+      # The heartbeat clause is load-bearing: without it, Alloy or Loki
+      # breaking would zero this counter and fire this alert, pointing at
+      # the mail path when the mail path is fine. The absent() arm covers
+      # first deployment, when the counter does not exist yet at all.
+      - uid: stalwartnoinboundmail
+        title: StalwartNoInboundMail
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: >-
+                (sum(increase(loki_process_custom_stalwart_inbound_queued_total[12h])) == 0 or
+                absent(loki_process_custom_stalwart_inbound_queued_total)) and on()
+                sum(increase(loki_process_custom_stalwart_heartbeat_total[1h])) > 6
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: No mail has arrived at Stalwart in 12 hours
+          description: >-
+            Nothing accepted on port 25 for 12 hours while the server is demonstrably alive. Suspect
+            the Google Workspace dual-delivery routing rule, the OPNsense NAT rule for :25, or the
+            source restriction to Google's egress ranges. Mail is NOT lost — Google remains the MX
+            and retains its own copy — but the archive here is incomplete for as long as this holds.
+      # The counterpart to StalwartNoInboundMail: that one catches the
+      # path being dead, this one catches it being open but refusing.
+      #
+      # On 2026-09-03 Stalwart temp-rejected 68 dual-delivery copies in 24
+      # hours against its DEFAULT "Sender address to recipient throttle"
+      # (25/hour keyed on senderDomain+rcpt) — every one a GitHub
+      # notification to scott@willeke.com. Volume never dropped, so
+      # StalwartNoInboundMail stayed silent, and the routing rule
+      # suppresses bounces by design, so no sender saw anything. The only
+      # signal anywhere was a Google Workspace "Smart host failure" alert
+      # email to the Workspace admin.
+      #
+      # The limit is now 1000/hour and the baseline is zero, so any
+      # occurrence means a throttle is firing that nobody chose. Like
+      # StalwartAuthFailures, the counter does not exist until the first
+      # rejection and this rule evaluates to empty rather than 0 until
+      # then.
+      - uid: stalwartinboundratelimited
+        title: StalwartInboundRateLimited
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_stalwart_rate_limit_exceeded_total[1h])) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Stalwart is rate-limiting inbound mail
+          description: >-
+            Stalwart returned 451 to Google for at least one dual-delivery copy in the last hour,
+            against a baseline of zero. Mail is NOT lost — Google remains the MX and retries — but
+            copies that outlive Google's retry window never reach the archive, and nothing else
+            reports it. Read the limit that fired from the log line, then compare against the live
+            objects with `./scripts/stalwart-apply snapshot MtaInboundThrottle`. Loki:
+            {namespace="email-stalwart"} |= "(smtp.rate-limit-exceeded)".
+      # Outbound leaves through the Google Workspace SMTP relay authenticated
+      # with an app password. Google revokes every app password whenever the
+      # owning account's password changes, so an unrelated password rotation
+      # on scott@willeke.com stops outbound mail for every mailbox here.
+      - uid: stalwartdeliveryfailing
+        title: StalwartDeliveryFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_stalwart_delivery_failed_total[1h])) > 5'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Stalwart is failing to deliver outbound mail
+          description: >-
+            More than 5 failed delivery attempts in an hour. The most likely cause is the Google app
+            password having been revoked by a password change on the account that owns it. Note
+            Stalwart falls back to UNAUTHENTICATED relay when it cannot resolve the credential
+            rather than failing loudly, so a missing secret looks like a rejected one. Loki:
+            {namespace="email-stalwart"} |~ "delivery\\.(connect-error|dsn-perm-fail)".
+      # 993 and 465 are deliberately internet-facing, so some noise is
+      # expected and this is not a break-glass alert.
+      #
+      # Retuned 2026-09-01 from 20/hour to 5/hour. The baseline is still
+      # exactly zero: over the 7 days to 2026-09-01, 378k log lines carried
+      # 1675 (auth.success) and not one (auth.failed). Scanners are stopped
+      # earlier than authentication — 237 (security.ip-blocked) and 3
+      # (security.scan-ban) over the same window — which is why the
+      # internet-facing ports produce no failed-auth floor to sit above.
+      #
+      # 5/hour rather than 20 because the failure this needs to catch first
+      # is a mail client left on a stale password, not a password spray. It
+      # retries every few minutes, which lands under 20/hour, and every
+      # attempt feeds Stalwart's auto-ban — and *BanPeriod is unset here, so
+      # the ban that follows is permanent. Catching it while it is still a
+      # warning is the entire point. `for: 15m` keeps a human fumbling a
+      # password a few times from firing it.
+      #
+      # The counter does not exist until the first failure, so this rule
+      # evaluates to empty rather than 0 today. That is correct — but it also
+      # means a broken selector would look identical to a quiet server. The
+      # selector was verified against upstream (the id is emitted as
+      # `auth.failed`) rather than inferred from the absence of data.
+      - uid: stalwartauthfailures
+        title: StalwartAuthFailures
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_stalwart_auth_failed_total[1h])) > 5'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Repeated failed logins against Stalwart
+          description: >-
+            More than 5 failed authentications in an hour on internet-facing IMAP and submission,
+            against a baseline of zero. Most likely a mail client retrying a stale password;
+            possibly a password spray. Stalwart's auth-ban counts these and bans here do not expire,
+            so act before the source address is banned permanently. Loki:
+            {namespace="email-stalwart"} |= "(auth.failed)".
+      # An account whose active Sieve script has no managed block gets no
+      # archive copy of delivered mail, so deleting from the Inbox — or iOS
+      # purging Trash after seven days — destroys the only copy. That is the
+      # exact loss archive-all exists to prevent, and it is invisible from the
+      # mail client: nothing looks broken until something is already gone.
+      #
+      # The reconciler used to prevent this by overwriting whatever it found.
+      # On 2026-09-13 that unrecoverably destroyed a day of hand-written
+      # Bulwark filter rules, because Bulwark edits the same script the job
+      # owns. The job now refuses to touch a script it does not recognise,
+      # which trades loud data loss for a silent gap. This alert is what makes
+      # the gap loud instead.
+      #
+      # A gauge, not increase() over a counter. The first version of this rule
+      # was `sum(increase(loki_process_custom_stalwart_sieve_unmanaged_total[26h]))
+      # > 0` and could not fire: a once-daily job increments its counter once,
+      # so the series sits flat and `increase` reads 0. Measured live on
+      # 2026-09-14 — after a forced bad run the series read [1, 1, 1] and the
+      # expression evaluated to 0 with the alert still inactive. It would have
+      # alerted only on a second consecutive bad day. The burst-shaped counters
+      # above (auth, delivery) do not have this problem, which is why the shape
+      # looked correct until it was tested.
+      #
+      # The gauge carries the level, so this fires on the first bad run, and the
+      # next clean run sets it to 0 and resolves without anyone touching it.
+      #
+      # sum() rather than max() because the gauge is one series per CronJob pod
+      # (the pod name changes every run), so a run reporting 2 bad accounts must
+      # not be read as 2 separate series of 1. The series are expired after 26h
+      # in alloy/helmrelease.yaml specifically so this sum cannot accumulate
+      # older runs — see the note there. Consequence worth knowing when
+      # verifying a fix: clearing takes up to ~2h, because the previous bad run
+      # is still counted until its series expires.
+      - uid: stalwartsievearchiverulemissing
+        title: StalwartSieveArchiveRuleMissing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(loki_process_custom_stalwart_sieve_unmanaged_accounts) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: A mailbox is not archiving delivered mail
+          description: >-
+            stalwart-sieve-reconcile could not apply the archive-all rule to at least one account in
+            its last daily run, so that mailbox keeps no Archive copy and deleting a message
+            destroys it. Usually means someone edited their filters and the managed block was lost;
+            the fix is to restore the block to their active script, or deactivate that script so the
+            job installs a fresh one. The job logs the previous script body before every write, and
+            that log is the only backup — read it before re-authoring anything: `kubectl --context
+            nas -n email-stalwart logs job/<stalwart-sieve-reconcile-...>`. Loki:
+            {namespace="email-stalwart"} |= "sieve-reconcile: archive rule not applied".
+      # Distinct from the alert above: that one is the job correctly refusing to
+      # touch a script, this one is the job failing to do its work at all —
+      # ManageSieve authentication rejected, TLS failure, the account unreachable.
+      # Same consequence for the mailbox, different fix, so it is worth its own
+      # alert rather than being folded into a single "something is wrong".
+      - uid: stalwartsievereconcileerrors
+        title: StalwartSieveReconcileErrors
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(loki_process_custom_stalwart_sieve_failed_accounts) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: The Sieve reconciler is erroring on an account
+          description: >-
+            The last stalwart-sieve-reconcile run raised an exception for at least one account, so
+            its Sieve script was not checked and may not be archiving. Most likely the automation
+            principal's credential or its impersonate permission, since every account goes through
+            the same composite ManageSieve login. Read the per-account error:
+            {namespace="email-stalwart"} |= "sieve-reconcile: archive rule not applied".
+      # The gauges above report the last run's result and keep reporting it:
+      # max_idle_duration holds the series up for 168h, so a job that stops
+      # running leaves them sitting at a healthy 0 rather than going absent.
+      # Silence therefore cannot be read as health, and this rule is what makes
+      # a dead job visible. Same shape as tinkerbell's BackgroundJobUnhealthy.
+      #
+      # 48h against a daily schedule tolerates one missed run — a node reboot
+      # across 04:43, a slow image pull — without firing.
+      - uid: stalwartsievereconcilenotrunning
+        title: StalwartSieveReconcileNotRunning
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'time() - max(loki_process_custom_stalwart_sieve_last_run_seconds) > 172800'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: The Sieve reconciler has not run in over 48 hours
+          description: >-
+            stalwart-sieve-reconcile is scheduled daily at 04:43 and has not completed in more than
+            two days, so no account's archive rule has been verified in that time and the other two
+            Sieve alerts are blind — their gauges still report the last run's result. Check the
+            CronJob is not suspended and that recent Jobs completed: `kubectl --context nas -n
+            email-stalwart get cronjob,jobs`.
+      # THE HEALTH AND META ALERTS
+      - uid: stalwartnotready
+        title: StalwartNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_statefulset_status_replicas_ready{namespace="email-stalwart",statefulset="stalwart"} ==
+                0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Stalwart has no ready replicas — mail is down
+          description: >-
+            Single replica, so this is a total outage of IMAP, submission and inbound delivery.
+            Inbound mail is not lost: Google is still the MX and will retry, and holds its own copy
+            regardless.
+      # Restarts are a normal part of operating this server — settings
+      # changes and certificate reloads both require one — so this is a
+      # warning that provides context for other alerts rather than a page.
+      - uid: stalwartpodrestarted
+        title: StalwartPodRestarted
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(kube_pod_container_status_restarts_total{namespace="email-stalwart",container="stalwart"}[15m])
+                > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Stalwart restarted
+          description: >-
+            The container restarted in the last 15 minutes. Expected after a settings change or a
+            certificate reload; unexplained, it is worth checking `kubectl --context nas -n
+            email-stalwart logs stalwart-0 --previous`. Note that a restart is also why `kubectl
+            logs` can look empty for events you know happened — Loki has the previous container's
+            output, kubectl does not.
+      # From Stalwart's own exporter. queue_count is the whole MTA queue;
+      # a couple of messages mid-retry is normal, a persistent pile is not.
+      - uid: stalwartqueuebacklog
+        title: StalwartQueueBacklog
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'queue_count{job="stalwart"} > 25'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Stalwart''s mail queue is backing up ({{ $values.query.Value }} messages)'
+          description: >-
+            More than 25 messages queued for half an hour. Usually the outbound path: check
+            StalwartDeliveryFailing and the Queue panel on the Email dashboard.
+      # Meta-alert. StalwartQueueBacklog is the only rule above that reads
+      # the exporter, but the dashboard leans on it heavily, and its being
+      # a datastore setting rather than a file in this repo means it can go
+      # away without any git change to explain it.
+      - uid: stalwartmetricsscrapedown
+        title: StalwartMetricsScrapeDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'up{job="stalwart"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Cannot scrape Stalwart's Prometheus exporter
+          description: >-
+            Two causes look identical from here. Either the exporter was switched off in the admin
+            UI (Settings > Telemetry > Metrics > Prometheus) or lost in a datastore restore — it
+            404s — or the basic-auth password no longer matches, which 401s. Check the status code
+            before assuming. The password lives in TWO files that must hold the same value:
+            email-stalwart/.env.secret.stalwart and
+            monitoring/prometheus/.env.secret.stalwart-metrics.
+      # The counterpart to the above for the other evidence source. Stalwart
+      # reschedules an internal task every 5 minutes no matter how quiet the
+      # server is, so ~12 heartbeat lines an hour is the floor. Zero means
+      # the log path is broken, and while it is, StalwartNoInboundMail and
+      # every other counter-based rule here is blind rather than reassuring.
+      - uid: stalwartlogfeeddown
+        title: StalwartLogFeedDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(loki_process_custom_stalwart_heartbeat_total[30m])) == 0 or
+                absent(loki_process_custom_stalwart_heartbeat_total)'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: No log lines from Stalwart for 30 minutes
+          description: >-
+            Stalwart emits a scheduling line every 5 minutes even when completely idle, so silence
+            means the log pipeline is broken, not that the server is quiet. Check the Alloy pod and
+            the loki.process "default" stages. Mail-flow alerting is inoperative until this clears.
