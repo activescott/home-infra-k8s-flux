@@ -94,8 +94,13 @@ nowhere. To wire up a real one:
    ```
    ./scripts/onepassword-secrets.mts edit apps/production/monitoring/grafana/.env.secret.grafana-watchdog-heartbeat.encrypted
    ```
-4. Restart the Grafana pod (environment variables load at startup only) and confirm the
-   service shows a ping within a couple of minutes.
+4. Commit and push the re-encrypted file. Flux reconciles `main` automatically and updates
+   the `grafana-watchdog-heartbeat` Secret.
+5. Restart the Grafana pod (environment variables load at startup only):
+   ```
+   kubectl --context nas -n monitoring rollout restart deployment/grafana
+   ```
+   and confirm the service shows a ping within a couple of minutes.
 
 No NetworkPolicy change is needed: the Grafana egress rule already allows outbound 443 to
 the internet (`../../networkpolicy.yaml`, the `grafana` policy's last egress rule), which is
