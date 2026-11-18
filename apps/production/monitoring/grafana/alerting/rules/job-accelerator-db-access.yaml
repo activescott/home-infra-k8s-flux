@@ -15,7 +15,8 @@ groups:
   # The counter is born at 1 on the first login after an Alloy restart, which
   # increase() cannot see, hence the `unless ... offset 5m` arm (same as
   # wordpress-security). A session of several logins stays one firing alert
-  # until 5m after the last: one firing message and one resolved message in Slack.
+  # until 5m after the last: one firing message and one resolved message on
+  # each of Slack and Telegram.
   - orgId: 1
     name: job-accelerator-db-access
     folder: nas1

@@ -26,6 +26,14 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.grafana-alerts-slack.encrypted
+  # The Telegram bot token and chat ID Alertmanager used before #537
+  # (alerting/notifications.yaml). Reused, not regenerated; see alerting/README.md.
+  - name: grafana-alerts-telegram
+    namespace: monitoring
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.grafana-alerts-telegram.encrypted
 
 # Dashboards checked in here are picked up by the Grafana sidecar (enabled in
 # helmrelease.yaml under sidecar.dashboards). The sidecar watches ConfigMaps

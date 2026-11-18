@@ -1,19 +1,19 @@
 # Grafana-managed alerting
 
 Every alert rule for the cluster lives here, as a Grafana alert-rule provisioning file, and
-every notification goes to one Slack contact point, the Dreamwright alerts channel (#537).
-Before #537 the same rules were Prometheus rules routed by Alertmanager to Telegram and Slack.
-Prometheus now evaluates no rules and Alertmanager is off. One rule, `Watchdog`, is routed
-elsewhere on purpose -- see "The Watchdog" below.
+every notification goes to one contact point, `dreamwright-alerts`, which fans out to both the
+Dreamwright alerts Slack channel and the Telegram chat Alertmanager posted to before #537
+(#537 decision on #539: one alerting system, not one destination). Prometheus now evaluates no
+rules and Alertmanager is off.
 
 Prometheus's `ALERTS` series went with them. A dashboard panel that shows alerts is an
 `alertlist` panel filtered by labels (`alertInstanceLabelFilter`), as on the email, fernfiles,
 gpupoet and tinkerbell dashboards.
 
-| File                 | What it provisions                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `notifications.yaml` | The `dreamwright-alerts-slack` and `watchdog-heartbeat` contact points, and the policy tree |
-| `rules/<group>.yaml` | One rule group each, all in the `nas1` folder, evaluated every 1m                           |
+| File                 | What it provisions                                                            |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `notifications.yaml` | The `dreamwright-alerts` contact point (Slack + Telegram) and the policy tree |
+| `rules/<group>.yaml` | One rule group each, all in the `nas1` folder, evaluated every 1m             |
 
 ## How it gets into Grafana
 
@@ -67,50 +67,20 @@ it:
 Grafana reads environment variables only at startup, so a new value takes effect once the
 Grafana pod restarts.
 
-## The Watchdog
+## The Telegram bot
 
-Once #537 took Prometheus and Alertmanager out of the alerting path, Grafana is both the
-evaluator and the notifier for every rule in this folder -- including the rule that would
-otherwise have noticed Grafana itself was down. `rules/watchdog.yaml` holds one rule,
-`Watchdog`, built to always fire, the same way every other rule here does (`is_number($query)
-|| ...` against a query, `vector(1)`, that is never empty). `notifications.yaml` routes it
-alone to the `watchdog-heartbeat` contact point -- a webhook, not Slack, on purpose -- every
-`repeat_interval` (1m, matching the rule's own evaluation interval).
+The bot token and chat ID are in `../.env.secret.grafana-alerts-telegram.encrypted` (keys
+`bot_token` and `chat_id`) -- the same ones Alertmanager used before #537, reused rather than
+regenerated. They reach Grafana as `GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN` and
+`GRAFANA_ALERTS_TELEGRAM_CHAT_ID` (`envValueFrom` in `../helmrelease.yaml`), and Grafana
+substitutes them into `notifications.yaml`. To set or rotate them:
 
-That webhook is a check-in ("dead man's switch") URL: a ping arriving on schedule is the
-healthy case, and the service pages when pings stop. Any such service works
-(healthchecks.io, Cronitor, Dead Man's Snitch, ...); none is wired up here, because signing
-up for one is a one-time action for whoever owns this cluster, not something a rule file can
-do. Until that happens, `GRAFANA_WATCHDOG_HEARTBEAT_URL` is the placeholder
-`.env.secret.grafana-watchdog-heartbeat.encrypted` ships with, and the Watchdog pings
-nowhere. To wire up a real one:
+```
+./scripts/onepassword-secrets.mts edit apps/production/monitoring/grafana/.env.secret.grafana-alerts-telegram.encrypted
+```
 
-1. Create a check in the service of choice, with a period and grace period that comfortably
-   cover a 1m repeat_interval plus a Grafana pod restart (a few minutes of grace is plenty).
-2. Point the service's own alert at something that does **not** depend on this Grafana
-   instance or its Slack webhook -- an email address, a different Slack app, etc. A path that
-   shares a dependency with the thing it's watching defeats the point.
-3. Put the check's ping URL in the secret:
-   ```
-   ./scripts/onepassword-secrets.mts edit apps/production/monitoring/grafana/.env.secret.grafana-watchdog-heartbeat.encrypted
-   ```
-4. Commit and push the re-encrypted file. Flux reconciles `main` automatically and updates
-   the `grafana-watchdog-heartbeat` Secret.
-5. Restart the Grafana pod (environment variables load at startup only):
-   ```
-   kubectl --context nas -n monitoring rollout restart deployment/grafana
-   ```
-   and confirm the service shows a ping within a couple of minutes.
-
-No NetworkPolicy change is needed: the Grafana egress rule already allows outbound 443 to
-the internet (`../../networkpolicy.yaml`, the `grafana` policy's last egress rule), which is
-what carries the Slack webhook today and will carry this one the same way.
-
-This is deliberately the smallest fix for "nothing notices if Grafana goes down": no new
-workload, no NetworkPolicy change, and the only new secret is a URL. The cost is the
-activation gap above (inert until someone signs up for a check-in service) and that, unlike
-everything else alerting does, the Watchdog's own silence isn't itself visible from inside
-this cluster -- by design, since that's exactly the failure it exists to cover.
+Grafana reads environment variables only at startup, so a new value takes effect once the
+Grafana pod restarts.
 
 ## Checking a change locally
 
@@ -121,6 +91,8 @@ Docker daemon here is remote, so copy files in rather than bind-mounting them:
 ```
 docker create --name grafana-alerting-check --network none \
   -e GRAFANA_ALERTS_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T0/B0/local \
+  -e GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN=local \
+  -e GRAFANA_ALERTS_TELEGRAM_CHAT_ID=510755639 \
   grafana/grafana:<version>
 docker cp apps/production/monitoring/grafana/alerting/rules/. grafana-alerting-check:/etc/grafana/provisioning/alerting/
 docker cp apps/production/monitoring/grafana/alerting/notifications.yaml grafana-alerting-check:/etc/grafana/provisioning/alerting/

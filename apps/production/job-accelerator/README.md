@@ -179,9 +179,10 @@ kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
 ```
 
 `ALTER ROLE olya_ro LOGIN;` restores it. Logins alert Scott (`OlyaRoJobAcceleratorDbConnection`),
-one Slack message in the Dreamwright alerts channel per 5-minute window of logins rather than one per connection. If the
-db's connection log stops reaching Alloy, `JobAcceleratorDbConnectionLogFeedDown` fires
-instead, because until it clears those logins go unreported.
+one message on the Dreamwright alerts Slack channel and Telegram per 5-minute window of logins
+rather than one per connection. If the db's connection log stops reaching Alloy,
+`JobAcceleratorDbConnectionLogFeedDown` fires instead, because until it clears those logins go
+unreported.
 
 ### `CLIENT_DATA_OWNER_EMAIL`
 
