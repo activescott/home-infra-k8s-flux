@@ -1,0 +1,49 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `openrouter` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: openrouter
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: openrouterbudgetexceeded
+        title: OpenRouterBudgetExceeded
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum by (namespace, pod, app)
+                (increase(loki_process_custom_openrouter_budget_refused_total[15m])) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'OpenRouter budget exhausted for {{ $labels.app }} in {{ $labels.namespace }}, model calls
+            are failing.'
+          description: >-
+            {{ $labels.pod }} in {{ $labels.namespace }} got a 403 from OpenRouter in the last 15
+            minutes: that namespace's workspace or key budget is spent and every call on it fails
+            until the cap is raised or the month resets. Known cause so far: Job Accelerator holds a
+            $100/month key in job-accelerator-prod and can exhaust it. See
+            activescott/home-infra-k8s-flux#220. There is no in-cluster fix -- raise the cap in the
+            OpenRouter dashboard for the workspace/key named by the firing labels, or wait for the
+            monthly reset.
+          query: '{namespace="{{ $labels.namespace }}", app="{{ $labels.app }}"} |~ "OpenRouter answered
+            403|provider=openrouter .* status=403"'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/OpenRouterBudgetExceeded.md
+          repo: activescott/job-accelerator

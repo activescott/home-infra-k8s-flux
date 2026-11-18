@@ -1,0 +1,86 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `tayle` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: tayle
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: podnotready
+        title: PodNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_pod_status_ready{namespace="tayle-prod",pod!~"^db-backup-.*",condition="false"} > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Tayle Pod not ready. See
+            https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+      - uid: deploymentnotavailable
+        title: DeploymentNotAvailable
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_deployment_status_condition{namespace="tayle-prod",condition="Available",status="false"}
+                > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Tayle Deployment not available. See
+            https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status
+      - uid: statefulsetnotready
+        title: StatefulSetNotReady
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_statefulset_status_replicas_ready{namespace="tayle-prod"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Tayle StatefulSet has no ready replicas. See
+            https://grafana.activescott.com/d/cc030cf0-cde1-46c1-bc49-fd5c88d7f002/tayle-prod-status

@@ -1,0 +1,240 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `crossplane-cloudflare-api` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: crossplane-cloudflare-api
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: cloudflareapibudgethigh
+        title: CloudflareAPIBudgetHigh
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 600'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Crossplane is using over half the Cloudflare API budget
+          description: >-
+            Known cause so far: a DNS or network outage makes every failed read requeue with error
+            backoff instead of waiting out --poll, so reconcile attempts spike even though calls
+            reaching Cloudflare drop to zero. Confirm with the query below -- if the increase is all
+            operation="connect" with create/update flat, this is the retry-storm pattern, not real
+            usage nearing the budget. See activescott/home-infra-k8s-flux#237. Anything that doesn't
+            match is a new failure and does mean the budget is genuinely close: raise --poll in
+            provider-cloudflare-runtimeconfig.yaml. Do NOT set --max-reconcile-rate, which silently
+            stops controllers.
+          query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgethigh
+          repo: activescott/home-infra-k8s-flux
+      - uid: cloudflareapibudgetcritical
+        title: CloudflareAPIBudgetCritical
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(upjet_resource_ext_api_duration_count[5m])) > 1000'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Crossplane is about to exhaust the Cloudflare API budget
+          description: >-
+            Known cause so far: same retry-storm pattern as CloudflareAPIBudgetHigh, past the second
+            threshold. On 2026-09-24 this fired for 12 minutes during Ziply Fiber's planned
+            maintenance -- CoreDNS returned SERVFAIL for api.cloudflare.com, so every read requeued
+            with error backoff instead of waiting out --poll, and the reconcile-attempt counter hit
+            1200/5m with essentially zero calls reaching Cloudflare. See
+            activescott/home-infra-k8s-flux#237. Anything that doesn't match -- no DNS/network
+            trouble in the same window, or create/update actually rising -- is a new failure and
+            means the budget is genuinely exhausted.
+          query: 'sum by (operation) (increase(upjet_resource_ext_api_duration_count[5m]))'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CloudflareAPIBudget.md#cloudflareapibudgetcritical
+          repo: activescott/home-infra-k8s-flux
+      # The symptom rather than the cause: resources that cannot sync.
+      # Catches throttling, credential problems and dead controllers
+      # alike, which is the point -- on 2026-08-28 all three looked
+      # identical from outside.
+      # crossplane_managed_resource_{exists,synced} are per-GVK gauges,
+      # NOT per-resource. There is one series per installed CRD kind --
+      # 242 of them for this provider -- so `synced == 0` matches every
+      # kind that simply has no resources, which was 241 of them. The
+      # difference against _exists is what actually means "resources
+      # exist for this kind and some of them are not syncing".
+      - uid: crossplaneresourcesnotsynced
+        title: CrossplaneResourcesNotSynced
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'crossplane_managed_resource_exists - crossplane_managed_resource_synced > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "Crossplane resources unsynced for 30m: {{ $labels.gvk }}"
+          description: >-
+            {{ $values.query.Value }} managed resources of {{ $labels.gvk }} report Synced=False.
+            Check the resource's Synced condition message. Note lastTransitionTime does NOT update
+            while the reason stays the same, so a stale-looking timestamp does not mean the
+            controller has stopped retrying -- and an unchanging one does not mean it is still
+            trying either.
+          query: 'kubectl -A get events --field-selector reason=CannotCreateExternalResource'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/CrossplaneResourcesNotSynced.md
+          repo: activescott/home-infra-k8s-flux
+      # CrossplaneResourcesNotSynced resolves on exists - synced == 0,
+      # which is reached either by synced rising OR by exists falling to
+      # zero. Deletion and repair produce an identical "Resolved"
+      # notification. On 2026-08-28 that had to be told apart by hand,
+      # by checking the denominators had held at 10 and 7.
+      #
+      # Self-baselining rather than a hardcoded floor: a literal
+      # `> 100` is correct only until the real count changes, and
+      # nobody updates a number that is not failing. max_over_time
+      # tracks additions on its own.
+      #
+      # `max by (gvk)` is load-bearing, not tidying. The raw series
+      # carry pod, instance and pkg_crossplane_io_revision labels, all
+      # of which change when the provider upgrades -- so an unaggregated
+      # comparison silently starts a fresh 6h baseline on every rollout
+      # and cannot see a drop across one. `sum by (gvk)` would instead
+      # double-count while old and new pods overlap mid-roll, then halve
+      # and fire a false alarm on every upgrade. max is stable across
+      # both: one replica's worth either way.
+      #
+      # It fires on deliberate deletions too. That is intended -- every
+      # managed resource here comes from git, so an unannounced drop is
+      # exactly the event worth interrupting for. Expect it to stay
+      # firing until the 6h window rolls past the old high-water mark.
+      #
+      # Verified against live Prometheus before merging: the expression
+      # returns nothing now, and the same expression with `+ 1` on the
+      # right returns all 242 series -- which is what proves the
+      # comparison actually joins on labels rather than silently
+      # matching nothing and never firing.
+      - uid: crossplaneresourcesdisappeared
+        title: CrossplaneResourcesDisappeared
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'max by (gvk) (crossplane_managed_resource_exists) < max_over_time(max by (gvk)
+                (crossplane_managed_resource_exists)[6h:])'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: "Crossplane managed resources vanished: {{ $labels.gvk }}"
+          description: >-
+            {{ $labels.gvk }} now reports {{ $values.query.Value }} resources, fewer than its 6h
+            high-water mark. If this was not a deliberate git deletion, suspect a kustomize path
+            change combined with prune: true. Cloudflare state is the ground truth -- re-run
+            export-cloudflare.sh and diff before recreating anything, since the records may still be
+            live and only the managed resources gone.
+      # The threshold rules above cannot fire on data that does not
+      # exist: if the whole metric family disappears, every expr
+      # referencing it goes empty and silently stops alerting. absent()
+      # is the only form that catches its own absence.
+      - uid: crossplanestatemetricsabsent
+        title: CrossplaneStateMetricsAbsent
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'absent(crossplane_managed_resource_exists)'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: Crossplane managed-resource state metrics have disappeared
+          description: >-
+            No crossplane_managed_resource_exists series at all. Every other Crossplane alert here
+            is blind while this is firing. Check the provider pod, its metrics endpoint, and the
+            ServiceMonitor.
+      # A provider that stops reconciling a whole kind looks completely
+      # healthy: the pod is Running, the Provider is Healthy, and other
+      # kinds keep working. This is the only signal that catches it.
+      - uid: crossplaneprovidernotreconciling
+        title: CrossplaneProviderNotReconciling
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(rate(upjet_resource_ext_api_duration_count[15m])) == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: Crossplane provider has made no external API calls in 30m
+          description: >-
+            The provider is up but calling nothing. Expected steady-state is roughly 17 calls/min at
+            --poll=15m with ~131 managed resources. Zero means controllers are not running even
+            though the pod is Running and Healthy.

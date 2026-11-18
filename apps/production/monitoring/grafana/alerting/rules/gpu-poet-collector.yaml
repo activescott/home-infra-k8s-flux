@@ -1,0 +1,156 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `gpu-poet-collector` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: gpu-poet-collector
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: collectordown
+        title: CollectorDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'up{job="gpu_poet_collector"} < 1.0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: gpu-poet-collector /metrics endpoint is not reachable.
+      # 10 days. Worst case: 5-day idle + ~40h iteration (2 FurMark
+      # sources x 5000 IDs x ~12.5s crawl delay) = ~6.7 days, with
+      # 3.3 days of slack. The alert catches a wedged collector, not
+      # a slow one.
+      - uid: collectorgitpushstalled
+        title: CollectorGitPushStalled
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(time() - collector_last_git_push_timestamp_seconds) > 864000'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: gpu-poet-collector has not pushed cache updates to git in over 10 days.
+      # >5% of fetches are landing in the not-found bucket (404/error/unparseable)
+      # over the past hour — gpumagick may be blocking us or the parser is broken.
+      - uid: collectorhigherrorrate
+        title: CollectorHighErrorRate
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'rate(collector_furmark_fetches_total{outcome="notfound"}[1h]) /
+                clamp_min(sum(rate(collector_furmark_fetches_total[1h])), 0.001) > 0.05'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: gpu-poet-collector FurMark fetch error rate >5% over the last hour.
+      # The scraper labels a navigation "blocked" only for an explicit
+      # refusal: 401/403/429, or a 200 carrying the Cloudflare
+      # challenge interstitial. Any occurrence means scraping has
+      # stopped; the collector deliberately does not retry a block on
+      # the short cadence, because the next request would be refused
+      # the same way.
+      - uid: openbenchmarkingblocked
+        title: OpenBenchmarkingBlocked
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(collector_openbenchmarking_page_fetches_total{outcome="blocked"}[1d]) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            OpenBenchmarking is refusing the gpu-poet collector (Cloudflare challenge or 403).
+          description: >-
+            Benchmark scraping for {{ $labels.benchmark }} is stopped until the fetch path or
+            User-Agent is changed. Access depends on a Phoronix-identifying User-Agent, so Phoronix
+            tightening that rule looks exactly like this. See gpu-poet-data
+            specs/openbenchmarking-cloudflare-block/.
+      # 12 days = 2 collector cadences (5d each) + slack. The absence
+      # of this alert let an 8-week OpenBenchmarking outage hide behind
+      # healthy FurMark metrics.
+      #
+      # collector_source_run_total{status="ok"} is the wrong series
+      # here: a source run that scraped nothing still records "ok" as
+      # long as it did not throw, so it cannot see this. The
+      # per-configuration counter can.
+      - uid: openbenchmarkingstale
+        title: OpenBenchmarkingStale
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(collector_openbenchmarking_configurations_total{outcome="scraped"}[12d]) == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            gpu-poet-collector has not scraped any OpenBenchmarking configuration in 12 days.
+          description: >-
+            No configuration of {{ $labels.benchmark }} has been scraped successfully in 12 days (2
+            collector cadences). Check the other outcome labels on
+            collector_openbenchmarking_configurations_total — no_table, below_minimum and failed
+            each mean something different.

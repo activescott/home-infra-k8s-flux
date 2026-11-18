@@ -1,0 +1,88 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `tinkerbell-proxy` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: tinkerbell-proxy
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: proxyoutofbandwidth
+        title: ProxyOutOfBandwidth
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(tinkerbell_proxy_errors_total{error_type="payment"}[5m]) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Proxy {{ $labels.proxy }} reports out-of-bandwidth/billing failure — fetch path is
+            broken.'
+          description: 'tinkerbell_proxy_errors_total{error_type=payment, proxy={{ $labels.proxy }}} fired.
+            The proxy returned a 4xx with X-Error-Description matching
+            traffic/bandwidth/quota/balance. Top up the DataImpulse plan or check billing
+            immediately.'
+      - uid: proxyauthfailing
+        title: ProxyAuthFailing
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'increase(tinkerbell_proxy_errors_total{error_type="auth"}[5m]) > 3'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Proxy {{ $labels.proxy }} is rejecting authentication.'
+          description: 'Multiple 407 responses from {{ $labels.proxy }} in the last 5 minutes. Verify the
+            PROXY_USERNAME/PROXY_PASSWORD secrets and the sub-user in the DataImpulse dashboard.'
+      - uid: proxyconnectionfailures
+        title: ProxyConnectionFailures
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'rate(tinkerbell_proxy_errors_total{error_type="connection"}[10m]) > 0.1'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Proxy {{ $labels.proxy }} connection failures elevated.'
+          description: 'Sustained ETIMEDOUT/ECONNREFUSED/ERR_TUNNEL errors against {{ $labels.proxy }} — could
+            be transient network or a hard-down DataImpulse account.'

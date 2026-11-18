@@ -64,6 +64,10 @@ spec:
     plugins:
       - loki
     grafana.ini:
+      # Alert notifications link back here (rule, silence and dashboard links in Slack).
+      # Without it they point at http://localhost:3000.
+      server:
+        root_url: https://grafana.activescott.com
       plugins:
         preinstall: "grafana-lokiexplore-app@2.5.2,grafana-metricsdrilldown-app@2.5.1,grafana-exploretraces-app@2.2.0,grafana-pyroscope-app@2.3.0"
         # These two datasource plugins ship inside the image, under
@@ -87,6 +91,12 @@ spec:
         secretKeyRef:
           name: grafana-datasource-password
           key: password
+      # The Dreamwright alerts channel's Slack webhook, substituted into
+      # alerting/notifications.yaml. See alerting/README.md for how to set it.
+      GRAFANA_ALERTS_SLACK_WEBHOOK_URL:
+        secretKeyRef:
+          name: grafana-alerts-slack
+          key: webhook_url
 
     # Provision both Prometheus and Loki datasources.
     #
@@ -160,6 +170,14 @@ spec:
           disableDelete: false
           allowUiUpdates: true
           foldersFromFilesStructure: true
+      # Same pattern for alerting: ConfigMaps labelled `grafana_alert=1` are written to
+      # /etc/grafana/provisioning/alerting and the sidecar calls Grafana's alerting
+      # provisioning reload. See alerting/README.md.
+      alerts:
+        enabled: true
+        label: grafana_alert
+        labelValue: "1"
+        resource: configmap
 
     # Provision standard Kubernetes monitoring dashboards from grafana.com.
     # These two sections (dashboardProviders + dashboards) work together:

@@ -1,0 +1,48 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `cluster-pod-health` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  # Catches a pod wedged at mount time in any namespace — no container ever starts,
+  # so there are no restarts and no logs.
+  #
+  # for: 60m: 14 days of history at 1m resolution put the longest legitimate Pending
+  # span in the cluster at gpupoet-prod's revalidation CronJob pods (amazon-revalidation,
+  # ebay-revalidation), around 11m, and arc-runners' queued runner pods, around 5m. 60m
+  # clears both with room to spare, so no namespace exclusion is needed for either.
+  - orgId: 1
+    name: cluster-pod-health
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: podstuckpending
+        title: PodStuckPending
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'kube_pod_status_phase{phase="Pending"} > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 60m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.namespace }}/{{ $labels.pod }} has been Pending for over an hour.'
+          description: >-
+            Pending also covers a pod whose init containers are still running, not just the time
+            before any container starts. Check for a FailedMount event first (a ConfigMap or Secret
+            a volume references may not exist), then node capacity and the PVC.
+          query: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}'
+          repo: activescott/home-infra-k8s-flux

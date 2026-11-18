@@ -19,6 +19,13 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.grafana-datasource-password.public-key-encrypted.encrypted
+  # The Dreamwright alerts channel's Slack webhook (alerting/notifications.yaml).
+  - name: grafana-alerts-slack
+    namespace: monitoring
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.grafana-alerts-slack.encrypted
 
 # Dashboards checked in here are picked up by the Grafana sidecar (enabled in
 # helmrelease.yaml under sidecar.dashboards). The sidecar watches ConfigMaps
@@ -127,4 +134,48 @@ configMapGenerator:
     options:
       labels:
         grafana_dashboard: "1"
+      disableNameSuffixHash: true
+  # Grafana-managed alerting, picked up by the alerts sidecar (sidecar.alerts in
+  # helmrelease.yaml), which watches ConfigMaps labelled `grafana_alert=1`. A new rule file
+  # under alerting/rules/ has to be listed here too. See alerting/README.md.
+  - name: grafana-alerting-notifications
+    namespace: monitoring
+    files:
+      - alerting/notifications.yaml
+    options:
+      labels:
+        grafana_alert: "1"
+      disableNameSuffixHash: true
+  - name: grafana-alerting-rules
+    namespace: monitoring
+    files:
+      - alerting/rules/alertmanager-self-monitoring.yaml
+      - alerting/rules/auth-origin-probe.yaml
+      - alerting/rules/cloudflare-proxied-sites.yaml
+      - alerting/rules/cluster-pod-health.yaml
+      - alerting/rules/cluster-wide.yaml
+      - alerting/rules/crossplane-cloudflare-api.yaml
+      - alerting/rules/debeth.yaml
+      - alerting/rules/edge-firewall.yaml
+      - alerting/rules/email-relay.yaml
+      - alerting/rules/email-stalwart.yaml
+      - alerting/rules/fernfiles.yaml
+      - alerting/rules/flux-reconcile-log-health.yaml
+      - alerting/rules/flux-system.yaml
+      - alerting/rules/gpu-poet-collector.yaml
+      - alerting/rules/gpupoet.yaml
+      - alerting/rules/job-accelerator-db-access.yaml
+      - alerting/rules/job-accelerator.yaml
+      - alerting/rules/nas.yaml
+      - alerting/rules/openrouter.yaml
+      - alerting/rules/tayle.yaml
+      - alerting/rules/tinkerbell-chat.yaml
+      - alerting/rules/tinkerbell-llm-providers.yaml
+      - alerting/rules/tinkerbell-log-health.yaml
+      - alerting/rules/tinkerbell-proxy.yaml
+      - alerting/rules/tinkerbell-scrape-health.yaml
+      - alerting/rules/wordpress-security.yaml
+    options:
+      labels:
+        grafana_alert: "1"
       disableNameSuffixHash: true

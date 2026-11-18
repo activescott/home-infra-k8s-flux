@@ -1,0 +1,518 @@
+# Grafana-managed alert rules, provisioned by the alerts sidecar (see ../README.md).
+# Migrated from the Prometheus rule group `debeth` in apps/production/monitoring/prometheus/helmrelease.yaml (#537).
+# Grafana expands environment variables in rule labels (a literal `$` there has to be
+# written `$$`), but not in annotations or the query models under `data`, so a `$` in
+# those stays single. Checked against Grafana 13.2.
+
+apiVersion: 1
+groups:
+  # Scott's eth-docker validator host. Its Alloy remote-writes to this
+  # Prometheus with external label host="debeth" (activescott/activeassistant#648),
+  # so nothing here scrapes it and a dead pipeline looks like silence:
+  # DebethMetricsAbsent is the dead-man for every rule below.
+  #
+  # Alloy's `execution` job scrapes Besu only because of an override in
+  # eth-docker's custom.yml on debeth (activescott/activeassistant#659);
+  # without it eth-docker switches Besu to OpenTelemetry and up stays 0.
+  # Execution-layer sync still comes from ethereum-metrics-exporter's
+  # eth_exe_* series: a stopped Besu freezes the block number and fires
+  # DebethExecutionNotSynced.
+  #
+  # Triage runs on debeth through the read-only wrappers only; the
+  # runbook names the commands that must never be run from triage.
+  - orgId: 1
+    name: debeth
+    folder: nas1
+    interval: 1m
+    rules:
+      - uid: debethmetricsabsent
+        title: DebethMetricsAbsent
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'absent_over_time(up{host="debeth",job="node-exporter"}[10m])'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: No metrics from debeth for 10 minutes
+          description: >-
+            The nas has received nothing from debeth's Alloy for 10 minutes, so every other debeth
+            alert is blind. Either debeth is down, Alloy on it is down, or the remote-write path
+            (Traefik ingress, basic auth, IP allowlist) is rejecting it.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmetricsabsent
+          repo: activescott/home-infra-private
+      - uid: debethclientdown
+        title: DebethClientDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'up{host="debeth",job=~"consensus|validator|execution"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'debeth {{ $labels.job }} client is not answering scrapes'
+          description: >-
+            Alloy on debeth has failed to scrape the {{ $labels.job }} container for 5 minutes. The
+            container is down or restarting, and the validator is likely missing duties.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclientdown
+          repo: activescott/home-infra-private
+      - uid: debethexporterdown
+        title: DebethExporterDown
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'up{host="debeth",job=~"mev-boost|cb-pbs|node-exporter|ethereum-metrics-exporter"} == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'debeth {{ $labels.job }} is not answering scrapes'
+          description: >-
+            Alloy on debeth has failed to scrape {{ $labels.job }} for 10 minutes. The alerts fed by
+            it are blind until it returns; for ethereum-metrics-exporter that is every
+            execution-layer alert.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethexporterdown
+          repo: activescott/home-infra-private
+      # lodestar_sync_status: 0 Stalled, 1 SyncingFinalized, 2 SyncingHead, 3 Synced.
+      - uid: debethbeaconnotsynced
+        title: DebethBeaconNotSynced
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: >-
+                max(lodestar_sync_status{host="debeth"}) < 3 or
+                (max(beacon_clock_slot{host="debeth"}) - max(beacon_head_slot{host="debeth"})) > 8
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: debeth's beacon node is not synced
+          description: >-
+            Lodestar reports a sync state other than Synced, or its head is more than 8 slots behind
+            the wall clock, for 10 minutes. The validator cannot attest correctly from a node that
+            is behind.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethbeaconnotsynced
+          repo: activescott/home-infra-private
+      - uid: debethbeaconlowpeers
+        title: DebethBeaconLowPeers
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'max(libp2p_peers{host="debeth"}) < 20'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'debeth beacon node has {{ $values.query.Value }} peers'
+          description: >-
+            Lodestar has had fewer than 20 peers for 15 minutes; it normally holds 50 to 60. Usually
+            a p2p port or network problem on debeth's side.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethbeaconlowpeers
+          repo: activescott/home-infra-private
+      - uid: debethexecutionnotsynced
+        title: DebethExecutionNotSynced
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: >-
+                max(eth_exe_sync_is_syncing{host="debeth"}) == 1 or
+                max(changes(eth_exe_block_most_recent_number{host="debeth"}[5m])) == 0
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: debeth's execution client is not synced
+          description: >-
+            Besu reports it is syncing, or its latest block number has not moved in 5 minutes, for
+            10 minutes. Blocks arrive every 12 seconds, so a flat block number means the execution
+            client is stuck.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethexecutionnotsynced
+          repo: activescott/home-infra-private
+      - uid: debethexecutionlowpeers
+        title: DebethExecutionLowPeers
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'max(eth_exe_net_peer_count{host="debeth"}) < 5'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'debeth execution client has {{ $values.query.Value }} peers'
+          description: >-
+            Besu has had fewer than 5 peers for 15 minutes; it normally holds about 25.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethexecutionlowpeers
+          repo: activescott/home-infra-private
+      # One target vote per validator per 6.4-minute epoch. A reboot or
+      # `ethd up` costs one or two epochs, which stays under both thresholds.
+      - uid: debethmissedattestations
+        title: DebethMissedAttestations
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(validator_monitor_prev_epoch_on_chain_target_attester_miss_total{host="debeth"}[1h]))
+                > 2'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'debeth missed {{ $values.query.Value | printf "%.0f" }} target attestations in the last
+            hour'
+          description: >-
+            More than two target votes missed on chain in an hour. The validator is running but
+            attesting late or on the wrong head.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmissedattestations
+          repo: activescott/home-infra-private
+      # 30 minutes is about five epochs in a row. Also catches an exited
+      # or slashed validator, which has no metric of its own.
+      - uid: debethvalidatornotattesting
+        title: DebethValidatorNotAttesting
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum(increase(validator_monitor_prev_epoch_on_chain_target_attester_hit_total{host="debeth"}[30m]))
+                < 1'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: debeth has had no target attestation on chain for 30 minutes
+          description: >-
+            No target vote from debeth's validator landed on chain in 30 minutes, about five epochs.
+            The validator is offline, cannot reach a synced beacon node, or is no longer active.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatornotattesting
+          repo: activescott/home-infra-private
+      - uid: debethvalidatornotactive
+        title: DebethValidatorNotActive
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: >-
+                max(validator_monitor_validators{host="debeth"}) < 1 or
+                max(vc_indices_count{host="debeth"}) < 1
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: debeth's validator key is not loaded or not resolved on chain
+          description: >-
+            The beacon node monitors no validators, or the validator client has no validator index,
+            for 15 minutes. The keys are not loaded or the client cannot resolve them on chain.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatornotactive
+          repo: activescott/home-infra-private
+      # vc_beacon_health: 0 READY, 1 SYNCING, 2 ERROR.
+      - uid: debethvalidatorbeaconunhealthy
+        title: DebethValidatorBeaconUnhealthy
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'max(vc_beacon_health{host="debeth"}) > 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: debeth's validator client sees its beacon node as unhealthy
+          description: >-
+            The validator client reports its beacon node as syncing (1) or erroring (2) for 5
+            minutes. Current value {{ $values.query.Value }}.
+          query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatorbeaconunhealthy
+          repo: activescott/home-infra-private
+      # The docker volumes are on /, which sat at 82% on 2026-10-02.
+      - uid: debethdiskfull-warning
+        title: DebethDiskFull
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} /
+                node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.90'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'debeth / is {{ $values.query.Value | humanizePercentage }} full'
+          description: >-
+            The root filesystem on debeth, which holds the chain databases, is over 90% full. The
+            clients stop when it fills.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+          repo: activescott/home-infra-private
+      - uid: debethdiskfull-critical
+        title: DebethDiskFull
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} /
+                node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.95'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'debeth / is {{ $values.query.Value | humanizePercentage }} full'
+          description: >-
+            The root filesystem on debeth, which holds the chain databases, is over 95% full. The
+            clients stop when it fills.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+          repo: activescott/home-infra-private
+      - uid: debethclockunsynced
+        title: DebethClockUnsynced
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'max(node_timex_sync_status{host="debeth"}) == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: debeth's clock is not NTP-synchronised
+          description: >-
+            The kernel on debeth has reported its clock unsynchronised for 15 minutes. Attestations
+            are slot-timed, so drift turns into late or missed votes.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethclockunsynced
+          repo: activescott/home-infra-private
+      # Commit-Boost (cb-pbs, which replaced mev-boost) records a request
+      # that got no HTTP response, a DNS, TCP or timeout failure, as
+      # http_status_code 555 (TIMEOUT_ERROR_CODE in commit-boost-client
+      # v0.10.1). Registration runs once per epoch, about nine times an hour.
+      # A relay is healthy when it received registrations in the last hour
+      # and at most half of them got no response. Debeth needs only one
+      # healthy relay to keep MEV, so the alert fires only when none is left,
+      # held for 30 minutes. One relay down while the others work is not an
+      # incident. Occasional timeouts are expected (Flashbots sometimes takes
+      # 2.5-5 s against the 3 s budget) and harmless, since Lodestar
+      # re-registers every epoch.
+      # The ratio is not divided directly: a relay with no 555 series has no
+      # numerator and would drop out, so the failing relays are subtracted
+      # from the relays that registered at all. "or vector(0)" makes an empty
+      # healthy set (or no cb-pbs metrics at all) compare as 0 and fire.
+      # cb-pbs serves these only with CB_METRICS_PORT set, from the
+      # custom.yml override in home-infra-private hosts/debeth.
+      - uid: debethmevrelayunreachable
+        title: DebethMevRelayUnreachable
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '(count((sum by (relay_id)
+                (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator"}[1h]))
+                > 0) unless on (relay_id) (sum by (relay_id)
+                (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator",http_status_code="555"}[1h]))
+                / sum by (relay_id)
+                (increase(cb_pbs_relay_status_code_total{host="debeth",endpoint="register_validator"}[1h]))
+                > 0.5)) or vector(0)) == 0'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: debeth cannot reach any MEV relay
+          description: >-
+            No MEV relay is healthy: every relay either got no registrations from debeth in the last
+            hour or had more than half of them go unanswered, for 30 minutes running. Lodestar falls
+            back to local blocks, so this costs MEV rewards, not proposals. A single relay failing
+            while others work does not alert.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayunreachable
+          repo: activescott/home-infra-private
+      - uid: debethmevrelayerrors
+        title: DebethMevRelayErrors
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: 'sum by (relay_id, http_status_code)
+                (increase(cb_pbs_relay_status_code_total{host="debeth",http_status_code!~"200|204|555"}[1h]))
+                > 3'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 0m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'MEV relay {{ $labels.relay_id }} answered debeth with HTTP {{ $labels.http_status_code }}'
+          description: >-
+            More than three non-2xx answers from {{ $labels.relay_id }} in an hour. Lodestar falls
+            back to local blocks, so this costs MEV rewards, not proposals.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethmevrelayerrors
+          repo: activescott/home-infra-private
