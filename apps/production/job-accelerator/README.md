@@ -166,9 +166,22 @@ kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
   psql -U jobaccelerator -d jobaccelerator -c '\password olya_ro'
 ```
 
-then on the agents host, `sudo dreamwright-host agent-secret set` the same value. Setting the
-password to NULL (`ALTER ROLE olya_ro PASSWORD NULL;`) revokes the access. Each login alerts
-Scott (`OlyaRoJobAcceleratorDbConnection`).
+then on the agents host, `sudo dreamwright-host agent-secret set` the same value.
+
+To revoke the access, block new logins and end any open sessions. Clearing the password alone
+would leave connected sessions running:
+
+```bash
+kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
+  psql -U jobaccelerator -d jobaccelerator \
+    -c 'ALTER ROLE olya_ro NOLOGIN;' \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'olya_ro';"
+```
+
+`ALTER ROLE olya_ro LOGIN;` restores it. Logins alert Scott (`OlyaRoJobAcceleratorDbConnection`),
+one Telegram message per 5-minute window of logins rather than one per connection. If the
+db's connection log stops reaching Alloy, `JobAcceleratorDbConnectionLogFeedDown` fires
+instead, because until it clears those logins go unreported.
 
 ### `CLIENT_DATA_OWNER_EMAIL`
 

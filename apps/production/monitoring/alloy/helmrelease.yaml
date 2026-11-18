@@ -326,12 +326,11 @@ spec:
             // (apps/production/job-accelerator/patch-db-statefulset.yaml), which logs
             // one line per login:
             //   ... LOG:  connection authorized: user=olya_ro database=jobaccelerator application_name=psql
-            // Its pg_isready probes log one of those every 5s too, so drop them first.
-            stage.match {
-              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"application_name=pg_isready\""
-              action   = "drop"
-              drop_counter_reason = "pg_isready_connection"
-            }
+            // Postgres sets user= and database= itself; application_name is whatever the
+            // client sends. The three stages below run in this order on purpose: count
+            // olya_ro, count every connection line, and only then drop the probe lines.
+            // A drop placed earlier, or one keyed on application_name alone, would let
+            // `PGAPPNAME=pg_isready` hide an olya_ro login from both the alert and Loki.
 
             // Every login as olya_ro, Olya's read-only role, feeds
             // OlyaRoJobAcceleratorDbConnection, an FYI to Scott
@@ -349,6 +348,35 @@ spec:
                   max_idle_duration = "24h"
                 }
               }
+            }
+
+            // Watchdog for the counter above, which sits flat for days and cannot tell
+            // "no logins" from "feed broken". The db's pg_isready probes log a
+            // connection line every 5s, so this one going flat is unambiguous: it backs
+            // JobAcceleratorDbConnectionLogFeedDown. 168h for the reason in
+            // monitoring/README.md ("WAN link alerting").
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"connection authorized: \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "job_accelerator_db_connection_lines_total"
+                  description = "connection authorized lines from job-accelerator's Postgres, probes included"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Drop the probe lines, now that they are counted. Scoped to the
+            // server-set user= and database= the probes use (jobaccelerator, whose
+            // password the jump box cannot read), so no olya_ro line can match
+            // whatever application_name it claims.
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"connection authorized: user=jobaccelerator database=jobaccelerator application_name=pg_isready\""
+              action   = "drop"
+              drop_counter_reason = "pg_isready_connection"
             }
 
             // email-relay: outbound mail delivery outcomes. Postfix is the only

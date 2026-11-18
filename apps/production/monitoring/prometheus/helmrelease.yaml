@@ -1892,19 +1892,6 @@ spec:
                   query: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}'
                   repo: activescott/home-infra-k8s-flux
 
-          # WordPress (apps/base/wordpress-upstream). The counters are minted from the wordpress
-          # container's log in alloy/helmrelease.yaml, which has the matched lines. All three
-          # should read zero forever, so each fires on one event and `for` is omitted.
-          #
-          # Each counter is born at 1 on its first matching line, and increase() cannot see a
-          # series' first sample, so the `unless ... offset 5m` arm catches the birth. Without it
-          # the first event after an Alloy restart would never alert. sum by (namespace) for the
-          # reason in the tinkerbell-log-health group.
-          #
-          # Only requests that reached WordPress count. With the tenant's ingress in place, an
-          # internet client asking for the REST API, wp-login.php or wp-admin gets a 403 from
-          # Traefik and appears only in Traefik's access log:
-          #   {namespace="kube-system", container="traefik"} | json | RequestHost="mmm.willeke.com"
           # Olya's read-only olya_ro role on job-accelerator's Postgres
           # (activescott/home-infra-k8s-flux#535). Scott asked to hear about every
           # login. The counter is minted in alloy/helmrelease.yaml from Postgres's
@@ -1932,6 +1919,45 @@ spec:
                     name, are in Loki.
                   query: '{namespace="job-accelerator-prod", app="db"} |= "connection authorized: user=olya_ro "'
                   repo: activescott/home-infra-k8s-flux
+              # Meta-alert: OlyaRoJobAcceleratorDbConnection is a counter that sits
+              # flat for days, so on its own a broken feed looks exactly like "no
+              # logins". The db's pg_isready probes log a connection line every 5s,
+              # counted in alloy/helmrelease.yaml before they are dropped, so 15m of
+              # silence means the path is broken: log_connections lost from the db's
+              # args, the Alloy stage no longer matching, the Alloy pod down, or the db
+              # itself down. The absent() arm covers the series vanishing entirely.
+              # Loud on purpose: while this fires, Olya's logins go unreported.
+              - alert: JobAcceleratorDbConnectionLogFeedDown
+                expr: 'sum(increase(loki_process_custom_job_accelerator_db_connection_lines_total[15m])) == 0 or absent(loki_process_custom_job_accelerator_db_connection_lines_total)'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'No connection log lines from job-accelerator prod Postgres for 15 minutes; olya_ro logins are not being reported.'
+                  description: >-
+                    The db's pg_isready probes log a "connection authorized" line every 5s, so
+                    silence means the feed is broken, not that the db is idle. Check, in order:
+                    the db pod is running, its args still carry log_connections=authorization
+                    (apps/production/job-accelerator/patch-db-statefulset.yaml), the Alloy pod
+                    on the db's node is up, and the job-accelerator stages in
+                    alloy/helmrelease.yaml still match. OlyaRoJobAcceleratorDbConnection is
+                    blind until this clears.
+                  query: '{namespace="job-accelerator-prod", app="db"} |= "connection authorized: "'
+                  repo: activescott/home-infra-k8s-flux
+
+          # WordPress (apps/base/wordpress-upstream). The counters are minted from the wordpress
+          # container's log in alloy/helmrelease.yaml, which has the matched lines. All three
+          # should read zero forever, so each fires on one event and `for` is omitted.
+          #
+          # Each counter is born at 1 on its first matching line, and increase() cannot see a
+          # series' first sample, so the `unless ... offset 5m` arm catches the birth. Without it
+          # the first event after an Alloy restart would never alert. sum by (namespace) for the
+          # reason in the tinkerbell-log-health group.
+          #
+          # Only requests that reached WordPress count. With the tenant's ingress in place, an
+          # internet client asking for the REST API, wp-login.php or wp-admin gets a 403 from
+          # Traefik and appears only in Traefik's access log:
+          #   {namespace="kube-system", container="traefik"} | json | RequestHost="mmm.willeke.com"
           - name: wordpress-security
             rules:
               # A LAN editor session can legitimately use this endpoint (the block editor batches
