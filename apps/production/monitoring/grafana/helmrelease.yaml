@@ -97,12 +97,6 @@ spec:
         secretKeyRef:
           name: grafana-alerts-slack
           key: webhook_url
-      # The Watchdog dead man's switch's check-in URL, substituted into
-      # alerting/notifications.yaml. Ships as a placeholder; see alerting/README.md.
-      GRAFANA_WATCHDOG_HEARTBEAT_URL:
-        secretKeyRef:
-          name: grafana-watchdog-heartbeat
-          key: ping_url
 
     # Provision both Prometheus and Loki datasources.
     #
