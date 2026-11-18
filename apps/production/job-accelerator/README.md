@@ -153,6 +153,36 @@ kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
 
 Then update `POSTGRES_PASSWORD` and the password embedded in `DATABASE_URL` to match.
 
+### `olya_ro` password
+
+`olya_ro` is a read-only login for Olya's troubleshooting, reached through the jump box
+(`apps/production/jumpbox/README.md`, activescott/home-infra-k8s-flux#535). The app's
+migration `20261118120000_olya_ro_role` creates the role and its grants but no password, so it
+cannot log in over the network until one is set. The password is in neither repo: it lives in
+the db and on the Dreamwright agents host. Rotate both together:
+
+```bash
+kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
+  psql -U jobaccelerator -d jobaccelerator -c '\password olya_ro'
+```
+
+then on the agents host, `sudo dreamwright-host agent-secret set` the same value.
+
+To revoke the access, block new logins and end any open sessions. Clearing the password alone
+would leave connected sessions running:
+
+```bash
+kubectl --context nas -n job-accelerator-prod exec -it db-0 -- \
+  psql -U jobaccelerator -d jobaccelerator \
+    -c 'ALTER ROLE olya_ro NOLOGIN;' \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'olya_ro';"
+```
+
+`ALTER ROLE olya_ro LOGIN;` restores it. Logins alert Scott (`OlyaRoJobAcceleratorDbConnection`),
+one Telegram message per 5-minute window of logins rather than one per connection. If the
+db's connection log stops reaching Alloy, `JobAcceleratorDbConnectionLogFeedDown` fires
+instead, because until it clears those logins go unreported.
+
 ### `CLIENT_DATA_OWNER_EMAIL`
 
 There is no plaintext file to edit and nothing in 1Password. Re-encrypt straight to the

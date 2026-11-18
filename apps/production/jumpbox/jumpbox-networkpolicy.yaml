@@ -100,6 +100,21 @@ spec:
         - port: 5432
           protocol: TCP
 
+    # job-accelerator's Postgres, for `ssh -L` to db.job-accelerator-prod.svc:5432
+    # (activescott/home-infra-k8s-flux#535). Same shape as gpupoet's above: the db pod and port
+    # only, and logging in needs the olya_ro password. The other half is db-networkpolicy.yaml
+    # in ../job-accelerator.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: job-accelerator-prod
+          podSelector:
+            matchLabels:
+              app: db
+      ports:
+        - port: 5432
+          protocol: TCP
+
     # debeth, for ProxyJump. Same address and port as olya-0's route through her egress proxy.
     - to:
         - ipBlock:

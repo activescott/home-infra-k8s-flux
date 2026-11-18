@@ -147,10 +147,77 @@ spec:
               max_lines     = 128
             }
 
-            // Drop health check request logs to reduce noise.
-            // Covers tinkerbell (/health/*) and gpupoet (/api/health/*).
-            stage.drop {
-              expression = ".*GET /(api/)?health/(readiness|liveness).*"
+            // job-accelerator's Postgres runs with log_connections=authorization
+            // (apps/production/job-accelerator/patch-db-statefulset.yaml), which logs
+            // one line per login:
+            //   ... LOG:  connection authorized: user=olya_ro database=jobaccelerator application_name=psql
+            // Postgres sets user= and database= itself; application_name is whatever the
+            // client sends, up to 63 printable characters, so any line-content drop
+            // could be made to match an olya_ro login.
+            //
+            // INVARIANT: an olya_ro login is counted before anything can drop it. These
+            // two counters are the first stages after stage.multiline, and no
+            // stage.drop, drop-action stage.match, stage.limit or sampling stage may be
+            // added above them. Then the probe drop, keyed on server-set fields only.
+            // Ambient labels here lack `level`; both alerts sum(), so that is fine.
+
+            // Every login as olya_ro, Olya's read-only role, feeds
+            // OlyaRoJobAcceleratorDbConnection, an FYI to Scott
+            // (activescott/home-infra-k8s-flux#535). The phrase is Postgres's own; the
+            // trailing space keeps a role like olya_ro2 from matching.
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"connection authorized: user=olya_ro \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "job_accelerator_db_olya_ro_connections_total"
+                  description = "logins to job-accelerator's Postgres as olya_ro"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "24h"
+                }
+              }
+            }
+
+            // Watchdog for the counter above, which sits flat for days and cannot tell
+            // "no logins" from "feed broken". The db's pg_isready probes log a
+            // connection line every 5s, so this one going flat is unambiguous: it backs
+            // JobAcceleratorDbConnectionLogFeedDown. 168h for the reason in
+            // monitoring/README.md ("WAN link alerting").
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"connection authorized: \""
+
+              stage.metrics {
+                metric.counter {
+                  name        = "job_accelerator_db_connection_lines_total"
+                  description = "connection authorized lines from job-accelerator's Postgres, probes included"
+                  match_all   = true
+                  action      = "inc"
+                  max_idle_duration = "168h"
+                }
+              }
+            }
+
+            // Drop the probe lines, now that they are counted. Scoped to the
+            // server-set user= and database= the probes use (jobaccelerator, whose
+            // password the jump box cannot read), so no olya_ro line can match
+            // whatever application_name it claims.
+            stage.match {
+              selector = "{namespace=\"job-accelerator-prod\", app=\"db\"} |= \"connection authorized: user=jobaccelerator database=jobaccelerator application_name=pg_isready\""
+              action   = "drop"
+              drop_counter_reason = "pg_isready_connection"
+            }
+
+            // Drop health check request logs to reduce noise: tinkerbell, fernfiles and
+            // ramblefeed (/health/*) and gpupoet (/api/health/*). Scoped to those
+            // namespaces so it can never touch another app's lines, e.g. a Postgres
+            // login whose application_name is "GET /health/readiness".
+            stage.match {
+              selector = "{namespace=~\"tinkerbell-prod|gpupoet-prod|fernfiles-prod|ramblefeed-prod\"}"
+
+              stage.drop {
+                expression = ".*GET /(api/)?health/(readiness|liveness).*"
+              }
             }
 
             // Traefik's access log records the query string in RequestPath,

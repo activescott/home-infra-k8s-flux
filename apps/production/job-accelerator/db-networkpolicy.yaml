@@ -1,5 +1,13 @@
-# Only the app and the worker may reach Postgres. Without this the db Service
-# answers anyone in the cluster who has the password (activescott/job-accelerator#24).
+# Only the app, the worker and the jump box may reach Postgres. Without this
+# the db Service answers anyone in the cluster who has the password
+# (activescott/job-accelerator#24).
+#
+# The jump box is how Olya, on the Dreamwright agents host, reaches the db as
+# olya_ro, a read-only role, for troubleshooting: an `ssh -L` forward through
+# nas1-jump (activescott/home-infra-k8s-flux#535). Every olya_ro login alerts
+# Scott (OlyaRoJobAcceleratorDbConnection in
+# ../monitoring/prometheus/helmrelease.yaml). The other half is the egress
+# rule in ../jumpbox/jumpbox-networkpolicy.yaml.
 #
 # Nothing else connects over the network. The app pod applies migrations (the
 # worker's `command` skips the entrypoint), there is no db-backup CronJob here and
@@ -26,6 +34,12 @@ spec:
         - podSelector:
             matchLabels:
               app: worker
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: jumpbox
+          podSelector:
+            matchLabels:
+              app: jumpbox
       ports:
         - port: 5432
           protocol: TCP

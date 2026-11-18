@@ -129,6 +129,16 @@ spec:
           group_wait: 30s
           group_interval: 5m
           repeat_interval: 4h
+          routes:
+            # An FYI to Scott alone, on the same Telegram chat as the default receiver,
+            # for each window of olya_ro logins to job-accelerator's Postgres
+            # (activescott/home-infra-k8s-flux#535). Not the Slack channel: Olya is the
+            # one connecting. No resolved message, so one window is one notification.
+            - receiver: scott_telegram_fyi
+              matchers:
+                - alertname = "OlyaRoJobAcceleratorDbConnection"
+              group_wait: 0s
+              repeat_interval: 24h
         inhibit_rules:
           - source_match:
               severity: critical
@@ -152,6 +162,11 @@ spec:
                 send_resolved: true
                 title: '{{ .CommonLabels.alertname }} ({{ .Status }})'
                 text: '{{ .CommonAnnotations.summary }}'
+          - name: scott_telegram_fyi
+            telegram_configs:
+              - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+                send_resolved: false
+                chat_id: 510755639
 
     # --- Alert Rules ---
     # All alerting rules go into the standard alerting_rules.yml key so they're
@@ -1875,6 +1890,59 @@ spec:
                     first (a ConfigMap or Secret a volume references may not exist), then node
                     capacity and the PVC.
                   query: 'kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}'
+                  repo: activescott/home-infra-k8s-flux
+
+          # Olya's read-only olya_ro role on job-accelerator's Postgres
+          # (activescott/home-infra-k8s-flux#535). Scott asked to hear about every
+          # login. The counter is minted in alloy/helmrelease.yaml from Postgres's
+          # "connection authorized: user=olya_ro" line, which needs log_connections
+          # (apps/production/job-accelerator/patch-db-statefulset.yaml).
+          #
+          # The counter is born at 1 on the first login after an Alloy restart, which
+          # increase() cannot see, hence the `unless ... offset 5m` arm (same as
+          # wordpress-security below). A session of several logins stays one firing
+          # alert until 5m after the last, and the scott_telegram_fyi route sends no
+          # resolved message, so that is one notification.
+          - name: job-accelerator-db-access
+            rules:
+              - alert: OlyaRoJobAcceleratorDbConnection
+                expr: >-
+                  sum(increase(loki_process_custom_job_accelerator_db_olya_ro_connections_total[5m])) > 0
+                  or sum(loki_process_custom_job_accelerator_db_olya_ro_connections_total unless loki_process_custom_job_accelerator_db_olya_ro_connections_total offset 5m) > 0
+                labels:
+                  severity: info
+                annotations:
+                  summary: 'FYI: Olya logged in to job-accelerator prod Postgres as olya_ro (read-only).'
+                  description: >-
+                    Expected when Olya is troubleshooting job-accelerator. olya_ro can read
+                    every table and write none. The login lines, with the client application
+                    name, are in Loki.
+                  query: '{namespace="job-accelerator-prod", app="db"} |= "connection authorized: user=olya_ro "'
+                  repo: activescott/home-infra-k8s-flux
+              # Meta-alert: OlyaRoJobAcceleratorDbConnection is a counter that sits
+              # flat for days, so on its own a broken feed looks exactly like "no
+              # logins". The db's pg_isready probes log a connection line every 5s,
+              # counted in alloy/helmrelease.yaml before they are dropped, so 15m of
+              # silence means the path is broken: log_connections lost from the db's
+              # args, the Alloy stage no longer matching, the Alloy pod down, or the db
+              # itself down. The absent() arm covers the series vanishing entirely.
+              # Loud on purpose: while this fires, Olya's logins go unreported.
+              - alert: JobAcceleratorDbConnectionLogFeedDown
+                expr: 'sum(increase(loki_process_custom_job_accelerator_db_connection_lines_total[15m])) == 0 or absent(loki_process_custom_job_accelerator_db_connection_lines_total)'
+                for: 15m
+                labels:
+                  severity: warning
+                annotations:
+                  summary: 'No connection log lines from job-accelerator prod Postgres for 15 minutes; olya_ro logins are not being reported.'
+                  description: >-
+                    The db's pg_isready probes log a "connection authorized" line every 5s, so
+                    silence means the feed is broken, not that the db is idle. Check, in order:
+                    the db pod is running, its args still carry log_connections=authorization
+                    (apps/production/job-accelerator/patch-db-statefulset.yaml), the Alloy pod
+                    on the db's node is up, and the job-accelerator stages in
+                    alloy/helmrelease.yaml still match. OlyaRoJobAcceleratorDbConnection is
+                    blind until this clears.
+                  query: '{namespace="job-accelerator-prod", app="db"} |= "connection authorized: "'
                   repo: activescott/home-infra-k8s-flux
 
           # WordPress (apps/base/wordpress-upstream). The counters are minted from the wordpress
