@@ -15,6 +15,20 @@ contactPoints:
         settings:
           url: $GRAFANA_ALERTS_SLACK_WEBHOOK_URL
         disableResolveMessage: false
+  # The Watchdog dead man's switch (#537 review on #539; ./rules/watchdog.yaml). A webhook
+  # ping to an external check-in service, deliberately not Slack: the point is a path that
+  # doesn't depend on this Grafana instance being the thing that notices it's dead. Ships
+  # pointed at a placeholder URL -- see ./README.md ("The Watchdog") -- until the owner
+  # points it at a real check-in service.
+  - orgId: 1
+    name: watchdog-heartbeat
+    receivers:
+      - uid: watchdog-heartbeat
+        type: webhook
+        settings:
+          url: $GRAFANA_WATCHDOG_HEARTBEAT_URL
+          httpMethod: POST
+        disableResolveMessage: true
 
 # Same grouping and timing Alertmanager used (route in ../../prometheus/helmrelease.yaml before
 # #537), plus grafana_folder so the default Slack title reads "<alertname> nas1" in a channel
@@ -42,3 +56,14 @@ policies:
           - ["alertname", "=", "OlyaRoJobAcceleratorDbConnection"]
         group_wait: 0s
         repeat_interval: 24h
+      # The Watchdog (above): routed alone to the heartbeat contact point, not Slack, and
+      # repeated every evaluation (1m, matching rules/watchdog.yaml's interval) so a ping
+      # going missing means the very next evaluation didn't happen. continue: false (the
+      # default) is what matters here -- it keeps Watchdog off the Slack channel, which
+      # would otherwise see a "firing" message every repeat_interval forever.
+      - receiver: watchdog-heartbeat
+        object_matchers:
+          - ["alertname", "=", "Watchdog"]
+        group_wait: 0s
+        group_interval: 1m
+        repeat_interval: 1m

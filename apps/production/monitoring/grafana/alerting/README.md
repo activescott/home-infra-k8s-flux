@@ -3,16 +3,17 @@
 Every alert rule for the cluster lives here, as a Grafana alert-rule provisioning file, and
 every notification goes to one Slack contact point, the Dreamwright alerts channel (#537).
 Before #537 the same rules were Prometheus rules routed by Alertmanager to Telegram and Slack.
-Prometheus now evaluates no rules and Alertmanager is off.
+Prometheus now evaluates no rules and Alertmanager is off. One rule, `Watchdog`, is routed
+elsewhere on purpose -- see "The Watchdog" below.
 
 Prometheus's `ALERTS` series went with them. A dashboard panel that shows alerts is an
 `alertlist` panel filtered by labels (`alertInstanceLabelFilter`), as on the email, fernfiles,
 gpupoet and tinkerbell dashboards.
 
-| File                 | What it provisions                                                |
-| -------------------- | ----------------------------------------------------------------- |
-| `notifications.yaml` | The `dreamwright-alerts-slack` contact point and the policy tree  |
-| `rules/<group>.yaml` | One rule group each, all in the `nas1` folder, evaluated every 1m |
+| File                 | What it provisions                                                                          |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `notifications.yaml` | The `dreamwright-alerts-slack` and `watchdog-heartbeat` contact points, and the policy tree |
+| `rules/<group>.yaml` | One rule group each, all in the `nas1` folder, evaluated every 1m                           |
 
 ## How it gets into Grafana
 
@@ -65,6 +66,46 @@ it:
 
 Grafana reads environment variables only at startup, so a new value takes effect once the
 Grafana pod restarts.
+
+## The Watchdog
+
+Once #537 took Prometheus and Alertmanager out of the alerting path, Grafana is both the
+evaluator and the notifier for every rule in this folder -- including the rule that would
+otherwise have noticed Grafana itself was down. `rules/watchdog.yaml` holds one rule,
+`Watchdog`, built to always fire, the same way every other rule here does (`is_number($query)
+|| ...` against a query, `vector(1)`, that is never empty). `notifications.yaml` routes it
+alone to the `watchdog-heartbeat` contact point -- a webhook, not Slack, on purpose -- every
+`repeat_interval` (1m, matching the rule's own evaluation interval).
+
+That webhook is a check-in ("dead man's switch") URL: a ping arriving on schedule is the
+healthy case, and the service pages when pings stop. Any such service works
+(healthchecks.io, Cronitor, Dead Man's Snitch, ...); none is wired up here, because signing
+up for one is a one-time action for whoever owns this cluster, not something a rule file can
+do. Until that happens, `GRAFANA_WATCHDOG_HEARTBEAT_URL` is the placeholder
+`.env.secret.grafana-watchdog-heartbeat.encrypted` ships with, and the Watchdog pings
+nowhere. To wire up a real one:
+
+1. Create a check in the service of choice, with a period and grace period that comfortably
+   cover a 1m repeat_interval plus a Grafana pod restart (a few minutes of grace is plenty).
+2. Point the service's own alert at something that does **not** depend on this Grafana
+   instance or its Slack webhook -- an email address, a different Slack app, etc. A path that
+   shares a dependency with the thing it's watching defeats the point.
+3. Put the check's ping URL in the secret:
+   ```
+   ./scripts/onepassword-secrets.mts edit apps/production/monitoring/grafana/.env.secret.grafana-watchdog-heartbeat.encrypted
+   ```
+4. Restart the Grafana pod (environment variables load at startup only) and confirm the
+   service shows a ping within a couple of minutes.
+
+No NetworkPolicy change is needed: the Grafana egress rule already allows outbound 443 to
+the internet (`../../networkpolicy.yaml`, the `grafana` policy's last egress rule), which is
+what carries the Slack webhook today and will carry this one the same way.
+
+This is deliberately the smallest fix for "nothing notices if Grafana goes down": no new
+workload, no NetworkPolicy change, and the only new secret is a URL. The cost is the
+activation gap above (inert until someone signs up for a check-in service) and that, unlike
+everything else alerting does, the Watchdog's own silence isn't itself visible from inside
+this cluster -- by design, since that's exactly the failure it exists to cover.
 
 ## Checking a change locally
 

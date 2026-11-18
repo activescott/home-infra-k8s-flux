@@ -26,6 +26,14 @@ secretGenerator:
       disableNameSuffixHash: true
     envs:
       - .env.secret.grafana-alerts-slack.encrypted
+  # The Watchdog dead man's switch's check-in URL (alerting/notifications.yaml,
+  # alerting/rules/watchdog.yaml). Ships as a placeholder; see alerting/README.md.
+  - name: grafana-watchdog-heartbeat
+    namespace: monitoring
+    options:
+      disableNameSuffixHash: true
+    envs:
+      - .env.secret.grafana-watchdog-heartbeat.encrypted
 
 # Dashboards checked in here are picked up by the Grafana sidecar (enabled in
 # helmrelease.yaml under sidecar.dashboards). The sidecar watches ConfigMaps
@@ -173,6 +181,7 @@ configMapGenerator:
       - alerting/rules/tinkerbell-log-health.yaml
       - alerting/rules/tinkerbell-proxy.yaml
       - alerting/rules/tinkerbell-scrape-health.yaml
+      - alerting/rules/watchdog.yaml
       - alerting/rules/wordpress-security.yaml
     options:
       labels:

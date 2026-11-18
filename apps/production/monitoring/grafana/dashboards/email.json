@@ -64,8 +64,8 @@
     },
     {
       "type": "alertlist",
-      "title": "Firing alerts",
-      "description": "Count of email alerts currently firing, across the email-stalwart and email-relay rule groups. Zero is the expected value.",
+      "title": "Firing alert rules",
+      "description": "Count of email alert rules currently firing, across the email-stalwart and email-relay rule groups. Zero is the expected value. Counts matching rules, not firing instances -- a rule with two firing instances still counts as one.",
       "id": 2,
       "gridPos": {
         "h": 4,

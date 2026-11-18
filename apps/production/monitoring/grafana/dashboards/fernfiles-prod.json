@@ -913,8 +913,8 @@
     },
     {
       "type": "alertlist",
-      "title": "Alerts firing now",
-      "description": "Alert instances firing now in fernfiles-prod, excluding `pending`. Should be 0.",
+      "title": "Alert rules firing now",
+      "description": "Alert rules firing now in fernfiles-prod, excluding `pending`. Should be 0. Counts matching rules, not firing instances -- a rule with two firing instances (e.g. two pods failing FernfilesPodNotReady) still counts as one; see \"Pending and firing alerts\" below for the instance list.",
       "id": 19,
       "gridPos": {
         "h": 4,

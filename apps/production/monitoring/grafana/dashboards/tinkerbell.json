@@ -53,7 +53,7 @@
     },
     {
       "type": "alertlist",
-      "title": "Critical alerts firing",
+      "title": "Critical alert rules firing",
       "id": 701,
       "gridPos": {
         "h": 5,
@@ -84,7 +84,7 @@
     },
     {
       "type": "alertlist",
-      "title": "Warning alerts firing",
+      "title": "Warning alert rules firing",
       "id": 702,
       "gridPos": {
         "h": 5,
