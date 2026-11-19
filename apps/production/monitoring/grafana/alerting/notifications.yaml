@@ -1,19 +1,30 @@
-# Where every Grafana-managed alert goes: one Slack contact point, the Dreamwright alerts
-# channel (#537). Provisioning the policy tree replaces the whole tree, so the root policy
-# below is the only route there is. See ./README.md.
+# Where every Grafana-managed alert goes: one contact point, "dreamwright-alerts", with two
+# integrations -- the Dreamwright alerts Slack channel and the Telegram chat Alertmanager used
+# before #537 (#537 decision on #539: one alerting system, not one destination). Both
+# integrations fire for every notification the contact point receives. Provisioning the policy
+# tree replaces the whole tree, so the root policy below is the only route there is. See
+# ./README.md.
 #
-# The webhook URL is never in git. GRAFANA_ALERTS_SLACK_WEBHOOK_URL comes from the
-# grafana-alerts-slack Secret (../.env.secret.grafana-alerts-slack.encrypted, wired up under
-# envValueFrom in ../helmrelease.yaml), and Grafana substitutes it when it reads this file.
+# Neither credential is in git in plaintext. GRAFANA_ALERTS_SLACK_WEBHOOK_URL and
+# GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN/_CHAT_ID come from the grafana-alerts-slack and
+# grafana-alerts-telegram Secrets (../.env.secret.grafana-alerts-{slack,telegram}.encrypted,
+# wired up under envValueFrom in ../helmrelease.yaml), and Grafana substitutes them when it
+# reads this file.
 apiVersion: 1
 contactPoints:
   - orgId: 1
-    name: dreamwright-alerts-slack
+    name: dreamwright-alerts
     receivers:
       - uid: dreamwright-alerts-slack
         type: slack
         settings:
           url: $GRAFANA_ALERTS_SLACK_WEBHOOK_URL
+        disableResolveMessage: false
+      - uid: dreamwright-alerts-telegram
+        type: telegram
+        settings:
+          bottoken: $GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN
+          chatid: $GRAFANA_ALERTS_TELEGRAM_CHAT_ID
         disableResolveMessage: false
 
 # Same grouping and timing Alertmanager used (route in ../../prometheus/helmrelease.yaml before
@@ -26,7 +37,7 @@ contactPoints:
 # under one name, and group_by alertname puts both in the same message anyway.
 policies:
   - orgId: 1
-    receiver: dreamwright-alerts-slack
+    receiver: dreamwright-alerts
     group_by:
       - grafana_folder
       - alertname
@@ -35,9 +46,9 @@ policies:
     repeat_interval: 4h
     routes:
       # The per-login FYI from #535 keeps the timing its Alertmanager route had: sent at once,
-      # repeated daily while a session lasts. Alertmanager sent it to Scott alone on Telegram,
-      # not to Slack; with one contact point it now goes to the channel like everything else.
-      - receiver: dreamwright-alerts-slack
+      # repeated daily while a session lasts. Until #537 it went to Scott alone on Telegram;
+      # now it goes to both integrations on the one contact point, like everything else.
+      - receiver: dreamwright-alerts
         object_matchers:
           - ["alertname", "=", "OlyaRoJobAcceleratorDbConnection"]
         group_wait: 0s

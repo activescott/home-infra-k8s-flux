@@ -52,116 +52,66 @@
       "type": "row"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
+      "type": "alertlist",
+      "title": "Critical alert rules firing",
+      "id": 701,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 0,
         "y": 1
       },
-      "id": 701,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
+        "viewMode": "stat",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{severity=\"critical\", alertname=~\"LLMProvider.*|Proxy.*|TinkerbellApp.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": false,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": false
         },
-        "textMode": "value"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "count(ALERTS{alertstate=\"firing\", severity=\"critical\", alertname=~\"LLMProvider.*|Proxy.*|TinkerbellApp.*\"}) or vector(0)",
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Critical alerts firing",
-      "type": "stat"
+        "showInstances": false
+      }
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              },
-              {
-                "color": "orange",
-                "value": 1
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
+      "type": "alertlist",
+      "title": "Warning alert rules firing",
+      "id": 702,
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 6,
         "y": 1
       },
-      "id": 702,
       "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": ""
+        "viewMode": "stat",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{severity=\"warning\", alertname=~\"LLMProvider.*|Proxy.*|TinkerbellApp.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": false,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": false
         },
-        "textMode": "value"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "count(ALERTS{alertstate=\"firing\", severity=\"warning\", alertname=~\"LLMProvider.*|Proxy.*|TinkerbellApp.*\"}) or vector(0)",
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Warning alerts firing",
-      "type": "stat"
+        "showInstances": false
+      }
     },
     {
       "datasource": {
@@ -287,130 +237,35 @@
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Severity"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "critical": {
-                        "color": "red",
-                        "index": 0
-                      },
-                      "warning": {
-                        "color": "orange",
-                        "index": 1
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "State"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "firing": {
-                        "color": "red",
-                        "index": 0
-                      },
-                      "pending": {
-                        "color": "orange",
-                        "index": 1
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
+      "type": "alertlist",
+      "title": "Current alerts",
+      "id": 705,
       "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
         "y": 6
       },
-      "id": 705,
       "options": {
-        "showHeader": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "ALERTS{alertstate=~\"firing|pending\", alertname=~\"LLMProvider.*|Proxy.*|TinkerbellApp.*\"}",
-          "format": "table",
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Current alerts",
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "Value": true,
-              "__name__": true,
-              "instance": true,
-              "job": true
-            },
-            "renameByName": {
-              "alertname": "Alert",
-              "alertstate": "State",
-              "error_type": "Type",
-              "provider": "Provider",
-              "proxy": "Proxy",
-              "severity": "Severity",
-              "status_code": "Status"
-            }
-          }
-        }
-      ],
-      "type": "table"
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{alertname=~\"LLMProvider.*|Proxy.*|TinkerbellApp.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": true
+        },
+        "showInstances": true
+      }
     },
     {
       "collapsed": false,

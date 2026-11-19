@@ -119,8 +119,8 @@ Grafana and Loki charts migrated from `grafana/helm-charts` to `grafana-communit
 ```
 
 - **Alloy** discovers all pods, attaches K8s metadata labels (namespace, pod, container, app), and pushes logs to Loki.
-- **Prometheus** scrapes metrics from pods, kube-state-metrics (sub-chart), and external targets (gpupoet). Includes AlertManager (sub-chart) for Telegram and Slack notifications.
-- **Grafana** is provisioned with both Prometheus and Loki as datasources. It reaches them through Traefik's GET-only routes at `prometheus.activescott.com` and `loki.activescott.com`, not their Services, because its datasource proxy forwards a Viewer's request with whatever method it came in with. A Grafana feature that needs another endpoint or method gets a 404 until that route admits it (`prometheus/prometheus-ingress.yaml`, `loki/loki-read-ingress.yaml`).
+- **Prometheus** scrapes metrics from pods, kube-state-metrics (sub-chart), and external targets (gpupoet). Its Alertmanager sub-chart is disabled: alert rules are Grafana-managed (below).
+- **Grafana** evaluates every alert rule and sends each notification to the Dreamwright alerts Slack channel; see `grafana/alerting/README.md`. It is provisioned with both Prometheus and Loki as datasources. It reaches them through Traefik's GET-only routes at `prometheus.activescott.com` and `loki.activescott.com`, not their Services, because its datasource proxy forwards a Viewer's request with whatever method it came in with. A Grafana feature that needs another endpoint or method gets a 404 until that route admits it (`prometheus/prometheus-ingress.yaml`, `loki/loki-read-ingress.yaml`).
 
 ### Adding a scrape target
 
@@ -246,7 +246,7 @@ A **Firewall** dashboard (`grafana/dashboards/firewall.json`, uid `firewall-over
 
 #### WAN link alerting
 
-Two `stage.metrics` counters in `loki.process "firewall"` feed the `edge-firewall` alert group in `prometheus/helmrelease.yaml`:
+Two `stage.metrics` counters in `loki.process "firewall"` feed the `edge-firewall` alert group in `grafana/alerting/rules/edge-firewall.yaml`:
 
 | Metric                                           | Alert                                     | Meaning                            |
 | ------------------------------------------------ | ----------------------------------------- | ---------------------------------- |

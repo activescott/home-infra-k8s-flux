@@ -97,6 +97,16 @@ spec:
         secretKeyRef:
           name: grafana-alerts-slack
           key: webhook_url
+      # The Telegram bot token and chat ID, substituted into alerting/notifications.yaml.
+      # See alerting/README.md for how to set them.
+      GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN:
+        secretKeyRef:
+          name: grafana-alerts-telegram
+          key: bot_token
+      GRAFANA_ALERTS_TELEGRAM_CHAT_ID:
+        secretKeyRef:
+          name: grafana-alerts-telegram
+          key: chat_id
 
     # Provision both Prometheus and Loki datasources.
     #

@@ -50,7 +50,7 @@ alerted on rather than left to retry silently.
 
 Postfix exports no metrics, so the alloy pipeline derives counters from its log lines
 (`apps/production/monitoring/alloy/helmrelease.yaml`) and the alerts are ordinary PromQL beside
-everything else (`prometheus/helmrelease.yaml`, group `email-relay`): `EmailRelayBounced`,
+everything else (`apps/production/monitoring/grafana/alerting/rules/email-relay.yaml`): `EmailRelayBounced`,
 `EmailRelayDeferred`, `EmailRelayAuthFailures`.
 
 **These watch the relay-to-Cloudflare hop, not deliverability.** Cloudflare accepts a message

@@ -1,7 +1,7 @@
 # WanGatewayDegraded
 
-`WanGatewayDegraded` and `WanGatewayDegradedBurst` (rule group `wan-link`,
-`prometheus/helmrelease.yaml`) both read `loki_process_custom_wan_gateway_alarm_total`,
+`WanGatewayDegraded` and `WanGatewayDegradedBurst` (rule group `edge-firewall`,
+`grafana/alerting/rules/edge-firewall.yaml`) both read `loki_process_custom_wan_gateway_alarm_total`,
 fed by OPNsense dpinger `MONITOR:` lines from `theshield`, at two windows: any transition
 in 10 minutes (Degraded) or more than 3 in an hour (Burst, the same "dense-burst"
 signature `WanLinkFlappingBurst` watches for carrier drops).

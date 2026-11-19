@@ -1,15 +1,19 @@
 # Grafana-managed alerting
 
 Every alert rule for the cluster lives here, as a Grafana alert-rule provisioning file, and
-every notification goes to one Slack contact point, the Dreamwright alerts channel (#537).
-Before #537 the same rules were Prometheus rules routed by Alertmanager to Telegram and Slack.
-Until the second #537 PR retires that path, both run side by side, so a rule added in the
-meantime goes in both places.
+every notification goes to one contact point, `dreamwright-alerts`, which fans out to both the
+Dreamwright alerts Slack channel and the Telegram chat Alertmanager posted to before #537
+(#537 decision on #539: one alerting system, not one destination). Prometheus now evaluates no
+rules and Alertmanager is off.
 
-| File                 | What it provisions                                                |
-| -------------------- | ----------------------------------------------------------------- |
-| `notifications.yaml` | The `dreamwright-alerts-slack` contact point and the policy tree  |
-| `rules/<group>.yaml` | One rule group each, all in the `nas1` folder, evaluated every 1m |
+Prometheus's `ALERTS` series went with them. A dashboard panel that shows alerts is an
+`alertlist` panel filtered by labels (`alertInstanceLabelFilter`), as on the email, fernfiles,
+gpupoet and tinkerbell dashboards.
+
+| File                 | What it provisions                                                            |
+| -------------------- | ----------------------------------------------------------------------------- |
+| `notifications.yaml` | The `dreamwright-alerts` contact point (Slack + Telegram) and the policy tree |
+| `rules/<group>.yaml` | One rule group each, all in the `nas1` folder, evaluated every 1m             |
 
 ## How it gets into Grafana
 
@@ -63,6 +67,21 @@ it:
 Grafana reads environment variables only at startup, so a new value takes effect once the
 Grafana pod restarts.
 
+## The Telegram bot
+
+The bot token and chat ID are in `../.env.secret.grafana-alerts-telegram.encrypted` (keys
+`bot_token` and `chat_id`) -- the same ones Alertmanager used before #537, reused rather than
+regenerated. They reach Grafana as `GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN` and
+`GRAFANA_ALERTS_TELEGRAM_CHAT_ID` (`envValueFrom` in `../helmrelease.yaml`), and Grafana
+substitutes them into `notifications.yaml`. To set or rotate them:
+
+```
+./scripts/onepassword-secrets.mts edit apps/production/monitoring/grafana/.env.secret.grafana-alerts-telegram.encrypted
+```
+
+Grafana reads environment variables only at startup, so a new value takes effect once the
+Grafana pod restarts.
+
 ## Checking a change locally
 
 `kustomize build apps/production --enable-helm` checks that the ConfigMaps build. To check
@@ -72,6 +91,8 @@ Docker daemon here is remote, so copy files in rather than bind-mounting them:
 ```
 docker create --name grafana-alerting-check --network none \
   -e GRAFANA_ALERTS_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T0/B0/local \
+  -e GRAFANA_ALERTS_TELEGRAM_BOT_TOKEN=local \
+  -e GRAFANA_ALERTS_TELEGRAM_CHAT_ID=510755639 \
   grafana/grafana:<version>
 docker cp apps/production/monitoring/grafana/alerting/rules/. grafana-alerting-check:/etc/grafana/provisioning/alerting/
 docker cp apps/production/monitoring/grafana/alerting/notifications.yaml grafana-alerting-check:/etc/grafana/provisioning/alerting/

@@ -1,7 +1,7 @@
 # TinkerbellAppErrorVolumeElevated
 
 `TinkerbellAppErrorVolumeElevated` (rule group `tinkerbell-log-health` in
-`prometheus/helmrelease.yaml`, alongside `TinkerbellAppWarnVolumeElevated`) is a
+`grafana/alerting/rules/tinkerbell-log-health.yaml`, alongside `TinkerbellAppWarnVolumeElevated`) is a
 general volume backstop, not tied to one failure mode, so what's actually wrong
 varies. Diagnosed causes so far:
 

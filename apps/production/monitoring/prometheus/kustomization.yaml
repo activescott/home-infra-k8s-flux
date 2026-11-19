@@ -8,11 +8,6 @@ resources:
   - ./remote-write-middleware.yaml
 
 secretGenerator:
-  - name: alertmanager-secrets
-    options:
-      disableNameSuffixHash: true
-    envs:
-      - .env.secret.alertmanager.encrypted
   - name: prometheus-basic-auth
     options:
       disableNameSuffixHash: true

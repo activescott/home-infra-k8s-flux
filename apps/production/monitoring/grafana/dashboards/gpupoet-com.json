@@ -38,83 +38,36 @@
       "type": "row"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "axisPlacement": "auto",
-            "fillOpacity": 70,
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineWidth": 0,
-            "spanNulls": false
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "dark-red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
+      "type": "alertlist",
+      "title": "Alerts",
+      "description": "GPU Poet alerts pending or firing now. Empty is the healthy state. Each rule's state history is in Alerting > Alert rules.",
+      "id": 101,
       "gridPos": {
         "h": 6,
         "w": 8,
         "x": 0,
         "y": 1
       },
-      "id": 101,
       "options": {
-        "alignValue": "left",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{alertname=~\"Probe.*|Missing.*|Cache.*|Amazon.*|Collector.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": true
         },
-        "mergeValues": true,
-        "rowHeight": 0.9,
-        "showValue": "auto",
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "ALERTS{alertname=~\"Probe.*|Missing.*|Cache.*|Amazon.*|Collector.*\"}",
-          "instant": false,
-          "legendFormat": "{{alertname}} ({{alertstate}}, {{job}})",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Alerts",
-      "type": "state-timeline"
+        "showInstances": false
+      }
     },
     {
       "datasource": {
@@ -1388,94 +1341,36 @@
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "continuous-GrYlRd"
-          },
-          "custom": {
-            "axisPlacement": "auto",
-            "fillOpacity": 70,
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
-            "lineWidth": 0,
-            "spanNulls": false
-          },
-          "mappings": [
-            {
-              "options": {
-                "0": {
-                  "color": "green",
-                  "text": "OK"
-                },
-                "1": {
-                  "color": "red",
-                  "text": "FIRING"
-                }
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
+      "type": "alertlist",
+      "title": "Amazon Alerts",
+      "description": "Amazon search alerts pending or firing now. Each rule's state history is in Alerting > Alert rules.",
+      "id": 306,
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
         "y": 33
       },
-      "id": 306,
       "options": {
-        "alignValue": "left",
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{alertname=~\"AmazonSearch.*\", instance=\"gpupoet.com\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": true
         },
-        "mergeValues": true,
-        "rowHeight": 0.9,
-        "showValue": "auto",
-        "tooltip": {
-          "hideZeros": false,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "expr": "ALERTS{alertname=~\"AmazonSearch.*\",instance=\"gpupoet.com\"}",
-          "legendFormat": "{{alertname}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Amazon Alerts",
-      "type": "state-timeline"
+        "showInstances": false
+      }
     },
     {
       "collapsed": false,
@@ -2038,93 +1933,34 @@
       "panels": []
     },
     {
-      "id": 501,
-      "type": "table",
+      "type": "alertlist",
       "title": "Currently firing GPU Poet alerts",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
-      },
+      "id": 501,
       "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
         "y": 59
       },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "ALERTS{alertstate=\"firing\", alertname=~\"Probe.*|Missing.*|Cache.*|Amazon.*|Collector.*\"}",
-          "instant": true,
-          "format": "table",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "Value": true,
-              "job": true
-            },
-            "renameByName": {
-              "alertname": "Alert",
-              "severity": "Severity",
-              "alertstate": "State",
-              "instance": "Instance"
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Severity"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "critical": {
-                        "color": "red",
-                        "index": 0
-                      },
-                      "warning": {
-                        "color": "orange",
-                        "index": 1
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
       "options": {
-        "showHeader": true
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{alertname=~\"Probe.*|Missing.*|Cache.*|Amazon.*|Collector.*\"}",
+        "datasource": "grafana",
+        "stateFilter": {
+          "firing": true,
+          "pending": false,
+          "noData": false,
+          "normal": false,
+          "error": false,
+          "recovering": false
+        },
+        "showInstances": true
       }
     }
   ],
