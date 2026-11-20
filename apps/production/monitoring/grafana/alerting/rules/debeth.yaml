@@ -351,9 +351,69 @@ groups:
           query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
           runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatorbeaconunhealthy
           repo: activescott/home-infra-private
-      # The docker volumes are on /, which sat at 82% on 2026-10-02.
+      # The chain databases moved from / to /mnt/fury4t on 2026-11-20
+      # (activescott/home-infra-private#52); / sat at 82% on 2026-10-02, before the move.
       - uid: debethdiskfull-warning
         title: DebethDiskFull
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/mnt/fury4t"} /
+                node_filesystem_size_bytes{host="debeth",mountpoint="/mnt/fury4t"} > 0.90'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: warning
+        annotations:
+          summary: 'debeth /mnt/fury4t is {{ $values.query.Value | humanizePercentage }} full'
+          description: >-
+            /mnt/fury4t on debeth, which holds the chain databases, is over 90% full. The
+            clients stop when it fills.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+          repo: activescott/home-infra-private
+      - uid: debethdiskfull-critical
+        title: DebethDiskFull
+        condition: firing
+        data:
+          - refId: query
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/mnt/fury4t"} /
+                node_filesystem_size_bytes{host="debeth",mountpoint="/mnt/fury4t"} > 0.95'
+              instant: true
+              range: false
+          - refId: firing
+            datasourceUid: __expr__
+            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        missing_series_evals_to_resolve: 1
+        labels:
+          severity: critical
+        annotations:
+          summary: 'debeth /mnt/fury4t is {{ $values.query.Value | humanizePercentage }} full'
+          description: >-
+            /mnt/fury4t on debeth, which holds the chain databases, is over 95% full. The
+            clients stop when it fills.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+          repo: activescott/home-infra-private
+      # / (sda2) now holds only the OS, so it fills far slower than /mnt/fury4t did. One
+      # warning-level rule is enough; nothing on it stops the validator the way a full
+      # /mnt/fury4t does, so there is no matching critical tier.
+      - uid: debethrootdiskfull
+        title: DebethRootDiskFull
         condition: firing
         data:
           - refId: query
@@ -376,37 +436,8 @@ groups:
         annotations:
           summary: 'debeth / is {{ $values.query.Value | humanizePercentage }} full'
           description: >-
-            The root filesystem on debeth, which holds the chain databases, is over 90% full. The
-            clients stop when it fills.
-          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
-          repo: activescott/home-infra-private
-      - uid: debethdiskfull-critical
-        title: DebethDiskFull
-        condition: firing
-        data:
-          - refId: query
-            relativeTimeRange: { from: 600, to: 0 }
-            datasourceUid: PBFA97CFB590B2093
-            model:
-              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} /
-                node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.95'
-              instant: true
-              range: false
-          - refId: firing
-            datasourceUid: __expr__
-            model: { type: math, expression: is_number($query) || is_nan($query) || is_inf($query) }
-        noDataState: OK
-        execErrState: Error
-        for: 15m
-        missing_series_evals_to_resolve: 1
-        labels:
-          severity: critical
-        annotations:
-          summary: 'debeth / is {{ $values.query.Value | humanizePercentage }} full'
-          description: >-
-            The root filesystem on debeth, which holds the chain databases, is over 95% full. The
-            clients stop when it fills.
-          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
+            The root filesystem on debeth, which now holds only the OS, is over 90% full.
+          runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethrootdiskfull
           repo: activescott/home-infra-private
       - uid: debethclockunsynced
         title: DebethClockUnsynced
