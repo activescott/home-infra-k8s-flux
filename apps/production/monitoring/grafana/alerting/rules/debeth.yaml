@@ -351,11 +351,14 @@ groups:
           query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
           runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatorbeaconunhealthy
           repo: activescott/home-infra-private
-      # / (sda2) holds only the OS and /mnt/fury4t (nvme0n1p1) holds the chain databases,
-      # since the move on 2026-11-20 (activescott/home-infra-private#52). Both mountpoints
-      # are confirmed node-exporter labels for host="debeth" (checked live via the Grafana
-      # Prometheus proxy on 2026-11-20). One rule per severity covers both: the query returns
-      # a series per mountpoint, so each fires as its own alert instance labeled by mountpoint.
+      # / (sda2) holds only the OS and /mnt/fury4t (nvme0n1p1, ext4) holds the chain databases,
+      # since the move on 2026-11-20 (activescott/home-infra-private#52). A 2026-11-20 read-only
+      # check on debeth of node-exporter's own /metrics (port 9199) confirmed both mountpoints in
+      # node_filesystem_{avail,size}_bytes, and that the exclude regex doesn't filter out
+      # /mnt/fury4t: https://github.com/activescott/home-infra-private/issues/52#issuecomment-7049513144.
+      # Not yet confirmed: that those series reach the nas Prometheus with host="debeth". One rule
+      # per severity covers both: the query returns a series per mountpoint, so each fires as its
+      # own alert instance labeled by mountpoint.
       - uid: debethdiskfull-warning
         title: DebethDiskFull
         condition: firing
