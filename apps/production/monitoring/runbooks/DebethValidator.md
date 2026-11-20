@@ -123,9 +123,9 @@ One rule watches both of debeth's drives and fires a separate alert instance per
 - `/mnt/fury4t` (nvme0n1p1) holds the chain databases, since the move from `/` on 2026-11-20
   (activescott/home-infra-private#52). Clients stop when it fills. Clearing space means
   pruning or resizing, which is maintenance for Scott, not triage.
-- `/` (sda2) holds only the OS now that the chain databases moved to `/mnt/fury4t`. It fills
-  far slower and nothing on it stops the validator, but it's still maintenance for Scott, not
-  triage.
+- `/` (sda2) holds the OS, plus the old `/var/lib/docker` copy left over from the move (still
+  there until Scott deletes it). It fills far slower than `/mnt/fury4t` and nothing on it
+  stops the validator, but it's still maintenance for Scott, not triage.
 
 Either way, report the current percentage and how fast it has been growing on the dashboard.
 
