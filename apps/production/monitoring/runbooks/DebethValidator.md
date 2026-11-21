@@ -116,10 +116,18 @@ the validator lines of `eth-logs`.
 
 ## DebethDiskFull
 
-`/` on debeth holds the chain databases and was 82% full on 2026-10-02. The warning fires at
-90% and the critical at 95%. Clearing space means pruning or resizing, which are maintenance
-for Scott, not triage. Report the current percentage and how fast it has been growing on the
-dashboard.
+One rule watches both of debeth's drives and fires a separate alert instance per mountpoint
+(check the `mountpoint` label, also named in the summary/description) — same 90% warning /
+95% critical thresholds for each:
+
+- `/mnt/fury4t` (nvme0n1p1) holds the chain databases, since the move from `/` on 2026-11-20
+  (activescott/home-infra-private#52). Clients stop when it fills. Clearing space means
+  pruning or resizing, which is maintenance for Scott, not triage.
+- `/` (sda2) holds the OS, plus the old `/var/lib/docker` copy left over from the move (still
+  there until Scott deletes it). It fills far slower than `/mnt/fury4t` and nothing on it
+  stops the validator, but it's still maintenance for Scott, not triage.
+
+Either way, report the current percentage and how fast it has been growing on the dashboard.
 
 ## DebethClockUnsynced
 

@@ -351,7 +351,14 @@ groups:
           query: 'ssh debeth sudo -n /usr/local/sbin/eth-logs'
           runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethvalidatorbeaconunhealthy
           repo: activescott/home-infra-private
-      # The docker volumes are on /, which sat at 82% on 2026-10-02.
+      # / (sda2) holds only the OS and /mnt/fury4t (nvme0n1p1, ext4) holds the chain databases,
+      # since the move on 2026-11-20 (activescott/home-infra-private#52). A 2026-11-20 read-only
+      # check on debeth of node-exporter's own /metrics (port 9199) confirmed both mountpoints in
+      # node_filesystem_{avail,size}_bytes, and that the exclude regex doesn't filter out
+      # /mnt/fury4t: https://github.com/activescott/home-infra-private/issues/52#issuecomment-7049513144.
+      # Not yet confirmed: that those series reach the nas Prometheus with host="debeth". One rule
+      # per severity covers both: the query returns a series per mountpoint, so each fires as its
+      # own alert instance labeled by mountpoint.
       - uid: debethdiskfull-warning
         title: DebethDiskFull
         condition: firing
@@ -360,8 +367,8 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} /
-                node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.90'
+              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint=~"/|/mnt/fury4t"} /
+                node_filesystem_size_bytes{host="debeth",mountpoint=~"/|/mnt/fury4t"} > 0.90'
               instant: true
               range: false
           - refId: firing
@@ -374,10 +381,15 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'debeth / is {{ $values.query.Value | humanizePercentage }} full'
+          summary: 'debeth {{ $labels.mountpoint }} is {{ $values.query.Value | humanizePercentage }} full'
           description: >-
-            The root filesystem on debeth, which holds the chain databases, is over 90% full. The
-            clients stop when it fills.
+            {{ if eq $labels.mountpoint "/mnt/fury4t" }}/mnt/fury4t on debeth holds the chain
+            databases; clients stop when it fills. Clearing space means pruning or resizing,
+            which is maintenance for Scott, not triage.{{ else }}/ on debeth holds only the OS
+            (the chain databases moved to /mnt/fury4t on 2026-11-20,
+            activescott/home-infra-private#52); it fills far slower than /mnt/fury4t and
+            nothing on it stops the validator.{{ end }} Report the current percentage and how
+            fast it has been growing on the dashboard.
           runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
           repo: activescott/home-infra-private
       - uid: debethdiskfull-critical
@@ -388,8 +400,8 @@ groups:
             relativeTimeRange: { from: 600, to: 0 }
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint="/"} /
-                node_filesystem_size_bytes{host="debeth",mountpoint="/"} > 0.95'
+              expr: '1 - node_filesystem_avail_bytes{host="debeth",mountpoint=~"/|/mnt/fury4t"} /
+                node_filesystem_size_bytes{host="debeth",mountpoint=~"/|/mnt/fury4t"} > 0.95'
               instant: true
               range: false
           - refId: firing
@@ -402,10 +414,15 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: 'debeth / is {{ $values.query.Value | humanizePercentage }} full'
+          summary: 'debeth {{ $labels.mountpoint }} is {{ $values.query.Value | humanizePercentage }} full'
           description: >-
-            The root filesystem on debeth, which holds the chain databases, is over 95% full. The
-            clients stop when it fills.
+            {{ if eq $labels.mountpoint "/mnt/fury4t" }}/mnt/fury4t on debeth holds the chain
+            databases; clients stop when it fills. Clearing space means pruning or resizing,
+            which is maintenance for Scott, not triage.{{ else }}/ on debeth holds only the OS
+            (the chain databases moved to /mnt/fury4t on 2026-11-20,
+            activescott/home-infra-private#52); it fills far slower than /mnt/fury4t and
+            nothing on it stops the validator.{{ end }} Report the current percentage and how
+            fast it has been growing on the dashboard.
           runbook_url: https://github.com/activescott/home-infra-k8s-flux/blob/main/apps/production/monitoring/runbooks/DebethValidator.md#debethdiskfull
           repo: activescott/home-infra-private
       - uid: debethclockunsynced
