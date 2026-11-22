@@ -1,6 +1,9 @@
 # Runs before every job on the buster-gate runner (ACTIONS_RUNNER_HOOK_JOB_STARTED). Buster's
-# key is on this runner, so only a push of a `v*` tag in ping-poet/dreamwright may use it,
-# never a PR or a manual dispatch.
+# key is on this runner, and this hook is the only control between a branch author and that
+# key. Two kinds of job in ping-poet/dreamwright may use it: a push of a `v*` tag, and a manual
+# dispatch of .github/workflows/buster-gate-check.yaml from main. Every other job, including a
+# PR, a dispatch from any other branch or a dispatch of any other workflow, is killed. Match
+# these values exactly: no globs or prefixes beyond the `v*` tag.
 #
 # Exiting non-zero is not enough: actions/runner marks the job failed and then still runs every
 # step whose `if:` is `always()` or `failure()`, key and all. So a refused job kills its
@@ -15,7 +18,13 @@ if [ "${GITHUB_REPOSITORY:-}" = "ping-poet/dreamwright" ] &&
   exit 0
 fi
 
-echo "::error::buster-gate runs only on a push of a v* tag in ping-poet/dreamwright; got event '${GITHUB_EVENT_NAME:-}' on '${GITHUB_REF:-}' in '${GITHUB_REPOSITORY:-}'. The job was stopped before any step ran. Start the gate by pushing the release tag, or change the job's runs-on."
+if [ "${GITHUB_REPOSITORY:-}" = "ping-poet/dreamwright" ] &&
+  [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ] &&
+  [ "${GITHUB_WORKFLOW_REF:-}" = "ping-poet/dreamwright/.github/workflows/buster-gate-check.yaml@refs/heads/main" ]; then
+  exit 0
+fi
+
+echo "::error::buster-gate runs only on a push of a v* tag, or a dispatch of buster-gate-check.yaml from main, in ping-poet/dreamwright; got event '${GITHUB_EVENT_NAME:-}' on '${GITHUB_REF:-}' for workflow '${GITHUB_WORKFLOW_REF:-}' in '${GITHUB_REPOSITORY:-}'. The job was stopped before any step ran. Start the gate by pushing the release tag, or change the job's runs-on."
 
 pid=$$
 while [ "$pid" -gt 1 ]; do
