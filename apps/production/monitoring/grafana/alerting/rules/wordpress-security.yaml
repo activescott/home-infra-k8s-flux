@@ -101,9 +101,9 @@ groups:
             model:
               expr: >-
                 sum by (namespace)
-                (increase(loki_process_custom_wordpress_uploads_php_request_total[5m])) > 0 or sum
-                by (namespace) (loki_process_custom_wordpress_uploads_php_request_total unless
-                loki_process_custom_wordpress_uploads_php_request_total offset 5m) > 0
+                (increase(loki_process_custom_wordpress_uploads_php_ok_total[5m])) > 0 or sum
+                by (namespace) (loki_process_custom_wordpress_uploads_php_ok_total unless
+                loki_process_custom_wordpress_uploads_php_ok_total offset 5m) > 0
               instant: true
               range: false
           - refId: firing
@@ -116,11 +116,12 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'Request for a .ph* path under wp-content/uploads in {{ $labels.namespace }}.'
+          summary: 'WordPress in {{ $labels.namespace }} answered 200 for a .ph* path under wp-content/uploads.'
           description: >-
-            A request for a PHP-looking file in the uploads directory reached WordPress's Apache.
-            Apache refuses to run or serve those, so on its own this is an attempt. A 200 means the
-            file exists on the volume and something uploaded it; look at it and at the requests
-            before it.
-          query: '{app="wordpress", container="wordpress"} |~ "(?i)/wp-content/uploads/[^ ?]*([.]|%2e)ph"'
+            Apache served a PHP-looking file from the uploads directory, which it is configured to
+            refuse. A 403 or 404 for such a path is the expected answer to a scanner and does not
+            fire this alert; a 200 means the file exists on the volume and something uploaded it.
+            Look at the file and at the requests before it.
+          query: '{app="wordpress", container="wordpress"} |~
+            "(?i)[a-z]+ /+wp-content/uploads/[^ ?]*([.]|%2e)ph[^ ]* http/[^ ]* 200 "'
           repo: activescott/home-infra-k8s-flux

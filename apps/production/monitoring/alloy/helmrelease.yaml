@@ -940,18 +940,20 @@ spec:
               }
             }
 
-            // Any request for a path under wp-content/uploads containing
-            // ".ph", whatever the status. Nothing legitimate asks for one;
-            // Apache refuses to run or serve them (the base's
-            // configmap-apache-wp-content-no-php.yaml), so this is for knowing
-            // someone tried. Only the path is matched, not the query string.
+            // A request for a path under wp-content/uploads containing ".ph" that
+            // Apache answered 200. Apache refuses to run or serve PHP there (the
+            // base's configmap-apache-wp-content-no-php.yaml), so 403 and 404 are
+            // the expected answer to a scanner and are not counted. A 200 means
+            // the file exists on the volume. Only the path is matched, not the
+            // query string. The status follows the quoted request in the access
+            // log: "GET /wp-content/uploads/x.php HTTP/1.1" 403 481.
             stage.match {
-              selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ /+wp-content/uploads/[^ ?]*([.]|%2e)ph[^ ]* http/\""
+              selector = "{app=\"wordpress\", container=\"wordpress\"} |~ \"(?i)[a-z]+ /+wp-content/uploads/[^ ?]*([.]|%2e)ph[^ ]* http/[^ ]* 200 \""
 
               stage.metrics {
                 metric.counter {
-                  name        = "wordpress_uploads_php_request_total"
-                  description = "requests for .ph* paths under wp-content/uploads"
+                  name        = "wordpress_uploads_php_ok_total"
+                  description = "200 responses for .ph* paths under wp-content/uploads"
                   match_all   = true
                   action      = "inc"
                   max_idle_duration = "168h"
