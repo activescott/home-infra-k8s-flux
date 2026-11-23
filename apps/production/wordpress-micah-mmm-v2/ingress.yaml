@@ -12,6 +12,7 @@
 # path, which covers /index.php/wp-json and other PATH_INFO spellings, and any request with a
 # `rest_route` query parameter).
 # Refused for everyone: xmlrpc.php.
+# Refused to listed scanner addresses: everything, whatever the path. See the priority-40 route.
 # `rest_route` can also reach WordPress in a POST body or under a name PHP rewrites to it, which
 # Traefik cannot see; the base's configmap-php-request-guard.yaml refuses those in PHP. The same
 # file refuses wp-login.php, wp-admin and xmlrpc.php to non-LAN clients, so the admin surface
@@ -69,7 +70,7 @@ metadata:
 spec:
   entryPoints:
     - websecure
-  # Explicit priorities, highest wins. All three stay far below the default priority (rule
+  # Explicit priorities, highest wins. All four stay far below the default priority (rule
   # length, 100+ characters) of cert-manager's HTTP-01 solver route, so renewals still reach the
   # solver. The patterns are case-insensitive and deliberately unanchored. Traefik matches the
   # decoded path but forwards the original, and Apache removes dot segments only after decoding,
@@ -77,6 +78,25 @@ spec:
   # anchored ^/wp-login\.php misses it. Matching these names anywhere in the path over-matches,
   # which only makes more of the site LAN-only.
   routes:
+    # Blocked scanners. Traefik has no deny-list middleware (ipAllowList is the only IP one), so
+    # the address is matched in the route and the request is sent through deny-all. To block
+    # another address, add one line: `|| ClientIP(`<address>`)`. ClientIP takes a single address
+    # or CIDR, so each needs its own call. It matches the TCP source address, which is the
+    # client's own only while the Traefik Service keeps externalTrafficPolicy: Local
+    # (infrastructure/prod/configs/traefik-config.yaml), the same dependency lan-only has.
+    # 20.219.139.13 probes wp-content/uploads for PHP files (#550). Highest priority so a listed
+    # address never reaches a LAN-only or public route.
+    - kind: Rule
+      match: >-
+        Host(`mmm.willeke.com`) && (
+        ClientIP(`20.219.139.13`)
+        )
+      priority: 40
+      middlewares:
+        - name: deny-all
+      services:
+        - name: wordpress
+          port: http
     - kind: Rule
       match: Host(`mmm.willeke.com`) && PathRegexp(`(?i)/xmlrpc\.php`)
       priority: 30
