@@ -281,7 +281,9 @@ sharing one source of truth instead of drifting three ways.
 ## micah@willeke.com: a mailing list, with the envelope sender rewritten
 
 `micah@willeke.com` replaced a Google group of the same name (activescott/personal#125). It
-forwards to `scott@willeke.com` and to one iCloud address. Google is still the MX, so nothing
+forwards to Micah's iCloud address and to `oksanascott@willeke.com`, an existing Google group that
+reaches Scott and Oksana and is not managed here. `scott@` is not a direct recipient, because the
+group already reaches him. Google is still the MX, so nothing
 arrives here until a Workspace routing rule sends that address to the `mail.activescott.com` host
 route. That rule is click-ops; the Admin console steps are in the pull request that added this
 section. Unlike `scott@`, Gmail keeps no copy, so **for this address this server is
@@ -306,7 +308,7 @@ Its shape:
 
 ```json
 {"@type": "upsert", "object": "Domain", "matchOn": ["name"], "value": {"domain-willeke": {"name": "willeke.com"}}}
-{"@type": "upsert", "object": "MailingList", "matchOn": ["name"], "value": {"list-micah": {"name": "micah", "domainId": "#domain-willeke", "description": "...", "recipients": {"scott@willeke.com": true, "<REPLACE-ME>": true}}}}
+{"@type": "upsert", "object": "MailingList", "matchOn": ["name"], "value": {"list-micah": {"name": "micah", "domainId": "#domain-willeke", "description": "...", "recipients": {"<REPLACE-ME>": true, "oksanascott@willeke.com": true}}}}
 ```
 
 The `Domain` line is there only because `#` references resolve within one plan. An upsert merges
@@ -315,13 +317,19 @@ nothing; on a v0.16.27 server `allowRelaying` and `subAddressing` survived it. `
 by contrast, is replaced as a whole: applying the list with one recipient swapped for another left
 only the new pair. Deleting a line from the file therefore removes that recipient on the next apply.
 
-**How the iCloud copy leaves.** Stalwart expands the list at RCPT time
+**How the copies leave.** Stalwart expands the list at RCPT time
 (`crates/smtp/src/inbound/rcpt.rs`): the list address is dropped and its members become the
-transaction's recipients. `scott@willeke.com` matches `willeke-local-mailboxes` and is delivered
-locally, through his `archive-all` script as usual. The iCloud address falls to `schedule`'s
-`'remote'` and to `route`'s `else`, `google-willeke-com-relay`, so it goes out through
+transaction's recipients. Neither is in `willeke-local-mailboxes`, so both fall to `schedule`'s
+`'remote'` and to `route`'s `else`, `google-willeke-com-relay`, and go out through
 `smtp-relay.gmail.com:587`, authenticated as `scott@willeke.com`, like everything else this server
-sends.
+sends. Google then delivers `oksanascott@` as a group, to Scott and Oksana.
+
+**No loop.** `micah@` comes back to this server only through the Workspace routing rule, so that
+rule matches `micah@willeke.com` alone and not the group or its members. `oksanascott@willeke.com`
+must never be added to `willeke-local-mailboxes`: Stalwart would then deliver it locally to a
+mailbox that does not exist, instead of handing it to Google. Scott's copy, delivered by the group,
+reaches this server once more through the existing `scott@` dual-delivery rule and is filed
+locally; that copy goes nowhere else.
 
 That relay's **Allowed senders** is _Only addresses in my domains_ (main `README.md`,
 "Configuring the outbound relay"), and it judges the envelope sender. A list expansion keeps the
@@ -337,7 +345,8 @@ address is a real list. The `willeke-local-mailboxes` record for `micah@` is dec
 that `relay-guard`, `schedule` and `route` all treat the address as local if it ever reaches
 them.
 
-Tested on a scratch v0.16.27 server, with this plan applied and a local SMTP sink in place of
+Tested on a scratch v0.16.27 server, with this plan and the earlier recipient set (`scott@`
+and the iCloud address) applied and a local SMTP sink in place of
 `smtp-relay.gmail.com`. An unauthenticated message from `alice@outside.example` to
 `micah@willeke.com` was delivered locally to `scott@` and reached the sink as
 `MAIL FROM:<alice@outside.example>` without the script, then `MAIL FROM:<scott@willeke.com>` with
@@ -359,8 +368,7 @@ sender's.
   does not, and no ARC seal is added.
 
 **Spam is forwarded as received.** The list expands at RCPT, before the message is scored at
-DATA, so the iCloud copy goes out whatever Stalwart's verdict; `scott@`'s copy is still filed to
-Junk by `archive-all`. Gmail scores the message at the MX before the routing rule applies;
+DATA, so both copies go out whatever Stalwart's verdict. Gmail scores the message at the MX before the routing rule applies;
 whether it still reroutes what it judges spam has not been checked. Whatever is forwarded leaves
 under the relay account's reputation.
 
