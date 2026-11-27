@@ -46,13 +46,13 @@ run_job() {
   echo "==> waiting"
   if ! kubectl --context "$context" -n "$namespace" wait --for=condition=complete \
     --timeout=180s "job/${job}" 2>/dev/null; then
-    kubectl --context "$context" -n "$namespace" logs "job/${job}" || true
+    kubectl --context "$context" -n "$namespace" logs --all-containers --prefix "job/${job}" || true
     echo "!! job/${job} did not complete. Left in place for inspection:" >&2
     echo "   kubectl --context ${context} -n ${namespace} describe job/${job}" >&2
     exit 1
   fi
 
-  kubectl --context "$context" -n "$namespace" logs "job/${job}"
+  kubectl --context "$context" -n "$namespace" logs --all-containers --prefix "job/${job}"
   kubectl --context "$context" -n "$namespace" delete "job/${job}" >/dev/null
   echo "==> done"
 }

@@ -12,6 +12,12 @@
 #
 # The containers take plain args and need no shell, because the image may not have one.
 #
+# plan, apply and apply-recovery each run a second plan first, in the stalwart-cli-private
+# init container: the SOPS-encrypted stalwart-config-private.ndjson in the parent directory,
+# for plan lines this public repo must not hold. `apply` takes a single file and the image has
+# no shell to join two, hence a second container. It runs before plan.ndjson so that the
+# public plan has the last word on anything both declare (today, only the Domain's name).
+#
 # Bootstrap only. Applies accounts.ndjson to a FRESH server, authenticating as the recovery
 # admin with basic auth rather than an API key — a key is a credential on an account, and a
 # fresh server has no accounts yet. Everything after this step uses the API key.
@@ -81,6 +87,30 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
+          initContainers:
+            - name: stalwart-cli-private
+              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+              args: ["apply", "--file", "/private-plan/private-plan.ndjson", "--dry-run"]
+              env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+                - name: STALWART_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: stalwart-cli-creds
+                      key: STALWART_TOKEN
+              volumeMounts:
+                - name: private-plan
+                  mountPath: /private-plan
+                  readOnly: true
+                - name: cache
+                  mountPath: /home/nonroot/.cache
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
           containers:
             - name: stalwart-cli
               # Pinned by digest: the `1.0` and `latest` tags both move.
@@ -112,6 +142,9 @@ spec:
             - name: plans
               configMap:
                 name: stalwart-config-plans
+            - name: private-plan
+              secret:
+                secretName: stalwart-config-private-plan
             - name: cache
               emptyDir: {}
 ---
@@ -131,6 +164,30 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
+          initContainers:
+            - name: stalwart-cli-private
+              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+              args: ["apply", "--file", "/private-plan/private-plan.ndjson"]
+              env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+                - name: STALWART_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: stalwart-cli-creds
+                      key: STALWART_TOKEN
+              volumeMounts:
+                - name: private-plan
+                  mountPath: /private-plan
+                  readOnly: true
+                - name: cache
+                  mountPath: /home/nonroot/.cache
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
           containers:
             - name: stalwart-cli
               image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
@@ -159,6 +216,9 @@ spec:
             - name: plans
               configMap:
                 name: stalwart-config-plans
+            - name: private-plan
+              secret:
+                secretName: stalwart-config-private-plan
             - name: cache
               emptyDir: {}
 ---
@@ -186,6 +246,28 @@ spec:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
+          initContainers:
+            - name: stalwart-cli-private
+              image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
+              args: ["apply", "--file", "/private-plan/private-plan.ndjson"]
+              env:
+                - name: STALWART_URL
+                  value: http://stalwart-admin.email-stalwart.svc.cluster.local:8080
+              envFrom:
+                - secretRef:
+                    name: stalwart-bootstrap-creds
+              volumeMounts:
+                - name: private-plan
+                  mountPath: /private-plan
+                  readOnly: true
+                - name: cache
+                  mountPath: /home/nonroot/.cache
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
           containers:
             - name: stalwart-cli
               image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
@@ -212,5 +294,8 @@ spec:
             - name: plans
               configMap:
                 name: stalwart-config-plans
+            - name: private-plan
+              secret:
+                secretName: stalwart-config-private-plan
             - name: cache
               emptyDir: {}

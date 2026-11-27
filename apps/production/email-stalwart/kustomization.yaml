@@ -60,3 +60,11 @@ secretGenerator:
       - .env.secret.stalwart-automation.encrypted
     options:
       disableNameSuffixHash: true
+  # Plan lines that cannot be public, applied by the stalwart-config-* jobs before
+  # plan.ndjson. Today that is the micah@willeke.com MailingList, because one recipient is a
+  # third party's personal address. See stalwart-config/README.md "micah@willeke.com".
+  - name: stalwart-config-private-plan
+    files:
+      - private-plan.ndjson=stalwart-config-private.ndjson.encrypted
+    options:
+      disableNameSuffixHash: true

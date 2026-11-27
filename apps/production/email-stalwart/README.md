@@ -8,6 +8,9 @@ keeps its own copy of every message; this server is additive and never load-bear
 recovery. That is the whole safety argument for Phase 7 — see
 `docs/specs/email-infrastructure/spec.md` in the private repo.
 
+One exception: `micah@willeke.com` is a forward that only this server delivers, so for that
+address it **is** load-bearing. See `stalwart-config/README.md` "micah@willeke.com".
+
 This is the _inbound personal mail_ path. It is unrelated to `email-relay/`, which is the
 _outbound application_ path — deliberately separate services so a mistake in one cannot affect
 the other.
