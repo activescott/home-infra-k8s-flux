@@ -89,6 +89,10 @@ spec:
             runAsNonRoot: true
           initContainers:
             - name: stalwart-cli-private
+              # This plan holds a third party's address, and `stalwart-apply` prints this
+              # container's log. 1.0.12 was checked not to echo plan content on success,
+              # --dry-run, an invalid property or a JSON parse error; redo that check with a
+              # canary address before bumping the pin here and in the other two jobs.
               image: ghcr.io/stalwartlabs/cli:1.0.12@sha256:fe199affac1d120a8c200ef39ae629765a2976270e0453575c1caf906ee15b52
               args: ["apply", "--file", "/private-plan/private-plan.ndjson", "--dry-run"]
               env:
