@@ -236,8 +236,8 @@ to do a membership check that isn't baked into the script text.)
 
 **`willeke-local-mailboxes`** is a `MemoryLookupKey` list — "small, slow-changing set, consulted
 from Sieve filters," per Stalwart's own description of the feature. Today it holds two records,
-`scott@willeke.com` and `micah@willeke.com` (a mailing list, see below). **Provisioning a second real mailbox on this domain means adding a matching
-`MemoryLookupKey` record in the same namespace — the Sieve script itself never needs to change
+`scott@willeke.com` and `micah@willeke.com` (a mailing list, see below). **Provisioning a second
+real mailbox on this domain means adding a matching `MemoryLookupKey` record in the same namespace — the Sieve script itself never needs to change
 again.** Forgetting that step doesn't silently misbehave either: the new mailbox would just keep
 getting `550 Relaying denied` from anonymous senders (including Google's dual-delivery, if ever
 extended to it) until the record is added, which is a loud, obvious failure rather than a subtle
@@ -283,16 +283,15 @@ sharing one source of truth instead of drifting three ways.
 `micah@willeke.com` replaced a Google group of the same name (activescott/personal#125). It
 forwards to Micah's iCloud address and to `oksanascott@willeke.com`, an existing Google group that
 reaches Scott and Oksana and is not managed here. `scott@` is not a direct recipient, because the
-group already reaches him. Google is still the MX, so nothing
-arrives here until a Workspace routing rule sends that address to the `mail.activescott.com` host
-route. That rule is click-ops; the Admin console steps are in the pull request that added this
-section. Unlike `scott@`, Gmail keeps no copy, so **for this address this server is
-load-bearing**: if Stalwart is down, Google queues the message and in the end bounces it to the
-sender.
+group already reaches him. Google is still the MX, so nothing arrives here until a Workspace
+routing rule sends that address to the `mail.activescott.com` host route. That rule is click-ops;
+the Admin console steps are in the pull request that added this section. Unlike `scott@`, Gmail
+keeps no copy, so **for this address this server is load-bearing**: if Stalwart is down, Google
+queues the message and in the end bounces it to the sender.
 
 **It is a `MailingList`, not an account with a Sieve redirect.** A `MailingList` holds no
-credentials, so it can go in the routinely applied plan without the risk that keeps accounts in
-the bootstrap-only `accounts.ndjson`. And it is not an `Account`, so `stalwart-sieve-reconcile`
+credentials, so it can go in `plan.ndjson`, which every `./scripts/stalwart-apply` run applies,
+without the risk that keeps accounts in the bootstrap-only `accounts.ndjson`. And it is not an `Account`, so `stalwart-sieve-reconcile`
 never sees it. That job's own `x:Account/query` + `x:Account/get`, run against a v0.16.27 server
 with the list in place, returned `scott`, `automation` and `admin` and nothing else. An account
 would have needed a per-account script carrying the redirect. No plan can declare that script,
@@ -344,32 +343,58 @@ to the whole SMTP transaction, so any other local recipient in it gets a `Return
 `micah@` is declared anyway, so that `relay-guard`, `schedule` and `route` all treat the address
 as local if it ever reaches them.
 
-**Only Google may write to it unauthenticated.** Port 25 is public, and the rewrite turns
-whatever reaches `micah@` into mail that leaves through `smtp-relay.gmail.com` as
-`scott@willeke.com`, DKIM-signed for `willeke.com`. A stranger connecting straight to this server
-with a forged `From: scott@willeke.com` would therefore reach iCloud and the group as aligned,
-DMARC-passing `willeke.com` mail. So `forward-envelope-sender` first rejects the RCPT with the
-same `550 5.7.1 Relaying denied` as `relay-guard` unless the session is authenticated or
-`remote_ip` is in one of Google's sending ranges, copied from `_spf.google.com` on 2026-11-27.
-Legitimate mail only ever arrives through the Workspace routing rule, from those ranges, and
-Google has already applied its own SPF/DMARC checks to it as the MX. **The list is static.** When
-`_spf.google.com` changes, update the script, or mail to `micah@` from a new range is refused and
-Google bounces it to the sender.
+**Only Google may write to it unauthenticated.** The rewrite turns whatever reaches `micah@` into
+mail that leaves through `smtp-relay.gmail.com` as `scott@willeke.com`, DKIM-signed for
+`willeke.com`. A stranger connecting straight to this server with a forged
+`From: scott@willeke.com` would therefore reach iCloud and the group as aligned, DMARC-passing
+`willeke.com` mail. The OPNsense forward for port 25 already admits only Google's ranges (see "The default
+inbound throttle drops dual-delivery copies" below). `forward-envelope-sender` repeats that check, so a loosened firewall rule
+does not open this path: it rejects the RCPT with the same `550 5.7.1 Relaying denied` as
+`relay-guard` unless the session is authenticated or `remote_ip` is in one of Google's ranges.
 
-Tested on a scratch v0.16.27 server, connecting from `127.0.0.1` with
-`MAIL FROM:<attacker@forger.example>` and `From: scott@willeke.com`. Before the check the message was queued with
-`from = "scott@willeke.com"` to both list members; with it, the RCPT got
-`550 5.7.1 Relaying denied`. The same plan with `127.0.0.0/8` added to the ranges accepted it and
-queued it as `scott@willeke.com`, so the rejection is the range check and not a broken script. An
-authenticated session from the same address got 250 for `micah@`, and `bogus@willeke.com` still
-got 550.
+The ranges are `_spf.google.com` plus the two IPv4 and one IPv6 unverified-forwarding ranges Google
+documents separately and leaves out of SPF. Routed mail uses those too: a dual-delivery copy of
+`scott@` has arrived from `108.177.16.42`. On 2026-11-27, `_spf.google.com` (fetched through
+`dns.google`) listed `74.125.0.0/16`, `192.178.47.0/24`, `192.179.92.0/22`, `209.85.128.0/17`
+and six IPv6 `/56`s, with no `include:`. `_netblocks.google.com` is a subset of it. Reverse DNS
+puts `108.177.16.0/23` and `142.250.220.0/23` in `unverified-forwarding.1e100.net`, and the
+addresses on either side of them outside it. `mail.activescott.com` has no AAAA record, so Google
+connects over IPv4 only and the IPv6 entries are there for completeness. **The list is static.**
+When Google changes its ranges, update the script, or mail to `micah@` from a new range is refused
+and Google bounces it to the sender.
 
-Tested on a scratch v0.16.27 server, with this plan and the earlier recipient set (`scott@`
-and the iCloud address) applied and a local SMTP sink in place of
-`smtp-relay.gmail.com`. An unauthenticated message from `alice@outside.example` to
-`micah@willeke.com` was delivered locally to `scott@` and reached the sink as
-`MAIL FROM:<alice@outside.example>` without the script, then `MAIL FROM:<scott@willeke.com>` with
-it. A RCPT to an unknown `@willeke.com` address still got `550 5.7.1 Relaying denied`.
+**What the range check does not stop.** It admits every Google customer, not just this Workspace
+tenant. Anyone with a Workspace tenant of their own can add a routing rule that sends mail for
+`micah@willeke.com` to `mail.activescott.com`, from Google's ranges, with any `From:`. And
+`willeke.com` publishes DMARC `p=none`, so Google as the MX does not refuse a forged
+`From: scott@willeke.com` either. Both would leave here as aligned `willeke.com` mail. Closing that
+needs the route itself authenticated; the options are on the pull request that added this
+section.
+
+**At most 50 messages an hour.** A `MtaInboundThrottle` keyed on the recipient caps RCPTs to
+`micah@willeke.com` at 50 per hour, so a flood that gets past the range check cannot spend more
+than 100 relay sends an hour of the quota and reputation that carry all of this server's outbound
+mail. Past the limit Stalwart answers `452 4.4.5 Rate limit exceeded`, a temporary refusal, so
+Google retries and nothing is lost, and the line it logs is the one the `StalwartInboundRateLimited`
+alert counts. Its `description` is its `matchOn` key, so changing that string creates a second
+throttle.
+
+Tested on a scratch v0.16.27 server, with the private plan holding a placeholder address in place
+of the iCloud one plus `oksanascott@willeke.com`, the SMTP listener bound to `[::]` as in
+production, and a local SMTP sink in place of `smtp-relay.gmail.com`:
+
+- From `127.0.0.1`, an unauthenticated `MAIL FROM:<alice@outside.example>` to `micah@` got
+  `550 5.7.1 Relaying denied` at RCPT. With `127.0.0.0/8` added to the ranges (scratch only), the
+  same message was queued once with `from = "scott@willeke.com"` and both members as recipients,
+  and the sink received two deliveries, one per member, each `MAIL FROM:<scott@willeke.com>`,
+  authenticated as `scott@willeke.com`. `relay-guard` does not run for the expanded members:
+  `oksanascott@` is not in `willeke-local-mailboxes`, so it would have refused it with 550. The IPv4
+  client reached the `[::]` socket and still matched `127.0.0.0/8`.
+- An authenticated `MAIL FROM:<admin@willeke.com>` reached the sink as `admin@willeke.com`. Before
+  the rewrite was limited to unauthenticated sessions it reached it as `scott@willeke.com`.
+- `bogus@willeke.com` still got 550 and `scott@` 250.
+- With the throttle in place, RCPTs to `micah@` past 50 in the hour got 452, while `scott@` still
+  got 250.
 
 **SPF, DKIM and DMARC at iCloud.** Stalwart signs nothing, and the `From:` header is the original
 sender's.
@@ -386,10 +411,18 @@ sender's.
   alone fails there. A Google group avoids that by rewriting `From:` for such senders; this list
   does not, and no ARC seal is added.
 
-**Spam is forwarded as received.** The list expands at RCPT, before the message is scored at
-DATA, so both copies go out whatever Stalwart's verdict. Gmail scores the message at the MX before the routing rule applies;
-whether it still reroutes what it judges spam has not been checked. Whatever is forwarded leaves
-under the relay account's reputation.
+**Stalwart's own SPF and DMARC checks do not refuse forwarded mail.** The plan leaves `SenderAuth`
+stock: SPF and DMARC verification are `relaxed` on port 25. Mail for an outside sender arrives
+from a Google address, so SPF fails against the original domain, and in `relaxed` mode Stalwart
+records that and carries on; it answers 550 only in `strict` (`handle_spf` in
+`crates/smtp/src/inbound/mail.rs`). The DMARC path was not traced in the source, and the scratch
+server could not exercise either check, having no DNS and no listener on port 25.
+
+**Spam is forwarded as received.** The list expands at RCPT, before the message is scored at DATA,
+so both copies go out whatever Stalwart's verdict. On the scratch server a test message scored
+`X-Spam-Score: spam, score=6.20` and both copies still went out, carrying that header. Gmail scores
+the message at the MX before the routing rule applies; whether it still reroutes what it judges
+spam has not been checked. Whatever is forwarded leaves under the relay account's reputation.
 
 ## `WebDav.maxResults` has to exceed the largest collection
 
