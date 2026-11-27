@@ -340,10 +340,29 @@ expected from Google's documentation of the setting; it has not been seen on the
 is `micah@willeke.com`, and sets the envelope sender to `scott@willeke.com`. Scott owns the list,
 so bounces from iCloud reach him, as they would reach a Google group's owner. The rewrite applies
 to the whole SMTP transaction, so any other local recipient in it gets a `Return-Path` of
-`scott@willeke.com`; delivery is otherwise unchanged. `relay-guard` has nothing to guard there: the
-address is a real list. The `willeke-local-mailboxes` record for `micah@` is declared anyway, so
-that `relay-guard`, `schedule` and `route` all treat the address as local if it ever reaches
-them.
+`scott@willeke.com`; delivery is otherwise unchanged. The `willeke-local-mailboxes` record for
+`micah@` is declared anyway, so that `relay-guard`, `schedule` and `route` all treat the address
+as local if it ever reaches them.
+
+**Only Google may write to it unauthenticated.** Port 25 is public, and the rewrite turns
+whatever reaches `micah@` into mail that leaves through `smtp-relay.gmail.com` as
+`scott@willeke.com`, DKIM-signed for `willeke.com`. A stranger connecting straight to this server
+with a forged `From: scott@willeke.com` would therefore reach iCloud and the group as aligned,
+DMARC-passing `willeke.com` mail. So `forward-envelope-sender` first rejects the RCPT with the
+same `550 5.7.1 Relaying denied` as `relay-guard` unless the session is authenticated or
+`remote_ip` is in one of Google's sending ranges, copied from `_spf.google.com` on 2026-11-27.
+Legitimate mail only ever arrives through the Workspace routing rule, from those ranges, and
+Google has already applied its own SPF/DMARC checks to it as the MX. **The list is static.** When
+`_spf.google.com` changes, update the script, or mail to `micah@` from a new range is refused and
+Google bounces it to the sender.
+
+Tested on a scratch v0.16.27 server, connecting from `127.0.0.1` with
+`MAIL FROM:<attacker@forger.example>` and `From: scott@willeke.com`. Before the check the message was queued with
+`from = "scott@willeke.com"` to both list members; with it, the RCPT got
+`550 5.7.1 Relaying denied`. The same plan with `127.0.0.0/8` added to the ranges accepted it and
+queued it as `scott@willeke.com`, so the rejection is the range check and not a broken script. An
+authenticated session from the same address got 250 for `micah@`, and `bogus@willeke.com` still
+got 550.
 
 Tested on a scratch v0.16.27 server, with this plan and the earlier recipient set (`scott@`
 and the iCloud address) applied and a local SMTP sink in place of
