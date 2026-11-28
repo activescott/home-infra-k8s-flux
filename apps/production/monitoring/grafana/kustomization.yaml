@@ -135,14 +135,6 @@ configMapGenerator:
       labels:
         grafana_dashboard: "1"
       disableNameSuffixHash: true
-  - name: grafana-dashboard-k8s-views-global
-    namespace: monitoring
-    files:
-      - dashboards/k8s-views-global.json
-    options:
-      labels:
-        grafana_dashboard: "1"
-      disableNameSuffixHash: true
   # Grafana-managed alerting, picked up by the alerts sidecar (sidecar.alerts in
   # helmrelease.yaml), which watches ConfigMaps labelled `grafana_alert=1`. A new rule file
   # under alerting/rules/ has to be listed here too. See alerting/README.md.

@@ -16,22 +16,7 @@
     "to": "now"
   },
   "timezone": "browser",
-  "links": [
-    {
-      "type": "link",
-      "title": "Node Exporter Full",
-      "url": "/d/rYdddlPWk",
-      "targetBlank": false,
-      "icon": "dashboard"
-    },
-    {
-      "type": "link",
-      "title": "Kubernetes / Views / Global",
-      "url": "/d/k8s_views_global",
-      "targetBlank": false,
-      "icon": "dashboard"
-    }
-  ],
+  "links": [],
   "templating": {
     "list": []
   },
