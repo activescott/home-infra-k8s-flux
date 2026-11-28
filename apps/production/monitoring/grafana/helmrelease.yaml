@@ -189,66 +189,6 @@ spec:
         labelValue: "1"
         resource: configmap
 
-    # Provision standard Kubernetes monitoring dashboards from grafana.com.
-    # These two sections (dashboardProviders + dashboards) work together:
-    # - dashboardProviders defines WHERE on disk Grafana looks for dashboard JSON files
-    # - dashboards defines WHAT to download (by grafana.com ID) into that location
-    # The chart's download-dashboards init container curls each gnetId to
-    # /var/lib/grafana/dashboards/default/<key>.json. That path is on the PVC, and
-    # the chart never deletes files from it, so removing an entry here does NOT
-    # remove the dashboard: the old <key>.json stays and keeps being provisioned.
-    # When removing or vendoring one, also delete the file once (#483):
-    #   kubectl --context nas -n monitoring exec deploy/grafana -c grafana -- \
-    #     rm /var/lib/grafana/dashboards/default/<key>.json
-    # If a leftover shares a uid with a sidecar dashboard, Grafana logs "the same
-    # UID is used more than once" and stops saving new dashboards from either provider.
-    # Docs: https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
-    #        https://grafana.com/docs/grafana/latest/administration/provisioning/#dashboards
-    dashboardProviders:
-      dashboardproviders.yaml:
-        apiVersion: 1
-        providers:
-          - name: default
-            orgId: 1
-            folder: Kubernetes
-            type: file
-            disableDeletion: false
-            editable: true
-            options:
-              path: /var/lib/grafana/dashboards/default
-
-    # Each gnetId is a dashboard ID from https://grafana.com/grafana/dashboards/
-    # Browse/search for dashboards at that URL and use the ID from the dashboard page.
-    dashboards:
-      default:
-        # k8s-global (15757) is vendored in dashboards/k8s-views-global.json.
-        # Its old download, dashboards/default/k8s-global.json, has to be
-        # deleted from the PVC by hand (see above).
-        # https://grafana.com/grafana/dashboards/15758
-        k8s-namespaces:
-          gnetId: 15758
-          datasource:
-            - name: DS_PROMETHEUS
-              value: Prometheus
-        # https://grafana.com/grafana/dashboards/15759
-        k8s-nodes:
-          gnetId: 15759
-          datasource:
-            - name: DS_PROMETHEUS
-              value: Prometheus
-        # https://grafana.com/grafana/dashboards/15760
-        k8s-pods:
-          gnetId: 15760
-          datasource:
-            - name: DS_PROMETHEUS
-              value: Prometheus
-        # https://grafana.com/grafana/dashboards/1860
-        node-exporter-full:
-          gnetId: 1860
-          datasource:
-            - name: DS_PROMETHEUS
-              value: Prometheus
-
     # Ingress managed separately via raw K8s Ingress + cert-manager Certificate
     ingress:
       enabled: false
